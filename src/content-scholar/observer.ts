@@ -54,7 +54,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
     const doi = extractDoiFromScholarRow(row);
     if (doi) {
       rowDois.push({ row, doi });
-      injectDoiLabel(row, doi, "#2e7d32");
+      injectDoiLabel(row, doi, "#1565c0");
     } else {
       // No DOI found directly — extract title for augmentation
       const titleEl = row.querySelector(".gs_rt");
