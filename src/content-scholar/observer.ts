@@ -1,6 +1,6 @@
 import { normaliseDOI } from "../shared/doi-normalise";
 import { augmentDOIs } from "../shared/doi-augment";
-import type { DoiString } from "../shared/types";
+import type { DoiString, DoiSource } from "../shared/types";
 import type { LookupRequest, LookupResponse } from "../shared/messages";
 import { renderScholarBadge } from "./badge";
 
@@ -39,22 +39,25 @@ export async function processScholarResults(doc: Document): Promise<void> {
   const rows = doc.querySelectorAll<HTMLElement>(
     `${RESULT_ROW}:not([${PROCESSED_ATTR}])`
   );
-  if (rows.length === 0) {
-    console.log("[FLoRA] No unprocessed Scholar rows found");
-    return;
-  }
+  if (rows.length === 0) return;
 
-  console.log(`[FLoRA] Processing ${rows.length} Scholar rows`);
-
-  const rowDois: { row: HTMLElement; doi: DoiString }[] = [];
+  const rowDois: { row: HTMLElement; doi: DoiString; source: DoiSource }[] = [];
   const rowsWithoutDoi: { row: HTMLElement; title: string }[] = [];
 
   for (const row of rows) {
     row.setAttribute(PROCESSED_ATTR, "true");
+
+    // Skip non-article entries like [CITATION] and [BOOK]
+    const typeTag = row.querySelector(".gs_rt .gs_ctu, .gs_rt .gs_ctg2, .gs_rt .gs_ct1");
+    const typeText = typeTag?.textContent?.trim().toLowerCase() ?? "";
+    if (typeText.includes("citation") || typeText.includes("book")) {
+      continue;
+    }
+
     const doi = extractDoiFromScholarRow(row);
     if (doi) {
-      rowDois.push({ row, doi });
-      injectDoiLabel(row, doi, "#1565c0");
+      rowDois.push({ row, doi, source: "extracted" });
+      injectDoiLabel(row, doi, "#1a7f37", false);
     } else {
       // No DOI found directly — extract title for augmentation
       const titleEl = row.querySelector(".gs_rt");
@@ -74,8 +77,8 @@ export async function processScholarResults(doc: Document): Promise<void> {
       for (const { row, title } of rowsWithoutDoi) {
         const doi = augmented.get(title);
         if (doi) {
-          rowDois.push({ row, doi });
-          injectDoiLabel(row, doi, "#1565c0");
+          rowDois.push({ row, doi, source: "augmented" });
+          injectDoiLabel(row, doi, "#656d76", true);
         }
       }
     } catch {
@@ -83,36 +86,36 @@ export async function processScholarResults(doc: Document): Promise<void> {
     }
   }
 
-  console.log(`[FLoRA] DOIs found: ${rowDois.length}, titles without DOI: ${rowsWithoutDoi.length}`);
+  const extracted = rowDois.filter((r) => r.source === "extracted").length;
+  const augmented = rowDois.filter((r) => r.source === "augmented").length;
+  console.log(`[FLoRA] ${extracted} DOIs from Scholar, ${augmented} augmented via Crossref/OpenAlex`);
 
   if (rowDois.length === 0) return;
 
   const uniqueDois = [...new Set(rowDois.map((rd) => rd.doi))];
-  console.log("[FLoRA] Looking up DOIs:", uniqueDois);
   const request: LookupRequest = { type: "FLORA_LOOKUP", dois: uniqueDois };
 
   try {
     const response: LookupResponse =
       await chrome.runtime.sendMessage(request);
 
-    console.log("[FLoRA] Lookup response:", response);
-
-    for (const { row, doi } of rowDois) {
+    for (const { row, doi, source } of rowDois) {
       if (response.results[doi]) {
         renderScholarBadge(row, {
           status: "matched",
           result: response.results[doi],
+          source,
         });
       }
     }
-  } catch (err) {
-    console.error("[FLoRA] Lookup failed:", err);
+  } catch {
+    // Lookup failed
   }
 }
 
 const DOI_LABEL_CLASS = "flora-doi-label";
 
-function injectDoiLabel(row: HTMLElement, doi: string, color: string): void {
+function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmented = false): void {
   // Prefer the right-side PDF area; if absent, create one to match Scholar's layout
   let target = row.querySelector(".gs_ggs");
   if (!target) {
@@ -128,9 +131,10 @@ function injectDoiLabel(row: HTMLElement, doi: string, color: string): void {
   wrapper.style.cssText = `position: relative; display: inline-block; margin-top: 4px;`;
 
   const pill = document.createElement("span");
-  pill.textContent = "DOI";
   pill.style.cssText = `
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font-size: 12px;
     font-weight: 500;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -143,6 +147,11 @@ function injectDoiLabel(row: HTMLElement, doi: string, color: string): void {
     line-height: 18px;
     letter-spacing: 0.02em;
   `;
+  if (isAugmented) {
+    pill.innerHTML = `<span style="font-size:12px;font-weight:700;line-height:1;opacity:0.85;">?</span> DOI`;
+  } else {
+    pill.textContent = "DOI";
+  }
 
   const popover = document.createElement("div");
   popover.style.cssText = `

@@ -17,7 +17,9 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "<all_urls>"
+      ],
       "exclude_matches": [
         "*://scholar.google.com/*",
         "*://scholar.google.co.uk/*",
@@ -34,9 +36,13 @@
         "*://scholar.google.es/*",
         "*://scholar.google.it/*",
         "*://scholar.google.com.br/*",
-        "*://scholar.google.com.au/*"
+        "*://scholar.google.com.au/*",
+        "*://forrt.org/*",
+        "*://lukaswallrich.github.io/*"
       ],
-      "js": ["dist/content-general.js"],
+      "js": [
+        "dist/content-general.js"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -58,7 +64,9 @@
         "*://scholar.google.com.br/*",
         "*://scholar.google.com.au/*"
       ],
-      "js": ["dist/content-scholar.js"],
+      "js": [
+        "dist/content-scholar.js"
+      ],
       "run_at": "document_idle"
     }
   ],

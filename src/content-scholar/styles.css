@@ -29,6 +29,13 @@
   opacity: 0.95;
 }
 
+.badge-uncertain {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0.85;
+}
+
 .flora-scholar-badge:hover {
   filter: brightness(1.1);
 }

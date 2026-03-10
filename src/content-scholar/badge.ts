@@ -13,14 +13,9 @@ export function renderScholarBadge(
   const r = state.result;
   const stats = r.record.stats;
 
-  const hasData = stats.n_replications_total > 0
-    || stats.n_reproductions_total > 0
-    || stats.n_originals_total > 0;
-  if (!hasData) return;
-
-  const badgeClass = stats.n_replications_total > 0 || stats.n_reproductions_total > 0
-    ? "badge--success"
-    : "badge--neutral";
+  // Only show the badge when there are actual replications or reproductions
+  const hasReplicationData = stats.n_replications_total > 0 || stats.n_reproductions_total > 0;
+  if (!hasReplicationData) return;
 
   // Place badge in the right-side PDF area; create one if absent to match Scholar's layout
   let target = row.querySelector(".gs_ggs");
@@ -42,10 +37,9 @@ export function renderScholarBadge(
 
   const replLabel = stats.n_replications_total === 1 ? "replication" : "replications";
   const reproLabel = stats.n_reproductions_total === 1 ? "reproduction" : "reproductions";
-  const origLabel = stats.n_originals_total === 1 ? "original" : "originals";
 
   const badge = document.createElement("a");
-  badge.className = `flora-scholar-badge ${badgeClass}`;
+  badge.className = "flora-scholar-badge badge--success";
   badge.href = `https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(r.doi)}`;
   badge.target = "_blank";
   badge.rel = "noopener";
@@ -53,7 +47,6 @@ export function renderScholarBadge(
     <span class="badge-label">FLoRA</span>
     ${stats.n_replications_total > 0 ? `<span class="badge-count">${stats.n_replications_total} ${replLabel}</span>` : ""}
     ${stats.n_reproductions_total > 0 ? `<span class="badge-count">${stats.n_reproductions_total} ${reproLabel}</span>` : ""}
-    ${stats.n_originals_total > 0 ? `<span class="badge-count">${stats.n_originals_total} ${origLabel}</span>` : ""}
   `;
 
   shadow.appendChild(badge);
