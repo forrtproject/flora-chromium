@@ -7,8 +7,6 @@ const CACHE_PREFIX = "flora_doi:";
 const DEFAULT_EMAIL = "flora-extension@example.com";
 const MATCH_THRESHOLD_TSR = 88; // token_set_ratio threshold (0–100)
 
-const LOG_PREFIX = "[FLoRA:augment]";
-
 /**
  * Normalize a title for comparison: lowercase, strip non-word chars, collapse spaces.
  */
@@ -104,13 +102,8 @@ interface DoiCandidate {
 async function queryCrossref(title: string): Promise<DoiCandidate | null> {
   const cleaned = cleanTitleForSearch(title);
   const url = `${CROSSREF_BASE}?query.title=${encodeURIComponent(cleaned)}&rows=5&mailto=${encodeURIComponent(DEFAULT_EMAIL)}`;
-
-  console.log(`${LOG_PREFIX} Crossref query for: "${title}"`);
   const response = await fetch(url);
-  if (!response.ok) {
-    console.warn(`${LOG_PREFIX} Crossref returned ${response.status}`);
-    return null;
-  }
+  if (!response.ok) return null;
 
   const data = (await response.json()) as {
     message?: {
@@ -122,27 +115,18 @@ async function queryCrossref(title: string): Promise<DoiCandidate | null> {
   };
 
   const items = data.message?.items ?? [];
-  console.log(`${LOG_PREFIX} Crossref returned ${items.length} candidates`);
-
   let best: DoiCandidate | null = null;
 
   for (const item of items) {
     if (!item.DOI || !item.title?.[0]) continue;
 
     const tsr = tokenSetRatio(title, item.title[0]);
-    console.log(`${LOG_PREFIX}   Crossref candidate: "${item.title[0]}" → score=${tsr.toFixed(1)}, DOI=${item.DOI}`);
     if (tsr >= MATCH_THRESHOLD_TSR && (!best || tsr > best.score)) {
       const doi = normaliseDOI(item.DOI);
       if (doi) {
         best = { doi, title: item.title[0], score: tsr, source: "crossref" };
       }
     }
-  }
-
-  if (best) {
-    console.log(`${LOG_PREFIX} Crossref best match: "${best.title}" (score=${best.score.toFixed(1)}, DOI=${best.doi})`);
-  } else {
-    console.log(`${LOG_PREFIX} Crossref: no match above threshold (${MATCH_THRESHOLD_TSR})`);
   }
 
   return best;
@@ -155,39 +139,26 @@ async function queryOpenAlex(title: string): Promise<DoiCandidate | null> {
   const cleaned = cleanTitleForSearch(title);
   const url = `${OPENALEX_BASE}?filter=title.search:${encodeURIComponent(cleaned)}&select=id,doi,title&per_page=5&mailto=${encodeURIComponent(DEFAULT_EMAIL)}`;
 
-  console.log(`${LOG_PREFIX} OpenAlex query for: "${title}"`);
   const response = await fetch(url);
-  if (!response.ok) {
-    console.warn(`${LOG_PREFIX} OpenAlex returned ${response.status}`);
-    return null;
-  }
+  if (!response.ok) return null;
 
   const data = (await response.json()) as {
     results?: Array<{ doi?: string; title?: string }>;
   };
 
   const works = data.results ?? [];
-  console.log(`${LOG_PREFIX} OpenAlex returned ${works.length} candidates`);
-
   let best: DoiCandidate | null = null;
 
   for (const work of works) {
     if (!work.doi || !work.title) continue;
 
     const tsr = tokenSetRatio(title, work.title);
-    console.log(`${LOG_PREFIX}   OpenAlex candidate: "${work.title}" → score=${tsr.toFixed(1)}, DOI=${work.doi}`);
     if (tsr >= MATCH_THRESHOLD_TSR && (!best || tsr > best.score)) {
       const doi = normaliseDOI(work.doi);
       if (doi) {
         best = { doi, title: work.title, score: tsr, source: "openalex" };
       }
     }
-  }
-
-  if (best) {
-    console.log(`${LOG_PREFIX} OpenAlex best match: "${best.title}" (score=${best.score.toFixed(1)}, DOI=${best.doi})`);
-  } else {
-    console.log(`${LOG_PREFIX} OpenAlex: no match above threshold (${MATCH_THRESHOLD_TSR})`);
   }
 
   return best;
@@ -205,8 +176,6 @@ export async function augmentDOIs(
   const results = new Map<string, DoiString | null>();
   if (titles.length === 0) return results;
 
-  console.log(`${LOG_PREFIX} Augmenting ${titles.length} title(s):`, titles);
-
   // Check cache first
   const uncached: string[] = [];
   const cacheKeys = titles.map((t) => CACHE_PREFIX + normalizeTitle(t));
@@ -219,7 +188,6 @@ export async function augmentDOIs(
       if (entry) {
         const doi = entry.found && entry.doi ? normaliseDOI(entry.doi) : null;
         results.set(title, doi);
-        console.log(`${LOG_PREFIX} Cache hit for "${title}": ${doi ?? "not found"}`);
       } else {
         uncached.push(title);
       }
@@ -229,8 +197,6 @@ export async function augmentDOIs(
   }
 
   if (uncached.length === 0) return results;
-
-  console.log(`${LOG_PREFIX} ${uncached.length} title(s) uncached, querying Crossref + OpenAlex`);
 
   // Process each uncached title with parallel Crossref + OpenAlex
   const lookupPromises = uncached.map(async (title) => {
@@ -242,13 +208,9 @@ export async function augmentDOIs(
     const candidates: DoiCandidate[] = [];
     if (crossrefResult.status === "fulfilled" && crossrefResult.value) {
       candidates.push(crossrefResult.value);
-    } else if (crossrefResult.status === "rejected") {
-      console.warn(`${LOG_PREFIX} Crossref query failed:`, crossrefResult.reason);
     }
     if (openalexResult.status === "fulfilled" && openalexResult.value) {
       candidates.push(openalexResult.value);
-    } else if (openalexResult.status === "rejected") {
-      console.warn(`${LOG_PREFIX} OpenAlex query failed:`, openalexResult.reason);
     }
 
     // Deduplicate by DOI: keep higher score
@@ -270,12 +232,6 @@ export async function augmentDOIs(
 
     const doi = best?.doi ?? null;
     results.set(title, doi);
-
-    if (best) {
-      console.log(`${LOG_PREFIX} Resolved "${title}" → ${best.doi} (via ${best.source}, score=${best.score.toFixed(1)})`);
-    } else {
-      console.log(`${LOG_PREFIX} No DOI found for "${title}"`);
-    }
 
     // Cache result
     const cacheKey = CACHE_PREFIX + normalizeTitle(title);

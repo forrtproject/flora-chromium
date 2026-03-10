@@ -5,8 +5,6 @@ import type { DoiString, LookupState } from "../shared/types";
 import type { LookupRequest, LookupResponse } from "../shared/messages";
 import { renderErrorBanner, renderMatchedBanner, removeBanner, renderInlineBadges } from "./injector";
 
-const LOG_PREFIX = "[FLoRA]";
-
 const pageState = new Map<DoiString, LookupState>();
 const processedDois = new Set<DoiString>();
 let lastUrl = location.href;
@@ -14,7 +12,7 @@ let augmentAttempted = false;
 
 /**
  * Silently try to resolve a DOI from the page title via Crossref/OpenAlex.
- * Runs in the background with no UI — only logs to the console.
+ * Runs in the background with no UI.
  */
 async function augmentFromTitle(): Promise<void> {
   if (augmentAttempted) return;
@@ -24,42 +22,25 @@ async function augmentFromTitle(): Promise<void> {
     document.querySelector<HTMLHeadingElement>("h1")?.textContent?.trim() ||
     document.title?.trim();
 
-  if (!pageTitle) {
-    console.log(`${LOG_PREFIX} No page title available for augmentation`);
-    return;
-  }
+  if (!pageTitle) return;
 
-  console.log(`${LOG_PREFIX} No DOIs extracted, augmenting from title in background: "${pageTitle}"`);
   try {
     const augmented = await augmentDOIs([pageTitle]);
     const resolvedDoi = augmented.get(pageTitle);
     if (resolvedDoi) {
-      console.log(`${LOG_PREFIX} Title augmented to DOI: ${resolvedDoi} (background, no UI)`);
       processedDois.add(resolvedDoi);
-
-      // Silently look up replication data — log result but don't render any UI
       const request: LookupRequest = { type: "FLORA_LOOKUP", dois: [resolvedDoi] };
-      const response: LookupResponse = await chrome.runtime.sendMessage(request);
-      if (response.results[resolvedDoi]) {
-        console.log(`${LOG_PREFIX} Background augmented DOI ${resolvedDoi} has replication data`);
-      } else {
-        console.log(`${LOG_PREFIX} Background augmented DOI ${resolvedDoi} has no replication data`);
-      }
-    } else {
-      console.log(`${LOG_PREFIX} Title augmentation found no DOI`);
+      await chrome.runtime.sendMessage(request);
     }
-  } catch (err) {
-    console.warn(`${LOG_PREFIX} Background augmentation failed:`, err);
+  } catch {
+    // Augmentation failed silently
   }
 }
 
 async function run(): Promise<void> {
-  console.log(`${LOG_PREFIX} Running on ${location.href}`);
-
   // Detect full URL change (SPA navigation) — clear state
   const currentUrl = location.href;
   if (currentUrl !== lastUrl) {
-    console.log(`${LOG_PREFIX} URL changed: ${lastUrl} → ${currentUrl}`);
     lastUrl = currentUrl;
     processedDois.clear();
     pageState.clear();
@@ -75,18 +56,10 @@ async function run(): Promise<void> {
   // If no new DOIs found directly, try augmenting from page title in the background
   if (newDois.length === 0 && dois.length === 0) {
     augmentFromTitle();
-    if (processedDois.size > 0) {
-      console.log(`${LOG_PREFIX} No new DOIs to process (${processedDois.size} already processed)`);
-    }
     return;
   }
 
-  if (newDois.length === 0) {
-    console.log(`${LOG_PREFIX} No new DOIs to process (${processedDois.size} already processed)`);
-    return;
-  }
-
-  console.log(`${LOG_PREFIX} Processing ${newDois.length} new DOI(s):`, newDois);
+  if (newDois.length === 0) return;
 
   for (const doi of newDois) {
     processedDois.add(doi);
@@ -106,27 +79,23 @@ async function run(): Promise<void> {
     for (const doi of newDois) {
       if (response.errors[doi]) {
         pageState.set(doi, { status: "error", message: response.errors[doi] });
-        console.warn(`${LOG_PREFIX} Lookup error for ${doi}: ${response.errors[doi]}`);
       } else if (response.results[doi]) {
-        pageState.set(doi, { status: "matched", result: response.results[doi] });
-        console.log(`${LOG_PREFIX} MATCH: ${doi} has replication data`);
+        pageState.set(doi, { status: "matched", result: response.results[doi], source: "extracted" });
       } else {
         pageState.set(doi, { status: "no-match" });
-        console.log(`${LOG_PREFIX} No replication data for ${doi}`);
       }
     }
 
-    // Collect all matched DOIs for the banner (including previously found)
-    const allDois = [...pageState.keys()];
-    const matched = allDois
-      .filter((doi) => pageState.get(doi)?.status === "matched")
-      .map((doi) => ({
+    // Collect matched DOIs for the banner — only those currently in the DOM
+    const currentDois = new Set(extractDOIs(document));
+    const matched = [...pageState.entries()]
+      .filter(([doi, s]) => s.status === "matched" && currentDois.has(doi))
+      .map(([doi, s]) => ({
         doi,
-        result: (pageState.get(doi) as { status: "matched"; result: import("../shared/types").ReplicationResult }).result,
+        result: (s as { status: "matched"; result: import("../shared/types").ReplicationResult; source: "extracted" }).result,
       }));
 
     if (matched.length > 0) {
-      console.log(`${LOG_PREFIX} Rendering banner for ${matched.length} matched DOI(s)`);
       renderMatchedBanner(matched);
     } else {
       removeBanner();
@@ -134,8 +103,7 @@ async function run(): Promise<void> {
 
     // Inline badges for all matched DOIs
     renderInlineBadges(pageState);
-  } catch (err) {
-    console.error(`${LOG_PREFIX} FLoRA lookup failed:`, err);
+  } catch {
     renderErrorBanner("Failed to contact FLoRA service");
   }
 }
@@ -158,7 +126,6 @@ if (document.body) {
       }
     }
     if (addedCount >= MIN_ADDED_NODES) {
-      console.log(`${LOG_PREFIX} DOM mutation detected (${addedCount} elements added), re-running`);
       debouncedReRun();
     }
   });
@@ -167,11 +134,5 @@ if (document.body) {
 }
 
 // SPA URL-based navigation
-window.addEventListener("popstate", () => {
-  console.log(`${LOG_PREFIX} popstate event, re-running`);
-  debouncedReRun();
-});
-window.addEventListener("hashchange", () => {
-  console.log(`${LOG_PREFIX} hashchange event, re-running`);
-  debouncedReRun();
-});
+window.addEventListener("popstate", () => debouncedReRun());
+window.addEventListener("hashchange", () => debouncedReRun());

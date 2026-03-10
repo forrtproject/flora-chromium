@@ -5,7 +5,6 @@ import { normaliseDOI } from "./doi-normalise";
 // but stop at whitespace, commas, quotes, fragments, query strings, etc.
 const DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*\/[^\s,;\]}>'"<#?&]+)/g;
 
-const LOG_PREFIX = "[FLoRA:extractor]";
 
 // Characters inserted by browsers/sites for word-break purposes that can split DOIs
 const WORD_BREAK_CHARS = /[\u200B\u200C\u200D\u00AD\uFEFF\u2060]/g;
@@ -58,39 +57,13 @@ function cleanDoiTrailing(raw: string): string {
 export function extractDOIs(doc: Document): DoiString[] {
   const found = new Set<DoiString>();
 
-  const before = found.size;
   extractFromUrl(doc, found);
-  if (found.size > before)
-    console.log(`${LOG_PREFIX} URL layer found ${found.size - before} DOI(s):`, [...found]);
-
-  const beforeMeta = found.size;
   extractFromMeta(doc, found);
-  if (found.size > beforeMeta)
-    console.log(`${LOG_PREFIX} Meta tag layer found ${found.size - beforeMeta} new DOI(s)`);
-
-  const beforeJsonLd = found.size;
   extractFromJsonLd(doc, found);
-  if (found.size > beforeJsonLd)
-    console.log(`${LOG_PREFIX} JSON-LD layer found ${found.size - beforeJsonLd} new DOI(s)`);
-
-  const beforeDoiLinks = found.size;
   extractFromDoiLinks(doc, found);
-  if (found.size > beforeDoiLinks)
-    console.log(`${LOG_PREFIX} DOI link layer found ${found.size - beforeDoiLinks} new DOI(s)`);
-
-  const beforeText = found.size;
   extractFromVisibleText(doc, found);
-  if (found.size > beforeText)
-    console.log(`${LOG_PREFIX} Visible text layer found ${found.size - beforeText} new DOI(s)`);
 
-  const result = [...found];
-  if (result.length > 0) {
-    console.log(`${LOG_PREFIX} Total DOIs extracted: ${result.length}`, result);
-  } else {
-    console.log(`${LOG_PREFIX} No DOIs found on page`);
-  }
-
-  return result;
+  return [...found];
 }
 
 function extractFromUrl(doc: Document, found: Set<DoiString>): void {

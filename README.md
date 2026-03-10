@@ -6,9 +6,11 @@ When you visit an article page (PubMed, journal websites, preprint servers, etc.
 
 ## What it does
 
-- **Article pages**: Displays a banner at the top of the page summarizing replication/reproduction data for all DOIs found on the page. Inline badges also appear next to individual DOI links.
-- **Google Scholar**: Adds badges next to search results that have replication data, so you can see replication status while browsing results.
-- **DOI augmentation**: When a page or Scholar result doesn't have a DOI in its HTML, FLoRA queries [OpenAlex](https://openalex.org/) to resolve the article title to a DOI via fuzzy matching.
+- **Article pages**: Displays a banner at the top of the page summarizing replication/reproduction data for all DOIs found on the page. Inline badges also appear next to individual DOI links. Handles SPAs by detecting URL changes and re-scanning automatically.
+- **Google Scholar**: Adds DOI pills and replication badges to the right-hand side of each search result (alongside the PDF link area). When a result lacks a native `.gs_ggs` container, one is created to match Scholar's own layout.
+- **DOI extraction**: Extracts DOIs from meta tags, JSON-LD, link hrefs, visible text, and HTML tables. Handles word-break characters (zero-width spaces, soft hyphens) and validates DOI suffixes to avoid partial matches from split HTML.
+- **DOI augmentation**: When a page or Scholar result doesn't have a DOI in its HTML, FLoRA queries [Crossref](https://www.crossref.org/) and [OpenAlex](https://openalex.org/) to resolve the article title to a DOI via fuzzy matching (token-set-ratio > 88%).
+- **DOI popover**: Each DOI pill has a hover popover showing the full DOI string with a copy-to-clipboard button.
 - **Clicking badges/links**: Opens the [FORRT replication landing page](https://forrt.org/fred_repl_landing_page/) for the relevant DOI(s).
 
 ## Installation (developer mode)
@@ -23,10 +25,11 @@ Since this extension is not yet on the Chrome Web Store, you'll need to load it 
 
 ### Steps
 
-1. **Clone the repository** and navigate to the extension folder:
+1. **Clone the repository**:
 
    ```bash
-   cd flora-extension
+   git clone https://github.com/forrtproject/flora-chromium.git
+   cd flora-chromium
    ```
 
 2. **Install dependencies**:
@@ -47,7 +50,7 @@ Since this extension is not yet on the Chrome Web Store, you'll need to load it 
    - Open `chrome://extensions` (or `edge://extensions`)
    - Enable **Developer mode** (toggle in the top-right corner)
    - Click **Load unpacked**
-   - Select the `flora-extension` folder (the one containing `manifest.json`)
+   - Select the project root folder (the one containing `manifest.json`)
 
 5. **You're done!** Navigate to any academic article page or Google Scholar to see FLoRA in action.
 
@@ -66,14 +69,15 @@ Then go to `chrome://extensions` and click the **reload** icon on the FLoRA exte
 ### Project structure
 
 ```
-flora-extension/
+flora-chromium/
   manifest.json          # Chrome MV3 manifest
+  esbuild.config.ts      # Build configuration
   src/
     shared/              # Shared modules used by all entry points
       types.ts           # Zod schemas, branded types, state types
       doi-normalise.ts   # DOI string normalisation
-      doi-extractor.ts   # Extract DOIs from page HTML (meta, JSON-LD, regex)
-      doi-augment.ts     # Resolve titles to DOIs via OpenAlex
+      doi-extractor.ts   # Extract DOIs from page HTML (meta, JSON-LD, visible text, tables)
+      doi-augment.ts     # Resolve titles to DOIs via Crossref + OpenAlex
       flora-api.ts       # FORRT replication API client
       messages.ts        # Message types for content ↔ background
       cache.ts           # Session cache (chrome.storage.session)
@@ -81,13 +85,13 @@ flora-extension/
     background/
       service-worker.ts  # MV3 service worker — handles FLORA_LOOKUP messages
     content-general/
-      index.ts           # Content script for article pages
-      injector.ts        # Banner and inline badge rendering (Shadow DOM)
+      index.ts           # Content script for article pages (SPA-aware)
+      injector.ts        # Banner, inline badge, and DOI popover rendering (Shadow DOM)
       styles.css         # Banner/badge styles
     content-scholar/
       index.ts           # Content script for Google Scholar
-      observer.ts        # MutationObserver for dynamic Scholar results
-      badge.ts           # Scholar badge rendering (Shadow DOM)
+      observer.ts        # MutationObserver + DOI extraction/augmentation for Scholar results
+      badge.ts           # Scholar replication badge rendering (Shadow DOM)
       styles.css         # Scholar badge styles
     options/
       index.html         # Options page
@@ -120,11 +124,13 @@ flora-extension/
 
 ### How it works
 
-1. **Content scripts** run on every page. They extract DOIs from the page using meta tags, JSON-LD, link hrefs, and regex patterns.
-2. If no DOIs are found directly, the extension tries to resolve the page/article title to a DOI using the **OpenAlex API** (fuzzy title matching with Levenshtein similarity > 0.8).
+1. **Content scripts** run on every page. They extract DOIs from the page using meta tags, JSON-LD, link hrefs, visible text, and HTML tables. Word-break characters are stripped and partial DOI suffixes are filtered out.
+2. If no DOIs are found directly, the extension tries to resolve the page/article title to a DOI using the **Crossref API** first, then **OpenAlex** as a fallback (fuzzy title matching with token-set-ratio > 88%).
 3. Found DOIs are sent to the **background service worker** via `chrome.runtime.sendMessage`.
 4. The service worker checks its **session cache**, deduplicates in-flight requests, and calls the **FORRT Replication API** for any uncached DOIs.
 5. Results are sent back to the content script, which renders **banners** and **inline badges** using Shadow DOM.
+6. On **Google Scholar**, DOI pills with copy-to-clipboard popovers and replication badges are injected into the right-side `.gs_ggs` container of each result row (created if absent).
+7. The content-general script detects **SPA navigations** (URL changes) and re-scans the page automatically.
 
 ## License
 

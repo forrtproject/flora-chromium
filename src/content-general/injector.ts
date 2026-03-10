@@ -52,11 +52,8 @@ export function renderMatchedBanner(
   const totalRepro = matched.reduce(
     (sum, m) => sum + m.result.record.stats.n_reproductions_total, 0
   );
-  const totalOrig = matched.reduce(
-    (sum, m) => sum + m.result.record.stats.n_originals_total, 0
-  );
 
-  if (totalRepl === 0 && totalRepro === 0 && totalOrig === 0) {
+  if (totalRepl === 0 && totalRepro === 0) {
     removeBanner();
     return;
   }
@@ -65,16 +62,14 @@ export function renderMatchedBanner(
   const shadow = bannerShadow!;
   const container = shadow.querySelector(".flora-banner")!;
 
-  const cls = totalRepl > 0 || totalRepro > 0 ? "flora-banner--success" : "flora-banner--info";
+  const cls = "flora-banner--success";
 
   const replLabel = totalRepl === 1 ? "replication" : "replications";
   const reproLabel = totalRepro === 1 ? "reproduction" : "reproductions";
-  const origLabel = totalOrig === 1 ? "original" : "originals";
 
   const parts: string[] = [];
   if (totalRepl > 0) parts.push(`${totalRepl} ${replLabel}`);
   if (totalRepro > 0) parts.push(`${totalRepro} ${reproLabel}`);
-  if (totalOrig > 0) parts.push(`${totalOrig} ${origLabel}`);
   const countsText = parts.join(", ");
 
   const doiCount = matched.length;
@@ -172,22 +167,11 @@ export function renderInlineBadges(
     const r = state.result;
     const stats = r.record.stats;
 
-    const hasData = stats.n_replications_total > 0
-      || stats.n_reproductions_total > 0
-      || stats.n_originals_total > 0;
+    const hasData = stats.n_replications_total > 0 || stats.n_reproductions_total > 0;
     if (!hasData) continue;
-
-    const badgeClass = stats.n_replications_total > 0 || stats.n_reproductions_total > 0
-      ? "badge--success"
-      : "badge--neutral";
 
     const replLabel = stats.n_replications_total === 1 ? "replication" : "replications";
     const reproLabel = stats.n_reproductions_total === 1 ? "reproduction" : "reproductions";
-    const origLabel = stats.n_originals_total === 1 ? "original" : "originals";
-    const titleParts: string[] = [];
-    if (stats.n_replications_total > 0) titleParts.push(`${stats.n_replications_total} ${replLabel}`);
-    if (stats.n_reproductions_total > 0) titleParts.push(`${stats.n_reproductions_total} ${reproLabel}`);
-    if (stats.n_originals_total > 0) titleParts.push(`${stats.n_originals_total} ${origLabel}`);
 
     const badgeHost = document.createElement("span");
     badgeHost.className = BADGE_CLASS;
@@ -198,12 +182,15 @@ export function renderInlineBadges(
     shadow.appendChild(styleEl);
 
     const badge = document.createElement("a");
-    badge.className = `flora-badge ${badgeClass}`;
+    badge.className = "flora-badge badge--success";
     badge.href = `https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(r.doi)}`;
     badge.target = "_blank";
     badge.rel = "noopener";
-    badge.title = `FLoRA: ${titleParts.join(", ")}`;
-    badge.innerHTML = `<span class="badge-icon">F</span> ${stats.n_replications_total}R`;
+    badge.innerHTML = `
+      <span class="badge-label">FLoRA</span>
+      ${stats.n_replications_total > 0 ? `<span class="badge-count">${stats.n_replications_total} ${replLabel}</span>` : ""}
+      ${stats.n_reproductions_total > 0 ? `<span class="badge-count">${stats.n_reproductions_total} ${reproLabel}</span>` : ""}
+    `;
     shadow.appendChild(badge);
 
     link.insertAdjacentElement("afterend", badgeHost);

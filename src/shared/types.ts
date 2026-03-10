@@ -3,11 +3,14 @@ import { z } from "zod";
 /** Branded type for normalised DOI strings */
 export type DoiString = string & { readonly __brand: "DoiString" };
 
+/** How the DOI was obtained */
+export type DoiSource = "extracted" | "augmented";
+
 /** Possible states for a DOI lookup */
 export type LookupState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "matched"; result: ReplicationResult }
+  | { status: "matched"; result: ReplicationResult; source: DoiSource }
   | { status: "no-match" }
   | { status: "error"; message: string };
 

@@ -10,12 +10,14 @@
   top: 0;
   left: 0;
   width: 100%;
+  margin: 0;
+  opacity: 1;
   z-index: 9999;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 16px;
-  font-size: 14px;
+  padding: 5px 8px;
+  font-size: 13px;
   line-height: 1.4;
   box-sizing: border-box;
   color: #fff;
@@ -58,9 +60,11 @@
 .flora-banner-close {
   all: unset;
   cursor: pointer;
-  font-size: 20px;
+  font-size: 13px;
   line-height: 1;
-  padding: 0 4px;
+  padding-right: 10px;
+  user-select: none;
+  align-self: center;
   color: rgba(255, 255, 255, 0.8);
 }
 
@@ -73,36 +77,38 @@
   all: initial;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin-left: 6px;
-  padding: 2px 8px;
-  border-radius: 12px;
+  padding: 2px 10px;
+  border-radius: 20px;
   font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
+  font-weight: 500;
+  line-height: 18px;
+  letter-spacing: 0.02em;
   text-decoration: none;
   cursor: pointer;
   vertical-align: middle;
   color: #fff;
-  z-index: 9999;
 }
 
 .badge--success {
-  background: #16a34a;
-}
-.badge--warning {
-  background: #ea580c;
+  background: #1a7f37;
 }
 
-.badge-icon {
-  font-weight: 800;
-  font-size: 11px;
+.badge-label {
+  font-weight: 700;
+  margin-right: 2px;
+}
+
+.badge-count {
+  font-weight: 500;
+  opacity: 0.95;
 }
 
 .flora-badge:hover {
-  filter: brightness(1.15);
+  filter: brightness(1.1);
 }
 
 @media print {
