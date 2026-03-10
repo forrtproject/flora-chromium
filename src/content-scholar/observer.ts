@@ -113,10 +113,18 @@ export async function processScholarResults(doc: Document): Promise<void> {
 const DOI_LABEL_CLASS = "flora-doi-label";
 
 function injectDoiLabel(row: HTMLElement, doi: string, color: string): void {
-  const target = row.querySelector(".gs_ggs") ?? row.querySelector(".gs_ri") ?? row;
+  // Prefer the right-side PDF area; if absent, create one to match Scholar's layout
+  let target = row.querySelector(".gs_ggs");
+  if (!target) {
+    target = document.createElement("div");
+    target.className = "gs_ggs gs_fl";
+    const gsRi = row.querySelector(".gs_ri");
+    row.insertBefore(target, gsRi);
+  }
 
   const wrapper = document.createElement("div");
   wrapper.className = DOI_LABEL_CLASS;
+
   wrapper.style.cssText = `position: relative; display: inline-block; margin-top: 4px;`;
 
   const pill = document.createElement("span");

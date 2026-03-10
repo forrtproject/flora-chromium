@@ -22,8 +22,14 @@ export function renderScholarBadge(
     ? "badge--success"
     : "badge--neutral";
 
-  // Place badge on the right side (PDF area), falling back to .gs_ri or row
-  const target = row.querySelector(".gs_ggs") ?? row.querySelector(".gs_ri") ?? row;
+  // Place badge in the right-side PDF area; create one if absent to match Scholar's layout
+  let target = row.querySelector(".gs_ggs");
+  if (!target) {
+    target = document.createElement("div");
+    target.className = "gs_ggs gs_fl";
+    const gsRi = row.querySelector(".gs_ri");
+    row.insertBefore(target, gsRi);
+  }
 
   const host = document.createElement("div");
   host.className = BADGE_HOST_CLASS;
