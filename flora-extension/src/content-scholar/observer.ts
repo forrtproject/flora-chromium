@@ -155,16 +155,6 @@ function injectDoiLabel(row: HTMLElement, doi: string, color: string): void {
     gap: 6px;
   `;
 
-  const titleRow = document.createElement("div");
-  titleRow.style.cssText = `
-    font-size: 11px;
-    font-weight: 600;
-    color: #656d76;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  `;
-  titleRow.textContent = "FLoRA";
-
   const contentRow = document.createElement("div");
   contentRow.style.cssText = `display: flex; align-items: center;`;
 
@@ -216,7 +206,6 @@ function injectDoiLabel(row: HTMLElement, doi: string, color: string): void {
 
   contentRow.appendChild(doiText);
   contentRow.appendChild(copyBtn);
-  popover.appendChild(titleRow);
   popover.appendChild(contentRow);
 
   let hideTimeout: ReturnType<typeof setTimeout> | null = null;
