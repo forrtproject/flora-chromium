@@ -5,37 +5,56 @@ import styles from "./styles.css";
 const BANNER_HOST_ID = "flora-banner-host";
 const BADGE_CLASS = "flora-inline-badge";
 
-// Store shadow root reference since we use open mode
-let bannerShadow: ShadowRoot | null = null;
+// ──────────────────────────────────────────────
+// Banner – inline styles (no shadow DOM)
+// ──────────────────────────────────────────────
 
-// ──────────────────────────────────────────────
-// Banner
-// ──────────────────────────────────────────────
+const BANNER_BASE_STYLE =
+  "position:fixed;top:0;left:0;width:100%;margin:0;opacity:1;" +
+  "z-index:2147483647;display:flex;align-items:center;gap:12px;" +
+  "padding:5px 8px;font-size:13px;line-height:1.4;box-sizing:border-box;" +
+  "color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;";
+
+const LOGO_STYLE =
+  "font-weight:700;font-size:15px;color:#fff;" +
+  "background:rgba(255,255,255,0.15);padding:2px 8px;border-radius:4px;flex-shrink:0;";
+
+const TEXT_STYLE = "flex:1;";
+
+const LINK_STYLE =
+  "color:#fff;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;";
+
+const CLOSE_STYLE =
+  "all:unset;cursor:pointer;font-size:13px;line-height:1;" +
+  "padding-right:10px;user-select:none;align-self:center;color:rgba(255,255,255,0.8);";
+
+const BG = {
+  loading: "background:#6b7280;",
+  success: "background:#16a34a;",
+  warning: "background:#ea580c;",
+  error: "background:#dc2626;",
+} as const;
 
 export function renderLoadingBanner(): void {
-  ensureBannerHost();
-  const shadow = bannerShadow!;
-  const container = shadow.querySelector(".flora-banner")!;
-  container.innerHTML = `
-    <div class="flora-banner-inner flora-banner--loading">
-      <span class="flora-logo">FLoRA</span>
-      <span class="flora-banner-text">Checking replication data\u2026</span>
+  const host = ensureBannerHost();
+  host.innerHTML = `
+    <div style="${BANNER_BASE_STYLE}${BG.loading}">
+      <span style="${LOGO_STYLE}">FLoRA</span>
+      <span style="${TEXT_STYLE}">Checking replication data\u2026</span>
     </div>`;
+  requestAnimationFrame(() => adjustPageForBanner());
 }
 
 export function renderErrorBanner(message: string): void {
-  ensureBannerHost();
-  const shadow = bannerShadow!;
-  const container = shadow.querySelector(".flora-banner")!;
-  container.innerHTML = `
-    <div class="flora-banner-inner flora-banner--error">
-      <span class="flora-logo">FLoRA</span>
-      <span class="flora-banner-text">Error: ${escapeHtml(message)}</span>
-      <button class="flora-banner-close" aria-label="Close">\u00d7</button>
+  const host = ensureBannerHost();
+  host.innerHTML = `
+    <div style="${BANNER_BASE_STYLE}${BG.error}">
+      <span style="${LOGO_STYLE}">FLoRA</span>
+      <span style="${TEXT_STYLE}">Error: ${escapeHtml(message)}</span>
+      <button style="${CLOSE_STYLE}" aria-label="Close">\u00d7</button>
     </div>`;
-  shadow
-    .querySelector(".flora-banner-close")
-    ?.addEventListener("click", () => removeBanner());
+  host.querySelector("button")?.addEventListener("click", () => removeBanner());
+  requestAnimationFrame(() => adjustPageForBanner());
 }
 
 export function renderMatchedBanner(
@@ -58,11 +77,7 @@ export function renderMatchedBanner(
     return;
   }
 
-  ensureBannerHost();
-  const shadow = bannerShadow!;
-  const container = shadow.querySelector(".flora-banner")!;
-
-  const cls = "flora-banner--success";
+  const host = ensureBannerHost();
 
   const replLabel = totalRepl === 1 ? "replication" : "replications";
   const reproLabel = totalRepro === 1 ? "reproduction" : "reproductions";
@@ -78,65 +93,79 @@ export function renderMatchedBanner(
     : `Replication/reproduction data found for ${doiCount} DOIs (${countsText})`;
 
   const doisParam = matched.map((m) => m.doi).join(",");
-  const viewLink = `<a class="flora-banner-link" href="https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}" target="_blank" rel="noopener">View details</a>`;
 
-  container.innerHTML = `
-    <div class="flora-banner-inner ${cls}">
-      <span class="flora-logo">FLoRA</span>
-      <span class="flora-banner-text">${summary}</span>
-      ${viewLink}
-      <button class="flora-banner-close" aria-label="Close">\u00d7</button>
+  host.innerHTML = `
+    <div style="${BANNER_BASE_STYLE}${BG.success}">
+      <span style="${LOGO_STYLE}">FLoRA</span>
+      <span style="${TEXT_STYLE}">${summary}</span>
+      <a style="${LINK_STYLE}" href="https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}" target="_blank" rel="noopener">View details</a>
+      <button style="${CLOSE_STYLE}" aria-label="Close">\u00d7</button>
     </div>`;
-  shadow
-    .querySelector(".flora-banner-close")
-    ?.addEventListener("click", () => removeBanner());
+  host.querySelector("button")?.addEventListener("click", () => removeBanner());
+  requestAnimationFrame(() => adjustPageForBanner());
 }
 
-function ensureBannerHost(): void {
+function ensureBannerHost(): HTMLElement {
   let host = document.getElementById(BANNER_HOST_ID);
   if (!host) {
     host = document.createElement("div");
     host.id = BANNER_HOST_ID;
-    bannerShadow = host.attachShadow({ mode: "open" });
-
-    const styleEl = document.createElement("style");
-    styleEl.textContent = styles;
-    bannerShadow.appendChild(styleEl);
-
-    const container = document.createElement("div");
-    container.className = "flora-banner";
-    bannerShadow.appendChild(container);
-
     document.body.prepend(host);
-    adjustPageForBanner();
   }
+  return host;
 }
+
+// Track elements we've modified so we can restore them on removal
+const modifiedElements = new Set<HTMLElement>();
 
 export function removeBanner(): void {
   const host = document.getElementById(BANNER_HOST_ID);
   if (host) {
     host.remove();
-    bannerShadow = null;
-    restorePageAfterBanner();
+    document.body.style.removeProperty("padding-top");
+    for (const el of modifiedElements) {
+      el.style.removeProperty("padding-top");
+    }
+    modifiedElements.clear();
   }
 }
 
-const BANNER_HEIGHT = 40;
-
 function adjustPageForBanner(): void {
-  document.body.style.setProperty(
-    "margin-top",
-    `${BANNER_HEIGHT}px`,
-    "important"
-  );
-}
+  const banner = document.getElementById(BANNER_HOST_ID);
+  if (!banner) return;
+  const inner = banner.firstElementChild as HTMLElement | null;
+  const bannerHeight = inner?.offsetHeight || 35;
 
-function restorePageAfterBanner(): void {
-  document.body.style.removeProperty("margin-top");
+  // Make space for the banner at the top of the body
+  document.body.style.setProperty("padding-top", `${bannerHeight}px`, "important");
+
+  // Gather fixed elements and push their content down
+  const fixedElements = Array.from(document.querySelectorAll<HTMLElement>("*")).filter(
+    (el) => el !== banner && el !== inner && window.getComputedStyle(el).position === "fixed"
+  );
+  for (const el of fixedElements) {
+    el.style.setProperty("padding-top", `${bannerHeight}px`, "important");
+    modifiedElements.add(el);
+  }
+
+  // Gather sticky elements and conditionally push them down
+  const stickyElements = Array.from(document.querySelectorAll<HTMLElement>("*")).filter(
+    (el) => el !== banner && el !== inner && window.getComputedStyle(el).position === "sticky"
+  );
+  for (const el of stickyElements) {
+    const position = el.getBoundingClientRect().top;
+    const threshold = parseInt(window.getComputedStyle(el).top);
+    if (position < bannerHeight || position <= threshold) {
+      el.style.setProperty("padding-top", `${bannerHeight}px`, "important");
+    } else {
+      el.style.setProperty("padding-top", "0px", "important");
+    }
+    modifiedElements.add(el);
+  }
 }
 
 // ──────────────────────────────────────────────
-// Inline badges
+// Inline badges (still use shadow DOM for isolation)
 // ──────────────────────────────────────────────
 
 export function renderInlineBadges(
@@ -214,4 +243,3 @@ function escapeHtml(s: string): string {
     return entities[c] ?? c;
   });
 }
-

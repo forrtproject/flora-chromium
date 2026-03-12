@@ -1,77 +1,3 @@
-/* === Banner === */
-.flora-banner {
-  all: initial;
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-
-.flora-banner-inner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  margin: 0;
-  opacity: 1;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 5px 8px;
-  font-size: 13px;
-  line-height: 1.4;
-  box-sizing: border-box;
-  color: #fff;
-}
-
-.flora-banner--loading {
-  background: #6b7280;
-}
-.flora-banner--success {
-  background: #16a34a;
-}
-.flora-banner--warning {
-  background: #ea580c;
-}
-.flora-banner--error {
-  background: #dc2626;
-}
-
-.flora-logo {
-  font-weight: 700;
-  font-size: 15px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.15);
-  padding: 2px 8px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.flora-banner-text {
-  flex: 1;
-}
-
-.flora-banner-link {
-  color: #fff;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  white-space: nowrap;
-}
-
-.flora-banner-close {
-  all: unset;
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1;
-  padding-right: 10px;
-  user-select: none;
-  align-self: center;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.flora-banner-close:hover {
-  color: #fff;
-}
-
 /* === Inline badges === */
 .flora-badge {
   all: initial;
@@ -112,7 +38,6 @@
 }
 
 @media print {
-  .flora-banner,
   .flora-badge {
     display: none !important;
   }
