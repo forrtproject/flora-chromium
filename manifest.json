@@ -43,6 +43,7 @@
       "js": [
         "dist/content-general.js"
       ],
+      "all_frames": true,
       "run_at": "document_idle"
     },
     {

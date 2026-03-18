@@ -9,6 +9,8 @@ const BADGE_CLASS = "flora-inline-badge";
 // Banner – inline styles (no shadow DOM)
 // ──────────────────────────────────────────────
 
+const isSheets = location.href.includes("docs.google.com/spreadsheets");
+
 const BANNER_BASE_STYLE =
   "position:fixed;top:0;left:0;width:100%;margin:0;opacity:1;" +
   "z-index:2147483647;display:flex;align-items:center;gap:12px;" +
@@ -125,6 +127,7 @@ export function removeBanner(): void {
     document.body.style.removeProperty("padding-top");
     for (const el of modifiedElements) {
       el.style.removeProperty("padding-top");
+      el.style.removeProperty("top");
     }
     modifiedElements.clear();
   }
@@ -139,12 +142,21 @@ function adjustPageForBanner(): void {
   // Make space for the banner at the top of the body
   document.body.style.setProperty("padding-top", `${bannerHeight}px`, "important");
 
-  // Gather fixed elements and push their content down
+  // Gather fixed elements and push them down
   const fixedElements = Array.from(document.querySelectorAll<HTMLElement>("*")).filter(
     (el) => el !== banner && el !== inner && window.getComputedStyle(el).position === "fixed"
   );
   for (const el of fixedElements) {
-    el.style.setProperty("padding-top", `${bannerHeight}px`, "important");
+    if (isSheets) {
+      // Only shift top-anchored elements; skip bottom-anchored ones (sheet tabs bar)
+      const cs = window.getComputedStyle(el);
+      const hasBottom = cs.bottom !== "auto" && parseInt(cs.bottom) >= 0;
+      if (hasBottom && parseInt(cs.bottom) < 50) continue;
+      const currentTop = parseInt(cs.top) || 0;
+      el.style.setProperty("top", `${currentTop + bannerHeight}px`, "important");
+    } else {
+      el.style.setProperty("padding-top", `${bannerHeight}px`, "important");
+    }
     modifiedElements.add(el);
   }
 
