@@ -3,7 +3,7 @@ import { normaliseDOI } from "./doi-normalise";
 
 // Allow parens inside DOIs (e.g. 10.1016/S0924-9338(98)80023-0)
 // but stop at whitespace, commas, quotes, fragments, query strings, etc.
-const DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*\/[^\s,;\]}>'"<#?&]+)/g;
+const DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*\/[^\s,;\]}>'"<#?&\\]+)/g;
 
 
 // Characters inserted by browsers/sites for word-break purposes that can split DOIs
@@ -62,6 +62,19 @@ export function extractDOIs(doc: Document): DoiString[] {
   extractFromJsonLd(doc, found);
   extractFromDoiLinks(doc, found);
   extractFromVisibleText(doc, found);
+
+  // On Google Sheets, cell content is rendered on canvas — scan innerHTML for DOIs
+  if (isGoogleSheets(doc) && doc.body) {
+    const html = doc.body.innerHTML;
+    const cleaned = html.replace(WORD_BREAK_CHARS, "");
+    for (const match of cleaned.matchAll(DOI_REGEX)) {
+      const raw = cleanDoiTrailing(match[1]);
+      if (!isValidDoiSuffix(raw)) continue;
+      const doi = normaliseDOI(raw);
+      if (doi) found.add(doi);
+    }
+    console.log(`[FLoRA:Sheets] innerHTML scan found ${found.size} unique DOIs`);
+  }
 
   return [...found];
 }
@@ -151,3 +164,31 @@ function extractFromVisibleText(doc: Document, found: Set<DoiString>): void {
     if (doi) found.add(doi);
   }
 }
+
+/**
+ * Extract DOIs from raw text (e.g. CSV data).
+ */
+export function extractDOIsFromText(text: string): DoiString[] {
+  const found = new Set<DoiString>();
+  const cleaned = text.replace(WORD_BREAK_CHARS, "");
+  for (const match of cleaned.matchAll(DOI_REGEX)) {
+    const raw = cleanDoiTrailing(match[1]);
+    if (!isValidDoiSuffix(raw)) continue;
+    const doi = normaliseDOI(raw);
+    if (doi) found.add(doi);
+  }
+  return [...found];
+}
+
+function isGoogleSheets(doc: Document): boolean {
+  try {
+    const url = (doc.location?.href ?? "");
+    // Match both top frame and iframes within Google Sheets
+    return url.includes("docs.google.com/spreadsheets") ||
+      doc.querySelector('meta[name="google"]')?.getAttribute("content") === "notranslate" &&
+      !!doc.querySelector('[role="grid"]');
+  } catch {
+    return false;
+  }
+}
+

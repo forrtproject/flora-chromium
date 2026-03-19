@@ -9,6 +9,8 @@ const BADGE_CLASS = "flora-inline-badge";
 // Banner – inline styles (no shadow DOM)
 // ──────────────────────────────────────────────
 
+const isSheets = location.href.includes("docs.google.com/spreadsheets");
+
 const BANNER_BASE_STYLE =
   "position:fixed;top:0;left:0;width:100%;margin:0;opacity:1;" +
   "z-index:2147483647;display:flex;align-items:center;gap:12px;" +
@@ -125,6 +127,7 @@ export function removeBanner(): void {
     document.body.style.removeProperty("padding-top");
     for (const el of modifiedElements) {
       el.style.removeProperty("padding-top");
+      el.style.removeProperty("top");
     }
     modifiedElements.clear();
   }
@@ -139,12 +142,21 @@ function adjustPageForBanner(): void {
   // Make space for the banner at the top of the body
   document.body.style.setProperty("padding-top", `${bannerHeight}px`, "important");
 
-  // Gather fixed elements and push their content down
+  // Gather fixed elements and push them down
   const fixedElements = Array.from(document.querySelectorAll<HTMLElement>("*")).filter(
     (el) => el !== banner && el !== inner && window.getComputedStyle(el).position === "fixed"
   );
   for (const el of fixedElements) {
-    el.style.setProperty("padding-top", `${bannerHeight}px`, "important");
+    if (isSheets) {
+      // Only shift top-anchored elements; skip bottom-anchored ones (sheet tabs bar)
+      const cs = window.getComputedStyle(el);
+      const hasBottom = cs.bottom !== "auto" && parseInt(cs.bottom) >= 0;
+      if (hasBottom && parseInt(cs.bottom) < 50) continue;
+      const currentTop = parseInt(cs.top) || 0;
+      el.style.setProperty("top", `${currentTop + bannerHeight}px`, "important");
+    } else {
+      el.style.setProperty("padding-top", `${bannerHeight}px`, "important");
+    }
     modifiedElements.add(el);
   }
 
@@ -242,4 +254,137 @@ function escapeHtml(s: string): string {
     };
     return entities[c] ?? c;
   });
+}
+
+// ──────────────────────────────────────────────
+// Google Sheets modal
+// ──────────────────────────────────────────────
+
+const SHEETS_MODAL_ID = "flora-sheets-modal";
+
+export function renderSheetsModal(
+  matched: { doi: string; result: ReplicationResult }[]
+): void {
+  if (matched.length === 0) {
+    removeSheetsModal();
+    return;
+  }
+
+  const totalRepl = matched.reduce(
+    (sum, m) => sum + m.result.record.stats.n_replications_total, 0
+  );
+  const totalRepro = matched.reduce(
+    (sum, m) => sum + m.result.record.stats.n_reproductions_total, 0
+  );
+
+  if (totalRepl === 0 && totalRepro === 0) {
+    removeSheetsModal();
+    return;
+  }
+
+  const doiCount = matched.length;
+  const doisParam = matched.map((m) => m.doi).join(",");
+
+  const existing = document.getElementById(SHEETS_MODAL_ID);
+
+  if (existing) {
+    // Update in-place — just refresh the dynamic parts
+    const doiCountEl = existing.querySelector<HTMLElement>("[data-flora-doi-count]");
+    const replCountEl = existing.querySelector<HTMLElement>("[data-flora-repl-count]");
+    const replLabelEl = existing.querySelector<HTMLElement>("[data-flora-repl-label]");
+    const reproCountEl = existing.querySelector<HTMLElement>("[data-flora-repro-count]");
+    const reproLabelEl = existing.querySelector<HTMLElement>("[data-flora-repro-label]");
+    const detailsLink = existing.querySelector<HTMLAnchorElement>("[data-flora-details-link]");
+
+    if (doiCountEl) doiCountEl.textContent = `${doiCount} DOI${doiCount !== 1 ? "s" : ""}`;
+    if (replCountEl) replCountEl.textContent = String(totalRepl);
+    if (replLabelEl) replLabelEl.textContent = `Replication${totalRepl !== 1 ? "s" : ""}`;
+    if (reproCountEl) reproCountEl.textContent = String(totalRepro);
+    if (reproLabelEl) reproLabelEl.textContent = `Reproduction${totalRepro !== 1 ? "s" : ""}`;
+    if (detailsLink) detailsLink.href = `https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}`;
+    return;
+  }
+
+  // First render — create the modal
+  const host = document.createElement("div");
+  host.id = SHEETS_MODAL_ID;
+  host.innerHTML = `
+    <div role="dialog" aria-labelledby="flora-modal-title" style="
+      position:fixed;top:60px;right:24px;z-index:2147483647;
+      width:360px;background:#fff;border-radius:12px;
+      box-shadow:0 8px 28px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.08);
+      font-family:'Google Sans',Roboto,-apple-system,sans-serif;
+      overflow:hidden;animation:floraSlideIn 0.25s ease-out;
+    ">
+      <!-- Green accent header -->
+      <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:14px 16px;display:flex;align-items:center;gap:10px;">
+        <span style="
+          background:rgba(255,255,255,0.2);color:#fff;font-weight:700;font-size:13px;
+          padding:4px 10px;border-radius:6px;letter-spacing:0.3px;
+        ">FLoRA</span>
+        <span id="flora-modal-title" style="color:#fff;font-size:13px;font-weight:500;flex:1;">
+          Replication Data Found
+        </span>
+        <span class="flora-modal-close" role="button" tabindex="0" aria-label="Close" style="
+          cursor:pointer;color:rgba(255,255,255,0.7);font-size:20px;line-height:1;
+          width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+          border-radius:50%;transition:background 0.15s;
+        ">\u00d7</span>
+      </div>
+
+      <!-- Body -->
+      <div style="padding:16px;">
+        <div style="font-size:13px;color:#3c4043;margin-bottom:14px;line-height:1.5;">
+          Found replication &amp; reproduction data for <strong data-flora-doi-count style="color:#202124;">${doiCount} DOI${doiCount !== 1 ? "s" : ""}</strong> in this spreadsheet.
+        </div>
+
+        <!-- Stat cards -->
+        <div style="display:flex;gap:10px;margin-bottom:4px;">
+          <div style="
+            flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+            padding:12px;text-align:center;
+          ">
+            <div data-flora-repl-count style="font-size:22px;font-weight:600;color:#16a34a;line-height:1;">${totalRepl}</div>
+            <div data-flora-repl-label style="font-size:11px;color:#15803d;margin-top:4px;font-weight:500;">Replication${totalRepl !== 1 ? "s" : ""}</div>
+          </div>
+          <div style="
+            flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+            padding:12px;text-align:center;
+          ">
+            <div data-flora-repro-count style="font-size:22px;font-weight:600;color:#16a34a;line-height:1;">${totalRepro}</div>
+            <div data-flora-repro-label style="font-size:11px;color:#15803d;margin-top:4px;font-weight:500;">Reproduction${totalRepro !== 1 ? "s" : ""}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding:10px 16px 14px;display:flex;justify-content:flex-end;gap:8px;">
+        <button class="flora-modal-dismiss" style="
+          all:unset;cursor:pointer;padding:7px 18px;font-size:13px;font-weight:500;
+          color:#5f6368;border-radius:6px;transition:background 0.15s;
+        ">Dismiss</button>
+        <a data-flora-details-link href="https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}" target="_blank" rel="noopener" style="
+          all:unset;cursor:pointer;padding:7px 18px;font-size:13px;font-weight:500;
+          color:#fff;background:linear-gradient(135deg,#16a34a,#15803d);border-radius:6px;text-align:center;
+        ">View details</a>
+      </div>
+    </div>
+
+    <style>
+      @keyframes floraSlideIn {
+        from { opacity:0; transform:translateY(-8px); }
+        to { opacity:1; transform:translateY(0); }
+      }
+    </style>`;
+
+  document.body.appendChild(host);
+
+  // Wire up close / dismiss buttons
+  for (const el of host.querySelectorAll(".flora-modal-close, .flora-modal-dismiss")) {
+    el.addEventListener("click", () => removeSheetsModal());
+  }
+}
+
+export function removeSheetsModal(): void {
+  document.getElementById(SHEETS_MODAL_ID)?.remove();
 }
