@@ -3,7 +3,7 @@ import { normaliseDOI } from "./doi-normalise";
 
 // Allow parens inside DOIs (e.g. 10.1016/S0924-9338(98)80023-0)
 // but stop at whitespace, commas, quotes, fragments, query strings, etc.
-const DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*\/[^\s,;\]}>'"<#?&]+)/g;
+const DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*\/[^\s,;\]}>'"<#?&\\]+)/g;
 
 
 // Characters inserted by browsers/sites for word-break purposes that can split DOIs
@@ -53,7 +53,6 @@ function cleanDoiTrailing(raw: string): string {
  * 3. JSON-LD structured data
  * 4. DOI resolver links (doi.org / dx.doi.org hrefs with truncated visible text)
  * 5. Regex over visible body text only
- * 6. Google Sheets cells (accessibility table + ARIA labels)
  */
 export function extractDOIs(doc: Document): DoiString[] {
   const found = new Set<DoiString>();
@@ -63,7 +62,19 @@ export function extractDOIs(doc: Document): DoiString[] {
   extractFromJsonLd(doc, found);
   extractFromDoiLinks(doc, found);
   extractFromVisibleText(doc, found);
-  extractFromSheetsCells(doc, found);
+
+  // On Google Sheets, cell content is rendered on canvas — scan innerHTML for DOIs
+  if (isGoogleSheets(doc) && doc.body) {
+    const html = doc.body.innerHTML;
+    const cleaned = html.replace(WORD_BREAK_CHARS, "");
+    for (const match of cleaned.matchAll(DOI_REGEX)) {
+      const raw = cleanDoiTrailing(match[1]);
+      if (!isValidDoiSuffix(raw)) continue;
+      const doi = normaliseDOI(raw);
+      if (doi) found.add(doi);
+    }
+    console.log(`[FLoRA:Sheets] innerHTML scan found ${found.size} unique DOIs`);
+  }
 
   return [...found];
 }
@@ -166,93 +177,3 @@ function isGoogleSheets(doc: Document): boolean {
   }
 }
 
-/**
- * Extract DOIs from a raw text string, with URI-decoding support
- * (PubPeer pattern: DOIs may be URI-encoded in HTML attributes, e.g. 10.1000%2Fxyz → 10.1000/xyz)
- */
-function extractDoisFromText(text: string, found: Set<DoiString>): number {
-  let count = 0;
-  const cleaned = text.replace(WORD_BREAK_CHARS, "");
-
-  // First pass: direct regex match
-  for (const match of cleaned.matchAll(DOI_REGEX)) {
-    const raw = cleanDoiTrailing(match[1]);
-    if (!isValidDoiSuffix(raw)) continue;
-    const doi = normaliseDOI(raw);
-    if (doi) { found.add(doi); count++; }
-  }
-
-  // Second pass: URI-decode and re-scan (catches %2F-encoded DOIs from Sheets HTML attributes)
-  try {
-    const decoded = decodeURIComponent(cleaned);
-    if (decoded !== cleaned) {
-      for (const match of decoded.matchAll(DOI_REGEX)) {
-        const raw = cleanDoiTrailing(match[1]);
-        if (!isValidDoiSuffix(raw)) continue;
-        const doi = normaliseDOI(raw);
-        if (doi) { found.add(doi); count++; }
-      }
-    }
-  } catch {
-    // malformed URI, skip decode pass
-  }
-
-  return count;
-}
-
-function extractFromSheetsCells(doc: Document, found: Set<DoiString>): void {
-  if (!isGoogleSheets(doc)) return;
-
-  const beforeCount = found.size;
-
-  // Layer 1: Accessibility table (.waffle) — primary source of cell text
-  const waffleCells = doc.querySelectorAll<HTMLTableCellElement>("table.waffle td");
-  let waffleDois = 0;
-  for (const cell of waffleCells) {
-    const text = cell.textContent?.trim();
-    if (!text) continue;
-    waffleDois += extractDoisFromText(text, found);
-  }
-
-  // Layer 2: ARIA labels on gridcell elements (screen reader layer)
-  const ariaCells = doc.querySelectorAll<HTMLElement>('[role="gridcell"][aria-label]');
-  let ariaDois = 0;
-  for (const cell of ariaCells) {
-    const label = cell.getAttribute("aria-label") ?? "";
-    if (!label) continue;
-    ariaDois += extractDoisFromText(label, found);
-  }
-
-  // Layer 3: Any element with role="gridcell" — textContent fallback
-  const gridCells = doc.querySelectorAll<HTMLElement>('[role="gridcell"]');
-  let gridDois = 0;
-  for (const cell of gridCells) {
-    const text = cell.textContent?.trim();
-    if (!text) continue;
-    gridDois += extractDoisFromText(text, found);
-  }
-
-  // Layer 4: Input/textarea elements inside the sheet (formula bar, cell editor)
-  const inputs = doc.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
-    'input[aria-label], textarea[aria-label], [contenteditable="true"]'
-  );
-  let inputDois = 0;
-  for (const input of inputs) {
-    const text = (input as HTMLInputElement).value ?? input.textContent ?? "";
-    if (!text.trim()) continue;
-    inputDois += extractDoisFromText(text, found);
-  }
-
-  // Layer 5: innerHTML scan of the full body (PubPeer pattern — catches DOIs anywhere in the DOM)
-  let htmlDois = 0;
-  if (doc.body) {
-    htmlDois = extractDoisFromText(doc.body.innerHTML, found);
-  }
-
-  const newDois = found.size - beforeCount;
-  console.log(
-    `[FLoRA] Google Sheets scan: waffle=${waffleCells.length}(${waffleDois}), ` +
-    `aria=${ariaCells.length}(${ariaDois}), grid=${gridCells.length}(${gridDois}), ` +
-    `inputs=${inputs.length}(${inputDois}), innerHTML(${htmlDois}) — ${newDois} unique new DOIs`
-  );
-}

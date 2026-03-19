@@ -2,11 +2,12 @@ import type { DoiString, ReplicationResult } from "./types";
 import { ApiResponseSchema } from "./types";
 
 const API_BASE = "https://rep-api.forrt.org";
+const BATCH_SIZE = 50;
 
 /**
  * Look up replication data for a batch of DOIs.
  * Uses the FORRT replication API: GET /v1/original-lookup?dois=doi1,doi2,...
- * Returns a Map of DOI → ReplicationResult for matched DOIs.
+ * Splits into batches of 50 to avoid 414 URI-too-long errors.
  */
 export async function lookupDOIs(
   dois: DoiString[]
@@ -15,6 +16,32 @@ export async function lookupDOIs(
     return new Map();
   }
 
+  const results = new Map<DoiString, ReplicationResult>();
+  const totalBatches = Math.ceil(dois.length / BATCH_SIZE);
+  console.log(`[FLoRA] Looking up ${dois.length} DOIs in ${totalBatches} batch(es) of ${BATCH_SIZE}`);
+
+  for (let i = 0; i < dois.length; i += BATCH_SIZE) {
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    const batch = dois.slice(i, i + BATCH_SIZE);
+    console.log(`[FLoRA] Batch ${batchNum}/${totalBatches}: ${batch.length} DOIs`);
+    try {
+      const batchResults = await lookupBatch(batch);
+      for (const [doi, result] of batchResults) {
+        results.set(doi, result);
+      }
+      console.log(`[FLoRA] Batch ${batchNum} returned ${batchResults.size} results`);
+    } catch (err) {
+      console.error(`[FLoRA] Batch ${batchNum} failed:`, err);
+    }
+  }
+
+  console.log(`[FLoRA] Total results across all batches: ${results.size}`);
+  return results;
+}
+
+async function lookupBatch(
+  dois: DoiString[]
+): Promise<Map<DoiString, ReplicationResult>> {
   const doisParam = dois.join(",");
   const response = await fetch(
     `${API_BASE}/v1/original-lookup?dois=${encodeURIComponent(doisParam)}`

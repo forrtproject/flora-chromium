@@ -255,3 +255,118 @@ function escapeHtml(s: string): string {
     return entities[c] ?? c;
   });
 }
+
+// ──────────────────────────────────────────────
+// Google Sheets modal
+// ──────────────────────────────────────────────
+
+const SHEETS_MODAL_ID = "flora-sheets-modal";
+
+export function renderSheetsModal(
+  matched: { doi: string; result: ReplicationResult }[]
+): void {
+  if (matched.length === 0) {
+    removeSheetsModal();
+    return;
+  }
+
+  const totalRepl = matched.reduce(
+    (sum, m) => sum + m.result.record.stats.n_replications_total, 0
+  );
+  const totalRepro = matched.reduce(
+    (sum, m) => sum + m.result.record.stats.n_reproductions_total, 0
+  );
+
+  if (totalRepl === 0 && totalRepro === 0) {
+    removeSheetsModal();
+    return;
+  }
+
+  // Remove existing modal before re-rendering
+  removeSheetsModal();
+
+  const doiCount = matched.length;
+  const doisParam = matched.map((m) => m.doi).join(",");
+
+  const host = document.createElement("div");
+  host.id = SHEETS_MODAL_ID;
+  host.innerHTML = `
+    <div role="dialog" aria-labelledby="flora-modal-title" style="
+      position:fixed;top:60px;right:24px;z-index:2147483647;
+      width:360px;background:#fff;border-radius:12px;
+      box-shadow:0 8px 28px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.08);
+      font-family:'Google Sans',Roboto,-apple-system,sans-serif;
+      overflow:hidden;animation:floraSlideIn 0.25s ease-out;
+    ">
+      <!-- Green accent header -->
+      <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:14px 16px;display:flex;align-items:center;gap:10px;">
+        <span style="
+          background:rgba(255,255,255,0.2);color:#fff;font-weight:700;font-size:13px;
+          padding:4px 10px;border-radius:6px;letter-spacing:0.3px;
+        ">FLoRA</span>
+        <span id="flora-modal-title" style="color:#fff;font-size:13px;font-weight:500;flex:1;">
+          Replication Data Found
+        </span>
+        <span class="flora-modal-close" role="button" tabindex="0" aria-label="Close" style="
+          cursor:pointer;color:rgba(255,255,255,0.7);font-size:20px;line-height:1;
+          width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+          border-radius:50%;transition:background 0.15s;
+        ">\u00d7</span>
+      </div>
+
+      <!-- Body -->
+      <div style="padding:16px;">
+        <div style="font-size:13px;color:#3c4043;margin-bottom:14px;line-height:1.5;">
+          Found replication &amp; reproduction data for <strong style="color:#202124;">${doiCount} DOI${doiCount !== 1 ? "s" : ""}</strong> in this spreadsheet.
+        </div>
+
+        <!-- Stat cards -->
+        <div style="display:flex;gap:10px;margin-bottom:4px;">
+          <div style="
+            flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+            padding:12px;text-align:center;
+          ">
+            <div style="font-size:22px;font-weight:600;color:#16a34a;line-height:1;">${totalRepl}</div>
+            <div style="font-size:11px;color:#15803d;margin-top:4px;font-weight:500;">Replication${totalRepl !== 1 ? "s" : ""}</div>
+          </div>
+          <div style="
+            flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+            padding:12px;text-align:center;
+          ">
+            <div style="font-size:22px;font-weight:600;color:#16a34a;line-height:1;">${totalRepro}</div>
+            <div style="font-size:11px;color:#15803d;margin-top:4px;font-weight:500;">Reproduction${totalRepro !== 1 ? "s" : ""}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding:10px 16px 14px;display:flex;justify-content:flex-end;gap:8px;">
+        <button class="flora-modal-dismiss" style="
+          all:unset;cursor:pointer;padding:7px 18px;font-size:13px;font-weight:500;
+          color:#5f6368;border-radius:6px;transition:background 0.15s;
+        ">Dismiss</button>
+        <a href="https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}" target="_blank" rel="noopener" style="
+          all:unset;cursor:pointer;padding:7px 18px;font-size:13px;font-weight:500;
+          color:#fff;background:linear-gradient(135deg,#16a34a,#15803d);border-radius:6px;text-align:center;
+        ">View details</a>
+      </div>
+    </div>
+
+    <style>
+      @keyframes floraSlideIn {
+        from { opacity:0; transform:translateY(-8px); }
+        to { opacity:1; transform:translateY(0); }
+      }
+    </style>`;
+
+  document.body.appendChild(host);
+
+  // Wire up close / dismiss buttons
+  for (const el of host.querySelectorAll(".flora-modal-close, .flora-modal-dismiss")) {
+    el.addEventListener("click", () => removeSheetsModal());
+  }
+}
+
+export function removeSheetsModal(): void {
+  document.getElementById(SHEETS_MODAL_ID)?.remove();
+}
