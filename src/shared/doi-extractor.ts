@@ -165,6 +165,21 @@ function extractFromVisibleText(doc: Document, found: Set<DoiString>): void {
   }
 }
 
+/**
+ * Extract DOIs from raw text (e.g. CSV data).
+ */
+export function extractDOIsFromText(text: string): DoiString[] {
+  const found = new Set<DoiString>();
+  const cleaned = text.replace(WORD_BREAK_CHARS, "");
+  for (const match of cleaned.matchAll(DOI_REGEX)) {
+    const raw = cleanDoiTrailing(match[1]);
+    if (!isValidDoiSuffix(raw)) continue;
+    const doi = normaliseDOI(raw);
+    if (doi) found.add(doi);
+  }
+  return [...found];
+}
+
 function isGoogleSheets(doc: Document): boolean {
   try {
     const url = (doc.location?.href ?? "");

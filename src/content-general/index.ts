@@ -1,8 +1,8 @@
-import { extractDOIs } from "../shared/doi-extractor";
+import { extractDOIs, extractDOIsFromText } from "../shared/doi-extractor";
 import { augmentDOIs } from "../shared/doi-augment";
 import { debounce } from "../shared/debounce";
 import type { DoiString, LookupState } from "../shared/types";
-import type { LookupRequest, LookupResponse } from "../shared/messages";
+import type { LookupRequest, LookupResponse, SheetFetchRequest, SheetFetchResponse } from "../shared/messages";
 import { renderErrorBanner, renderMatchedBanner, removeBanner, renderInlineBadges, renderSheetsModal, removeSheetsModal } from "./injector";
 
 const pageState = new Map<DoiString, LookupState>();
@@ -48,7 +48,13 @@ async function run(): Promise<void> {
     removeBanner();
   }
 
-  const dois = extractDOIs(document);
+  let dois = extractDOIs(document);
+
+  // On Sheets, also extract DOIs from the full sheet data fetched via CSV
+  if (isSheets && sheetCsvDois.length > 0) {
+    const combined = new Set([...dois, ...sheetCsvDois]);
+    dois = [...combined];
+  }
   if (isSheets) console.log("[FLoRA:Sheets] Extracted DOIs:", dois.length, dois);
 
   // Filter out already-processed DOIs
@@ -127,12 +133,52 @@ async function run(): Promise<void> {
 const isSheets = location.href.includes("docs.google.com/spreadsheets");
 const debouncedRun = debounce(run, 1000);
 
-// Google Sheets needs extra time for all data to load into the DOM
-if (isSheets) {
-  setTimeout(debouncedRun, 5000);
-} else {
-  debouncedRun();
+// DOIs extracted from the full sheet CSV (populated asynchronously on Sheets)
+let sheetCsvDois: DoiString[] = [];
+
+/**
+ * Parse the spreadsheet ID and gid from a Google Sheets URL.
+ */
+function parseSheetsUrl(url: string): { spreadsheetId: string; gid: string } | null {
+  const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!idMatch) return null;
+  const gidMatch = url.match(/[#&]gid=(\d+)/);
+  return { spreadsheetId: idMatch[1], gid: gidMatch?.[1] ?? "0" };
 }
+
+/**
+ * Fetch all cell data from the current sheet tab via CSV export,
+ * extract DOIs, and trigger a run() so the modal updates.
+ */
+async function fetchSheetDois(): Promise<void> {
+  const parsed = parseSheetsUrl(location.href);
+  if (!parsed) return;
+
+  console.log("[FLoRA:Sheets] Fetching full sheet data via CSV export…");
+  const request: SheetFetchRequest = {
+    type: "FLORA_SHEET_FETCH",
+    spreadsheetId: parsed.spreadsheetId,
+    gid: parsed.gid,
+  };
+
+  try {
+    const response: SheetFetchResponse = await chrome.runtime.sendMessage(request);
+    if (response.error || !response.csv) {
+      console.warn("[FLoRA:Sheets] CSV fetch failed:", response.error);
+      return;
+    }
+    sheetCsvDois = extractDOIsFromText(response.csv);
+    console.log(`[FLoRA:Sheets] CSV export found ${sheetCsvDois.length} DOIs`);
+    if (sheetCsvDois.length > 0) {
+      run();
+    }
+  } catch (err) {
+    console.warn("[FLoRA:Sheets] CSV fetch error:", err);
+  }
+}
+
+// Run immediately — same timing as PubPeer (fires after webNavigation.onCompleted)
+debouncedRun();
 
 // SPA pagination detection: watch for significant DOM changes (skip on Sheets —
 // cell clicks/selections cause constant mutations that trigger needless re-scans)
@@ -161,6 +207,22 @@ if (!isSheets) {
   window.addEventListener("popstate", () => debouncedReRun());
   window.addEventListener("hashchange", () => debouncedReRun());
 } else {
-  // On Sheets, only re-scan when switching sheet tabs
-  window.addEventListener("hashchange", () => debounce(run, 2000)());
+  // Fetch full sheet data via CSV export to get all DOIs regardless of scroll
+  fetchSheetDois();
+
+  // Detect sheet tab switches — Google Sheets uses replaceState, which doesn't
+  // fire hashchange/popstate, so we poll for gid changes instead.
+  let lastGid = parseSheetsUrl(location.href)?.gid ?? "0";
+  setInterval(() => {
+    const currentGid = parseSheetsUrl(location.href)?.gid ?? "0";
+    if (currentGid !== lastGid) {
+      lastGid = currentGid;
+      console.log("[FLoRA:Sheets] Tab change detected (gid:", currentGid, ") — re-fetching…");
+      sheetCsvDois = [];
+      processedDois.clear();
+      pageState.clear();
+      removeSheetsModal();
+      fetchSheetDois();
+    }
+  }, 1500);
 }

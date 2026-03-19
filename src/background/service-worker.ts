@@ -1,8 +1,8 @@
 import { SessionCache } from "../shared/cache";
 import { lookupDOIs } from "../shared/flora-api";
 import type { DoiString, ReplicationResult } from "../shared/types";
-import type { LookupResponse } from "../shared/messages";
-import { isLookupRequest } from "../shared/messages";
+import type { LookupResponse, SheetFetchResponse } from "../shared/messages";
+import { isLookupRequest, isSheetFetchRequest } from "../shared/messages";
 
 const cache = new SessionCache<ReplicationResult>("flora");
 
@@ -11,21 +11,35 @@ const inflight = new Map<DoiString, Promise<ReplicationResult | null>>();
 
 chrome.runtime.onMessage.addListener(
   (message: unknown, _sender, sendResponse) => {
-    if (!isLookupRequest(message)) return false;
+    if (isLookupRequest(message)) {
+      handleLookup(message.dois)
+        .then(sendResponse)
+        .catch(() =>
+          sendResponse({
+            type: "FLORA_LOOKUP_RESULT",
+            results: {},
+            errors: Object.fromEntries(
+              message.dois.map((d) => [d, "Service worker error"])
+            ),
+          } satisfies LookupResponse)
+        );
+      return true;
+    }
 
-    handleLookup(message.dois)
-      .then(sendResponse)
-      .catch(() =>
-        sendResponse({
-          type: "FLORA_LOOKUP_RESULT",
-          results: {},
-          errors: Object.fromEntries(
-            message.dois.map((d) => [d, "Service worker error"])
-          ),
-        } satisfies LookupResponse)
-      );
+    if (isSheetFetchRequest(message)) {
+      handleSheetFetch(message.spreadsheetId, message.gid)
+        .then(sendResponse)
+        .catch(() =>
+          sendResponse({
+            type: "FLORA_SHEET_FETCH_RESULT",
+            csv: null,
+            error: "Failed to fetch spreadsheet data",
+          } satisfies SheetFetchResponse)
+        );
+      return true;
+    }
 
-    return true; // keep channel open for async sendResponse
+    return false;
   }
 );
 
@@ -85,4 +99,25 @@ async function handleLookup(dois: DoiString[]): Promise<LookupResponse> {
   }
 
   return { type: "FLORA_LOOKUP_RESULT", results, errors };
+}
+
+async function handleSheetFetch(
+  spreadsheetId: string,
+  gid: string
+): Promise<SheetFetchResponse> {
+  const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
+  try {
+    const resp = await fetch(url, { credentials: "include" });
+    if (!resp.ok) {
+      return { type: "FLORA_SHEET_FETCH_RESULT", csv: null, error: `HTTP ${resp.status}` };
+    }
+    const csv = await resp.text();
+    return { type: "FLORA_SHEET_FETCH_RESULT", csv, error: null };
+  } catch (err) {
+    return {
+      type: "FLORA_SHEET_FETCH_RESULT",
+      csv: null,
+      error: err instanceof Error ? err.message : "Fetch failed",
+    };
+  }
 }

@@ -282,12 +282,30 @@ export function renderSheetsModal(
     return;
   }
 
-  // Remove existing modal before re-rendering
-  removeSheetsModal();
-
   const doiCount = matched.length;
   const doisParam = matched.map((m) => m.doi).join(",");
 
+  const existing = document.getElementById(SHEETS_MODAL_ID);
+
+  if (existing) {
+    // Update in-place — just refresh the dynamic parts
+    const doiCountEl = existing.querySelector<HTMLElement>("[data-flora-doi-count]");
+    const replCountEl = existing.querySelector<HTMLElement>("[data-flora-repl-count]");
+    const replLabelEl = existing.querySelector<HTMLElement>("[data-flora-repl-label]");
+    const reproCountEl = existing.querySelector<HTMLElement>("[data-flora-repro-count]");
+    const reproLabelEl = existing.querySelector<HTMLElement>("[data-flora-repro-label]");
+    const detailsLink = existing.querySelector<HTMLAnchorElement>("[data-flora-details-link]");
+
+    if (doiCountEl) doiCountEl.textContent = `${doiCount} DOI${doiCount !== 1 ? "s" : ""}`;
+    if (replCountEl) replCountEl.textContent = String(totalRepl);
+    if (replLabelEl) replLabelEl.textContent = `Replication${totalRepl !== 1 ? "s" : ""}`;
+    if (reproCountEl) reproCountEl.textContent = String(totalRepro);
+    if (reproLabelEl) reproLabelEl.textContent = `Reproduction${totalRepro !== 1 ? "s" : ""}`;
+    if (detailsLink) detailsLink.href = `https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}`;
+    return;
+  }
+
+  // First render — create the modal
   const host = document.createElement("div");
   host.id = SHEETS_MODAL_ID;
   host.innerHTML = `
@@ -317,7 +335,7 @@ export function renderSheetsModal(
       <!-- Body -->
       <div style="padding:16px;">
         <div style="font-size:13px;color:#3c4043;margin-bottom:14px;line-height:1.5;">
-          Found replication &amp; reproduction data for <strong style="color:#202124;">${doiCount} DOI${doiCount !== 1 ? "s" : ""}</strong> in this spreadsheet.
+          Found replication &amp; reproduction data for <strong data-flora-doi-count style="color:#202124;">${doiCount} DOI${doiCount !== 1 ? "s" : ""}</strong> in this spreadsheet.
         </div>
 
         <!-- Stat cards -->
@@ -326,15 +344,15 @@ export function renderSheetsModal(
             flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
             padding:12px;text-align:center;
           ">
-            <div style="font-size:22px;font-weight:600;color:#16a34a;line-height:1;">${totalRepl}</div>
-            <div style="font-size:11px;color:#15803d;margin-top:4px;font-weight:500;">Replication${totalRepl !== 1 ? "s" : ""}</div>
+            <div data-flora-repl-count style="font-size:22px;font-weight:600;color:#16a34a;line-height:1;">${totalRepl}</div>
+            <div data-flora-repl-label style="font-size:11px;color:#15803d;margin-top:4px;font-weight:500;">Replication${totalRepl !== 1 ? "s" : ""}</div>
           </div>
           <div style="
             flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
             padding:12px;text-align:center;
           ">
-            <div style="font-size:22px;font-weight:600;color:#16a34a;line-height:1;">${totalRepro}</div>
-            <div style="font-size:11px;color:#15803d;margin-top:4px;font-weight:500;">Reproduction${totalRepro !== 1 ? "s" : ""}</div>
+            <div data-flora-repro-count style="font-size:22px;font-weight:600;color:#16a34a;line-height:1;">${totalRepro}</div>
+            <div data-flora-repro-label style="font-size:11px;color:#15803d;margin-top:4px;font-weight:500;">Reproduction${totalRepro !== 1 ? "s" : ""}</div>
           </div>
         </div>
       </div>
@@ -345,7 +363,7 @@ export function renderSheetsModal(
           all:unset;cursor:pointer;padding:7px 18px;font-size:13px;font-weight:500;
           color:#5f6368;border-radius:6px;transition:background 0.15s;
         ">Dismiss</button>
-        <a href="https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}" target="_blank" rel="noopener" style="
+        <a data-flora-details-link href="https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}" target="_blank" rel="noopener" style="
           all:unset;cursor:pointer;padding:7px 18px;font-size:13px;font-weight:500;
           color:#fff;background:linear-gradient(135deg,#16a34a,#15803d);border-radius:6px;text-align:center;
         ">View details</a>
