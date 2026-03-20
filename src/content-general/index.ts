@@ -10,6 +10,9 @@ const processedDois = new Set<DoiString>();
 let lastUrl = location.href;
 let augmentAttempted = false;
 
+/** Monotonic counter — incremented on each sheet tab switch to discard stale CSV responses. */
+let sheetFetchGen = 0;
+
 /**
  * Silently try to resolve a DOI from the page title via Crossref/OpenAlex.
  * Runs in the background with no UI.
@@ -45,7 +48,11 @@ async function run(): Promise<void> {
     processedDois.clear();
     pageState.clear();
     augmentAttempted = false;
-    removeBanner();
+    if (isSheets) {
+      removeSheetsModal();
+    } else {
+      removeBanner();
+    }
   }
 
   let dois = extractDOIs(document);
@@ -154,6 +161,7 @@ async function fetchSheetDois(): Promise<void> {
   const parsed = parseSheetsUrl(location.href);
   if (!parsed) return;
 
+  const myGen = sheetFetchGen;
   console.log("[FLoRA:Sheets] Fetching full sheet data via CSV export…");
   const request: SheetFetchRequest = {
     type: "FLORA_SHEET_FETCH",
@@ -163,18 +171,21 @@ async function fetchSheetDois(): Promise<void> {
 
   try {
     const response: SheetFetchResponse = await chrome.runtime.sendMessage(request);
-    if (response.error || !response.csv) {
-      console.warn("[FLoRA:Sheets] CSV fetch failed:", response.error);
+    if (myGen !== sheetFetchGen) return; // stale response — tab changed while fetching
+    if (!response || response.error || !response.csv) {
+      console.warn("[FLoRA:Sheets] CSV fetch failed:", response?.error);
       return;
     }
     sheetCsvDois = extractDOIsFromText(response.csv);
     console.log(`[FLoRA:Sheets] CSV export found ${sheetCsvDois.length} DOIs`);
-    if (sheetCsvDois.length > 0) {
-      run();
-    }
   } catch (err) {
+    if (myGen !== sheetFetchGen) return;
     console.warn("[FLoRA:Sheets] CSV fetch error:", err);
   }
+
+  // Always run — even if CSV fetch failed, this ensures the modal state is
+  // re-evaluated after a tab switch (processedDois was already cleared).
+  run();
 }
 
 // Run immediately — same timing as PubPeer (fires after webNavigation.onCompleted)
@@ -218,6 +229,7 @@ if (!isSheets) {
     if (currentGid !== lastGid) {
       lastGid = currentGid;
       console.log("[FLoRA:Sheets] Tab change detected (gid:", currentGid, ") — re-fetching…");
+      sheetFetchGen++;
       sheetCsvDois = [];
       processedDois.clear();
       pageState.clear();
