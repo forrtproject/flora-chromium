@@ -44,33 +44,32 @@ describe("lookupDOIs", () => {
     expect(results.size).toBe(0);
   });
 
-  it("throws on 429 rate limit", async () => {
+  it("returns empty map on 429 rate limit (per-batch error handling)", async () => {
     server.use(
       http.get(API_URL, () => new HttpResponse(null, { status: 429 }))
     );
 
-    await expect(lookupDOIs([doi("10.1038/test")])).rejects.toThrow(
-      "FLoRA API error: 429"
-    );
+    const results = await lookupDOIs([doi("10.1038/test")]);
+    expect(results.size).toBe(0);
   });
 
-  it("throws on 500 server error", async () => {
+  it("returns empty map on 500 server error (per-batch error handling)", async () => {
     server.use(
       http.get(API_URL, () => new HttpResponse(null, { status: 500 }))
     );
 
-    await expect(lookupDOIs([doi("10.1038/test")])).rejects.toThrow(
-      "FLoRA API error: 500"
-    );
+    const results = await lookupDOIs([doi("10.1038/test")]);
+    expect(results.size).toBe(0);
   });
 
-  it("throws on network error", async () => {
+  it("returns empty map on network error (per-batch error handling)", async () => {
     server.use(http.get(API_URL, () => HttpResponse.error()));
 
-    await expect(lookupDOIs([doi("10.1038/test")])).rejects.toThrow();
+    const results = await lookupDOIs([doi("10.1038/test")]);
+    expect(results.size).toBe(0);
   });
 
-  it("throws on Zod schema mismatch (missing required field)", async () => {
+  it("returns empty map on Zod schema mismatch (per-batch error handling)", async () => {
     server.use(
       http.get(API_URL, () =>
         HttpResponse.json({
@@ -81,18 +80,20 @@ describe("lookupDOIs", () => {
       )
     );
 
-    await expect(lookupDOIs([doi("10.1038/nature12373")])).rejects.toThrow();
+    const results = await lookupDOIs([doi("10.1038/nature12373")]);
+    expect(results.size).toBe(0);
   });
 
-  it("throws on completely unexpected response shape", async () => {
+  it("returns empty map on completely unexpected response shape (per-batch error handling)", async () => {
     server.use(
       http.get(API_URL, () => HttpResponse.json({ data: "unexpected" }))
     );
 
-    await expect(lookupDOIs([doi("10.1038/test")])).rejects.toThrow();
+    const results = await lookupDOIs([doi("10.1038/test")]);
+    expect(results.size).toBe(0);
   });
 
-  it("throws when response has null fields where numbers expected", async () => {
+  it("returns empty map when response has null fields where numbers expected (per-batch error handling)", async () => {
     const bad = mockResult();
     (bad.record.stats as Record<string, unknown>).n_replications_total = null;
     server.use(
@@ -101,6 +102,7 @@ describe("lookupDOIs", () => {
       )
     );
 
-    await expect(lookupDOIs([doi("10.1038/nature12373")])).rejects.toThrow();
+    const results = await lookupDOIs([doi("10.1038/nature12373")]);
+    expect(results.size).toBe(0);
   });
 });

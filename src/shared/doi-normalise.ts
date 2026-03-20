@@ -15,6 +15,15 @@ const DOI_PREFIXES = [
 export function normaliseDOI(raw: string): DoiString | null {
   let doi = raw.trim();
 
+  // Decode percent-encoded DOIs (e.g. 10.1088%2F0960-1317%2F16%2F3%2F007)
+  if (doi.includes("%")) {
+    try {
+      doi = decodeURIComponent(doi);
+    } catch {
+      // Invalid encoding — continue with raw value
+    }
+  }
+
   for (const prefix of DOI_PREFIXES) {
     if (doi.toLowerCase().startsWith(prefix)) {
       doi = doi.slice(prefix.length);

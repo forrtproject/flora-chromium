@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="citation_doi" content="10.1126/science.1222426">
+  <title>FLoRA Extension Test Page</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "ScholarlyArticle",
+    "@id": "https://doi.org/10.1126/science.1222426",
+    "doi": "10.1126/science.1222426"
+  }
+  </script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 40px 20px; color: #1f2328; line-height: 1.6; }
+    h1 { border-bottom: 1px solid #d0d7de; padding-bottom: 12px; }
+    h2 { margin-top: 32px; color: #24292f; }
+    section { margin: 20px 0; padding: 16px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 8px; }
+    a { color: #0969da; }
+    code { background: #eff1f3; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+    .ref { margin: 8px 0; padding: 8px 12px; border-left: 3px solid #d0d7de; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border: 1px solid #d0d7de; padding: 8px 12px; text-align: left; }
+    th { background: #f0f3f6; }
+  </style>
+</head>
+<body>
+
+  <h1>FLoRA Extension — DOI Test Page</h1>
+  <p>This page contains DOIs verified to have replication data in FLoRA's database.</p>
+
+  <!-- Section 1: Multiple DOIs with confirmed replication data -->
+  <h2>1. DOIs with Confirmed Replication Data (all should show badges)</h2>
+  <section>
+    <div class="ref">
+      <strong>Ego depletion</strong><br>
+      Baumeister, R. F., et al. (1998). Ego depletion: Is the active self a limited resource?
+      <em>Journal of Personality and Social Psychology</em>, 74(5), 1252–1265.<br>
+      DOI: <a href="https://doi.org/10.1126/science.1222426">10.1126/science.1222426</a>
+      <br><small>Expected: 2 replications</small>
+    </div>
+    <div class="ref">
+      <strong>Implicit self-esteem</strong><br>
+      Greenwald, A. G., & Farnham, S. D. (2000). Using the IAT to measure self-esteem and self-concept.
+      <em>Journal of Personality and Social Psychology</em>, 79(6), 1022.<br>
+      DOI: <a href="https://doi.org/10.1037/a0021524">10.1037/a0021524</a>
+      <br><small>Expected: 1 replication</small>
+    </div>
+    <div class="ref">
+      <strong>Self-perception theory</strong><br>
+      Bem, D. J. (1967). Self-perception: An alternative interpretation of cognitive dissonance phenomena.
+      <em>Psychological Review</em>, 74(3), 183.<br>
+      DOI: <a href="https://doi.org/10.1037/0022-3514.71.2.230">10.1037/0022-3514.71.2.230</a>
+      <br><small>Expected: 2 replications</small>
+    </div>
+    <div class="ref">
+      <strong>Cognitive dissonance</strong><br>
+      Festinger, L., & Carlsmith, J. M. (1959). Cognitive consequences of forced compliance.
+      <em>Journal of Abnormal and Social Psychology</em>, 58(2), 203.<br>
+      DOI: <a href="https://doi.org/10.1037/0022-3514.54.5.768">10.1037/0022-3514.54.5.768</a>
+      <br><small>Expected: 2 replications</small>
+    </div>
+    <div class="ref">
+      <strong>Terror management theory</strong><br>
+      Greenberg, J., et al. (1990). Evidence for terror management theory II.
+      <em>Journal of Personality and Social Psychology</em>, 58(2), 308.<br>
+      DOI: <a href="https://doi.org/10.1037/0022-3514.74.4.865">10.1037/0022-3514.74.4.865</a>
+      <br><small>Expected: 1 replication</small>
+    </div>
+    <div class="ref">
+      <strong>Many Labs 2</strong><br>
+      Klein, R. A., et al. (2018). Many Labs 2: Investigating variation in replicability across samples and settings.
+      <em>Nature Human Behaviour</em>.<br>
+      DOI: <a href="https://doi.org/10.1038/s41562-018-0399-z">10.1038/s41562-018-0399-z</a>
+      <br><small>Expected: 1 replication</small>
+    </div>
+  </section>
+
+  <!-- Section 2: Duplicate DOI (should only badge the FIRST occurrence) -->
+  <h2>2. Duplicate DOI Test (badge only on first)</h2>
+  <section>
+    <p>First occurrence: <a href="https://doi.org/10.1126/science.1222426">10.1126/science.1222426</a></p>
+    <p>Second occurrence: <a href="https://doi.org/10.1126/science.1222426">10.1126/science.1222426</a></p>
+    <p>Third occurrence: <a href="https://doi.org/10.1126/science.1222426">10.1126/science.1222426</a></p>
+    <p>Fourth (plain text): 10.1126/science.1222426</p>
+  </section>
+
+  <!-- Section 3: DOIs NOT in FLoRA (should NOT show badges) -->
+  <h2>3. DOIs NOT in FLoRA (no badges expected)</h2>
+  <section>
+    <div class="ref">
+      <a href="https://doi.org/10.1038/nature12373">10.1038/nature12373</a> — not in database
+    </div>
+    <div class="ref">
+      <a href="https://doi.org/10.1016/j.jep.2015.05.035">10.1016/j.jep.2015.05.035</a> — not in database
+    </div>
+  </section>
+
+  <!-- Section 4: DOIs in various HTML contexts (using confirmed DOIs) -->
+  <h2>4. DOIs in Different Contexts (confirmed DOIs)</h2>
+  <section>
+    <div class="ref">
+      <strong>Plain text DOI:</strong> 10.1037/a0021524
+    </div>
+    <div class="ref">
+      <strong>doi.org link:</strong> <a href="https://doi.org/10.1037/0022-3514.71.2.230">https://doi.org/10.1037/0022-3514.71.2.230</a>
+    </div>
+    <div class="ref">
+      <strong>dx.doi.org link:</strong> <a href="http://dx.doi.org/10.1037/0022-3514.54.5.768">http://dx.doi.org/10.1037/0022-3514.54.5.768</a>
+    </div>
+    <div class="ref">
+      <strong>DOI in sentence:</strong> The study (10.1038/s41562-018-0399-z) was a large-scale replication effort.
+    </div>
+  </section>
+
+  <!-- Section 5: DOI table with confirmed DOIs -->
+  <h2>5. DOI Table (all confirmed in FLoRA)</h2>
+  <section>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Study</th><th>DOI</th><th>Expected</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>Ego depletion</td><td><a href="https://doi.org/10.1126/science.1222426">10.1126/science.1222426</a></td><td>2 repl</td></tr>
+        <tr><td>2</td><td>Implicit self-esteem</td><td><a href="https://doi.org/10.1037/a0021524">10.1037/a0021524</a></td><td>1 repl</td></tr>
+        <tr><td>3</td><td>Self-perception</td><td><a href="https://doi.org/10.1037/0022-3514.71.2.230">10.1037/0022-3514.71.2.230</a></td><td>2 repl</td></tr>
+        <tr><td>4</td><td>Cognitive dissonance</td><td><a href="https://doi.org/10.1037/0022-3514.54.5.768">10.1037/0022-3514.54.5.768</a></td><td>2 repl</td></tr>
+        <tr><td>5</td><td>Terror management</td><td><a href="https://doi.org/10.1037/0022-3514.74.4.865">10.1037/0022-3514.74.4.865</a></td><td>1 repl</td></tr>
+        <tr><td>6</td><td>Many Labs 2</td><td><a href="https://doi.org/10.1038/s41562-018-0399-z">10.1038/s41562-018-0399-z</a></td><td>1 repl</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Section 6: Edge cases -->
+  <h2>6. Edge Cases</h2>
+  <section>
+    <div class="ref">
+      <strong>DOI with trailing period:</strong> Please see 10.1126/science.1222426.
+    </div>
+    <div class="ref">
+      <strong>DOI with trailing comma:</strong> As reported in 10.1037/a0021524, the results were clear.
+    </div>
+    <div class="ref">
+      <strong>DOI fragment (should NOT match):</strong> 10.1016/j
+    </div>
+    <div class="ref">
+      <strong>Not a DOI:</strong> 10.1 is not a valid DOI prefix.
+    </div>
+    <div class="ref">
+      <strong>DOI with prefix:</strong> doi:10.1126/science.1222426
+    </div>
+    <div class="ref">
+      <strong>Matched but 0 repl/repro (no badge expected):</strong> <a href="https://doi.org/10.1126/science.aac4716">10.1126/science.aac4716</a>
+    </div>
+  </section>
+
+  <footer style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #d0d7de; color: #656d76; font-size: 13px;">
+    FLoRA Extension Test Page — open browser DevTools console to see debug logs.
+  </footer>
+
+</body>
+</html>

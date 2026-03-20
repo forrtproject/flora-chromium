@@ -3,6 +3,7 @@ import { augmentDOIs } from "../shared/doi-augment";
 import type { DoiString, DoiSource } from "../shared/types";
 import type { LookupRequest, LookupResponse } from "../shared/messages";
 import { renderScholarBadge } from "./badge";
+import { debugLog } from "../shared/debug";
 
 const RESULT_CONTAINER = "#gs_res_ccl";
 const RESULT_ROW = ".gs_r.gs_or.gs_scl";
@@ -39,6 +40,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
   const rows = doc.querySelectorAll<HTMLElement>(
     `${RESULT_ROW}:not([${PROCESSED_ATTR}])`
   );
+  debugLog(`Scholar: ${rows.length} new result row(s) to process`);
   if (rows.length === 0) return;
 
   const rowDois: { row: HTMLElement; doi: DoiString; source: DoiSource }[] = [];
@@ -88,17 +90,20 @@ export async function processScholarResults(doc: Document): Promise<void> {
 
   const extracted = rowDois.filter((r) => r.source === "extracted").length;
   const augmented = rowDois.filter((r) => r.source === "augmented").length;
-  console.log(`[FLoRA] ${extracted} DOIs from Scholar, ${augmented} augmented via Crossref/OpenAlex`);
+  debugLog(`${extracted} DOIs from Scholar, ${augmented} augmented via Crossref/OpenAlex`);
 
   if (rowDois.length === 0) return;
 
   const uniqueDois = [...new Set(rowDois.map((rd) => rd.doi))];
+  debugLog("Scholar: Sending lookup for", uniqueDois.length, "unique DOIs:", uniqueDois);
   const request: LookupRequest = { type: "FLORA_LOOKUP", dois: uniqueDois };
 
   try {
     const response: LookupResponse =
       await chrome.runtime.sendMessage(request);
+    debugLog("Scholar: Lookup response:", Object.keys(response.results).length, "results,", Object.keys(response.errors).length, "errors");
 
+    let badgedCount = 0;
     for (const { row, doi, source } of rowDois) {
       if (response.results[doi]) {
         renderScholarBadge(row, {
@@ -106,10 +111,12 @@ export async function processScholarResults(doc: Document): Promise<void> {
           result: response.results[doi],
           source,
         });
+        badgedCount++;
       }
     }
-  } catch {
-    // Lookup failed
+    debugLog("Scholar: Rendered", badgedCount, "badge(s)");
+  } catch (err) {
+    debugLog("Scholar: Lookup failed:", err);
   }
 }
 

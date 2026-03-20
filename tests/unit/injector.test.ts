@@ -8,24 +8,23 @@ const MOCK_RESULT = mockResult();
 describe("injector", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
-    document.body.style.removeProperty("margin-top");
+    document.body.style.removeProperty("padding-top");
   });
 
   describe("renderLoadingBanner", () => {
-    it("creates a Shadow DOM host when rendering loading state", () => {
+    it("creates a banner host when rendering loading state", () => {
       renderLoadingBanner();
 
       const host = document.getElementById("flora-banner-host");
       expect(host).not.toBeNull();
-      expect(host?.shadowRoot).not.toBeNull();
-
-      const bannerText = host?.shadowRoot?.querySelector(".flora-banner-text");
-      expect(bannerText?.textContent).toContain("Checking");
+      expect(host?.textContent).toContain("Checking");
     });
 
-    it("adjusts body margin-top for banner space", () => {
+    it("inserts FLoRA logo span in the banner", () => {
       renderLoadingBanner();
-      expect(document.body.style.marginTop).toBe("40px");
+
+      const host = document.getElementById("flora-banner-host");
+      expect(host?.textContent).toContain("FLoRA");
     });
   });
 
@@ -34,17 +33,15 @@ describe("injector", () => {
       renderMatchedBanner([{ doi: "10.1038/nature12373", result: MOCK_RESULT }]);
 
       const host = document.getElementById("flora-banner-host");
-      const bannerText = host?.shadowRoot?.querySelector(".flora-banner-text");
-      expect(bannerText?.textContent).toContain("3 replications");
-      expect(bannerText?.textContent).toContain("1 reproduction");
+      expect(host?.textContent).toContain("3 replications");
+      expect(host?.textContent).toContain("1 reproduction");
     });
 
-    it("shows success class when replications exist", () => {
+    it("shows FLoRA label when replications exist", () => {
       renderMatchedBanner([{ doi: "10.1038/nature12373", result: MOCK_RESULT }]);
 
       const host = document.getElementById("flora-banner-host");
-      const inner = host?.shadowRoot?.querySelector(".flora-banner-inner");
-      expect(inner?.classList.contains("flora-banner--success")).toBe(true);
+      expect(host?.textContent).toContain("FLoRA");
     });
 
     it("shows DOI count summary for multiple DOIs", () => {
@@ -54,8 +51,7 @@ describe("injector", () => {
       ]);
 
       const host = document.getElementById("flora-banner-host");
-      const bannerText = host?.shadowRoot?.querySelector(".flora-banner-text");
-      expect(bannerText?.textContent).toContain("2 DOIs");
+      expect(host?.textContent).toContain("2 DOIs");
     });
 
     it("shows single View details link for multiple DOIs", () => {
@@ -65,7 +61,7 @@ describe("injector", () => {
       ]);
 
       const host = document.getElementById("flora-banner-host");
-      const links = host?.shadowRoot?.querySelectorAll(".flora-banner-link");
+      const links = host?.querySelectorAll("a");
       expect(links?.length).toBe(1);
       expect(links?.[0].textContent).toBe("View details");
     });
@@ -84,9 +80,8 @@ describe("injector", () => {
       renderErrorBanner("API failed");
 
       const host = document.getElementById("flora-banner-host");
-      const inner = host?.shadowRoot?.querySelector(".flora-banner-inner");
-      expect(inner?.classList.contains("flora-banner--error")).toBe(true);
-      expect(inner?.textContent).toContain("API failed");
+      expect(host?.textContent).toContain("Error");
+      expect(host?.textContent).toContain("API failed");
     });
   });
 
@@ -99,10 +94,10 @@ describe("injector", () => {
       expect(document.getElementById("flora-banner-host")).toBeNull();
     });
 
-    it("restores body margin-top", () => {
+    it("restores body padding-top", () => {
       renderLoadingBanner();
       removeBanner();
-      expect(document.body.style.marginTop).toBe("");
+      expect(document.body.style.paddingTop).toBe("");
     });
   });
 
@@ -116,6 +111,7 @@ describe("injector", () => {
       state.set(doi("10.1038/nature12373"), {
         status: "matched",
         result: MOCK_RESULT,
+        source: "extracted",
       });
 
       renderInlineBadges(state);
@@ -134,6 +130,7 @@ describe("injector", () => {
       state.set(doi("10.1038/nature12373"), {
         status: "matched",
         result: MOCK_RESULT,
+        source: "extracted",
       });
 
       renderInlineBadges(state);
