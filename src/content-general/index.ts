@@ -4,6 +4,7 @@ import { debounce } from "../shared/debounce";
 import type { DoiString, LookupState } from "../shared/types";
 import type { LookupRequest, LookupResponse, SheetFetchRequest, SheetFetchResponse } from "../shared/messages";
 import { renderErrorBanner, renderMatchedBanner, removeBanner, renderInlineBadges, renderSheetsModal, removeSheetsModal } from "./injector";
+import { debugLog, debugWarn } from "../shared/debug";
 
 const pageState = new Map<DoiString, LookupState>();
 const processedDois = new Set<DoiString>();
@@ -27,6 +28,7 @@ async function augmentFromTitle(): Promise<void> {
   try {
     const augmented = await augmentDOIs([pageTitle]);
     const resolvedDoi = augmented.get(pageTitle);
+    debugLog("Title augmentation:", resolvedDoi ? `resolved to ${resolvedDoi}` : "no match", `(title: "${pageTitle}")`);
     if (resolvedDoi) {
       processedDois.add(resolvedDoi);
       const request: LookupRequest = { type: "FLORA_LOOKUP", dois: [resolvedDoi] };
@@ -55,19 +57,23 @@ async function run(): Promise<void> {
     const combined = new Set([...dois, ...sheetCsvDois]);
     dois = [...combined];
   }
-  if (isSheets) console.log("[FLoRA:Sheets] Extracted DOIs:", dois.length, dois);
+  debugLog(isSheets ? "Sheets:" : "General:", "Extracted DOIs:", dois.length, dois);
 
   // Filter out already-processed DOIs
   const newDois = dois.filter((doi) => !processedDois.has(doi));
 
   // If no new DOIs found directly, try augmenting from page title in the background
   if (newDois.length === 0 && dois.length === 0) {
+    debugLog("No DOIs found on page, attempting title augmentation");
     if (!isSheets) augmentFromTitle();
     return;
   }
 
-  if (newDois.length === 0) return;
-  if (isSheets) console.log("[FLoRA:Sheets] New DOIs to look up:", newDois);
+  if (newDois.length === 0) {
+    debugLog("No new DOIs (all already processed)");
+    return;
+  }
+  debugLog(isSheets ? "Sheets:" : "General:", "New DOIs to look up:", newDois.length, newDois);
 
   for (const doi of newDois) {
     processedDois.add(doi);
@@ -83,7 +89,7 @@ async function run(): Promise<void> {
   try {
     const response: LookupResponse =
       await chrome.runtime.sendMessage(request);
-    if (isSheets) console.log("[FLoRA:Sheets] Lookup response:", response);
+    debugLog("Lookup response:", Object.keys(response.results).length, "results,", Object.keys(response.errors).length, "errors");
 
     for (const doi of newDois) {
       if (response.errors[doi]) {
@@ -99,13 +105,19 @@ async function run(): Promise<void> {
     // On Sheets, skip the "still in DOM" re-check — the canvas DOM is unreliable
     const currentDois = isSheets ? null : new Set(extractDOIs(document));
     const matched = [...pageState.entries()]
-      .filter(([doi, s]) => s.status === "matched" && (isSheets || currentDois!.has(doi)))
+      .filter(([doi, s]) => {
+        if (s.status !== "matched") return false;
+        if (!isSheets && !currentDois!.has(doi)) return false;
+        // Only include DOIs that actually have replication or reproduction data
+        const stats = s.result.record.stats;
+        return stats.n_replications_total > 0 || stats.n_reproductions_total > 0;
+      })
       .map(([doi, s]) => ({
         doi,
         result: (s as { status: "matched"; result: import("../shared/types").ReplicationResult; source: "extracted" }).result,
       }));
 
-    if (isSheets) console.log("[FLoRA:Sheets] Matched DOIs with replication data:", matched.length, matched.map(m => m.doi));
+    debugLog("Matched DOIs with replication data:", matched.length, matched.map(m => m.doi));
 
     if (matched.length > 0) {
       if (isSheets) {
@@ -154,7 +166,7 @@ async function fetchSheetDois(): Promise<void> {
   const parsed = parseSheetsUrl(location.href);
   if (!parsed) return;
 
-  console.log("[FLoRA:Sheets] Fetching full sheet data via CSV export…");
+  debugLog("Sheets: Fetching full sheet data via CSV export…");
   const request: SheetFetchRequest = {
     type: "FLORA_SHEET_FETCH",
     spreadsheetId: parsed.spreadsheetId,
@@ -164,16 +176,16 @@ async function fetchSheetDois(): Promise<void> {
   try {
     const response: SheetFetchResponse = await chrome.runtime.sendMessage(request);
     if (response.error || !response.csv) {
-      console.warn("[FLoRA:Sheets] CSV fetch failed:", response.error);
+      debugWarn("Sheets: CSV fetch failed:", response.error);
       return;
     }
     sheetCsvDois = extractDOIsFromText(response.csv);
-    console.log(`[FLoRA:Sheets] CSV export found ${sheetCsvDois.length} DOIs`);
+    debugLog(`Sheets: CSV export found ${sheetCsvDois.length} DOIs`);
     if (sheetCsvDois.length > 0) {
       run();
     }
   } catch (err) {
-    console.warn("[FLoRA:Sheets] CSV fetch error:", err);
+    debugWarn("Sheets: CSV fetch error:", err);
   }
 }
 
@@ -217,7 +229,7 @@ if (!isSheets) {
     const currentGid = parseSheetsUrl(location.href)?.gid ?? "0";
     if (currentGid !== lastGid) {
       lastGid = currentGid;
-      console.log("[FLoRA:Sheets] Tab change detected (gid:", currentGid, ") — re-fetching…");
+      debugLog("Sheets: Tab change detected (gid:", currentGid, ") — re-fetching…");
       sheetCsvDois = [];
       processedDois.clear();
       pageState.clear();

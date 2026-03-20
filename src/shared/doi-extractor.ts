@@ -1,5 +1,6 @@
 import type { DoiString } from "./types";
 import { normaliseDOI } from "./doi-normalise";
+import { debugLog } from "./debug";
 
 // Allow parens inside DOIs (e.g. 10.1016/S0924-9338(98)80023-0)
 // but stop at whitespace, commas, quotes, fragments, query strings, etc.
@@ -8,6 +9,23 @@ const DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*\/[^\s,;\]}>'"<#?&\\]+)/g;
 
 // Characters inserted by browsers/sites for word-break purposes that can split DOIs
 const WORD_BREAK_CHARS = /[\u200B\u200C\u200D\u00AD\uFEFF\u2060]/g;
+
+// Encoded DOI pattern: 10.NNNN%2F... (percent-encoded slash)
+const ENCODED_DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*%2[fF][^\s,;\]}>'"<#?&\\]+)/g;
+
+/**
+ * Decode any percent-encoded DOIs in text so the main DOI_REGEX can find them.
+ * Only decodes sequences that look like encoded DOIs (10.XXXX%2F...).
+ */
+function decodeEncodedDois(text: string): string {
+  return text.replace(ENCODED_DOI_REGEX, (match) => {
+    try {
+      return decodeURIComponent(match);
+    } catch {
+      return match;
+    }
+  });
+}
 
 /**
  * Reject DOI fragments where the suffix (after registrant/) is too short.
@@ -57,30 +75,54 @@ function cleanDoiTrailing(raw: string): string {
 export function extractDOIs(doc: Document): DoiString[] {
   const found = new Set<DoiString>();
 
+  const sizeBefore = (layer: string) => {
+    const s = found.size;
+    return () => {
+      if (found.size > s) debugLog(`Extractor: ${layer} added ${found.size - s} DOI(s)`);
+    };
+  };
+
+  let after = sizeBefore("URL");
   extractFromUrl(doc, found);
+  after();
+
+  after = sizeBefore("meta");
   extractFromMeta(doc, found);
+  after();
+
+  after = sizeBefore("JSON-LD");
   extractFromJsonLd(doc, found);
+  after();
+
+  after = sizeBefore("DOI links");
   extractFromDoiLinks(doc, found);
+  after();
+
+  after = sizeBefore("visible text");
   extractFromVisibleText(doc, found);
+  after();
 
   // On Google Sheets, cell content is rendered on canvas — scan innerHTML for DOIs
   if (isGoogleSheets(doc) && doc.body) {
+    after = sizeBefore("Sheets innerHTML");
     const html = doc.body.innerHTML;
-    const cleaned = html.replace(WORD_BREAK_CHARS, "");
+    const cleaned = decodeEncodedDois(html.replace(WORD_BREAK_CHARS, ""));
     for (const match of cleaned.matchAll(DOI_REGEX)) {
       const raw = cleanDoiTrailing(match[1]);
       if (!isValidDoiSuffix(raw)) continue;
       const doi = normaliseDOI(raw);
       if (doi) found.add(doi);
     }
-    console.log(`[FLoRA:Sheets] innerHTML scan found ${found.size} unique DOIs`);
+    after();
   }
 
-  return [...found];
+  const result = [...found];
+  debugLog(`Extractor: ${result.length} unique DOI(s) found`, result);
+  return result;
 }
 
 function extractFromUrl(doc: Document, found: Set<DoiString>): void {
-  const url = doc.location?.href ?? "";
+  const url = decodeEncodedDois(doc.location?.href ?? "");
   const matches = url.matchAll(DOI_REGEX);
   for (const match of matches) {
     const cleaned = cleanDoiTrailing(match[1]);
@@ -155,7 +197,8 @@ function extractFromDoiLinks(doc: Document, found: Set<DoiString>): void {
 function extractFromVisibleText(doc: Document, found: Set<DoiString>): void {
   const rawText = doc.body?.innerText || doc.body?.textContent || "";
   // Strip invisible word-break characters that sites insert for overflow-wrap/break-word
-  const bodyText = rawText.replace(WORD_BREAK_CHARS, "");
+  // and decode any percent-encoded DOIs
+  const bodyText = decodeEncodedDois(rawText.replace(WORD_BREAK_CHARS, ""));
   const matches = bodyText.matchAll(DOI_REGEX);
   for (const match of matches) {
     const cleaned = cleanDoiTrailing(match[1]);
@@ -170,13 +213,14 @@ function extractFromVisibleText(doc: Document, found: Set<DoiString>): void {
  */
 export function extractDOIsFromText(text: string): DoiString[] {
   const found = new Set<DoiString>();
-  const cleaned = text.replace(WORD_BREAK_CHARS, "");
+  const cleaned = decodeEncodedDois(text.replace(WORD_BREAK_CHARS, ""));
   for (const match of cleaned.matchAll(DOI_REGEX)) {
     const raw = cleanDoiTrailing(match[1]);
     if (!isValidDoiSuffix(raw)) continue;
     const doi = normaliseDOI(raw);
     if (doi) found.add(doi);
   }
+  debugLog(`extractDOIsFromText: ${found.size} DOI(s) from ${text.length} chars`);
   return [...found];
 }
 
