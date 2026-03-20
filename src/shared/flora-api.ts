@@ -1,5 +1,6 @@
 import type { DoiString, ReplicationResult } from "./types";
 import { ApiResponseSchema } from "./types";
+import { debugLog, debugError } from "./debug";
 
 const API_BASE = "https://rep-api.forrt.org";
 const BATCH_SIZE = 50;
@@ -18,24 +19,24 @@ export async function lookupDOIs(
 
   const results = new Map<DoiString, ReplicationResult>();
   const totalBatches = Math.ceil(dois.length / BATCH_SIZE);
-  console.log(`[FLoRA] Looking up ${dois.length} DOIs in ${totalBatches} batch(es) of ${BATCH_SIZE}`);
+  debugLog(`Looking up ${dois.length} DOIs in ${totalBatches} batch(es) of ${BATCH_SIZE}`);
 
   for (let i = 0; i < dois.length; i += BATCH_SIZE) {
     const batchNum = Math.floor(i / BATCH_SIZE) + 1;
     const batch = dois.slice(i, i + BATCH_SIZE);
-    console.log(`[FLoRA] Batch ${batchNum}/${totalBatches}: ${batch.length} DOIs`);
+    debugLog(`Batch ${batchNum}/${totalBatches}: ${batch.length} DOIs`);
     try {
       const batchResults = await lookupBatch(batch);
       for (const [doi, result] of batchResults) {
         results.set(doi, result);
       }
-      console.log(`[FLoRA] Batch ${batchNum} returned ${batchResults.size} results`);
+      debugLog(`Batch ${batchNum} returned ${batchResults.size} results`);
     } catch (err) {
-      console.error(`[FLoRA] Batch ${batchNum} failed:`, err);
+      debugError(`Batch ${batchNum} failed:`, err);
     }
   }
 
-  console.log(`[FLoRA] Total results across all batches: ${results.size}`);
+  debugLog(`Total results across all batches: ${results.size}`);
   return results;
 }
 

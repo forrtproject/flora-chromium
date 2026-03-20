@@ -1,6 +1,7 @@
 import { observeScholarResults, processScholarResults } from "./observer";
+import { debugLog } from "../shared/debug";
 
-console.log("[FLoRA] Scholar content script loaded");
+debugLog("Scholar content script loaded");
 
 // Process any results already on the page
 processScholarResults(document);

@@ -1,5 +1,6 @@
 import type { DoiString, LookupState, ReplicationResult } from "../shared/types";
 import { normaliseDOI } from "../shared/doi-normalise";
+import { debugLog } from "../shared/debug";
 import styles from "./styles.css";
 
 const BANNER_HOST_ID = "flora-banner-host";
@@ -184,6 +185,10 @@ export function renderInlineBadges(
   pageState: Map<DoiString, LookupState>
 ): void {
   const allLinks = document.querySelectorAll<HTMLAnchorElement>("a[href]");
+  const badgedDois = new Set<DoiString>();
+
+  debugLog("renderInlineBadges: scanning", allLinks.length, "links, pageState has", pageState.size, "DOIs:",
+    [...pageState.entries()].map(([doi, s]) => `${doi}(${s.status})`));
 
   for (const link of allLinks) {
     if (link.nextElementSibling?.classList.contains(BADGE_CLASS)) continue;
@@ -200,8 +205,17 @@ export function renderInlineBadges(
     const doi = normaliseDOI(rawDoi);
     if (!doi) continue;
 
+    // Only badge the first occurrence of each DOI
+    if (badgedDois.has(doi)) {
+      debugLog("renderInlineBadges: skipping duplicate", doi);
+      continue;
+    }
+
     const state = pageState.get(doi);
-    if (!state || state.status !== "matched") continue;
+    if (!state || state.status !== "matched") {
+      debugLog("renderInlineBadges: DOI not matched in pageState:", doi, "status:", state?.status ?? "not found");
+      continue;
+    }
 
     if (!isVisible(link)) continue;
 
@@ -235,6 +249,8 @@ export function renderInlineBadges(
     shadow.appendChild(badge);
 
     link.insertAdjacentElement("afterend", badgeHost);
+    badgedDois.add(doi);
+    debugLog("renderInlineBadges: badged", doi, "link text:", link.textContent?.slice(0, 60));
   }
 }
 
