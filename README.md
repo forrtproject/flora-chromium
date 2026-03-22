@@ -19,7 +19,7 @@ Since this extension is not yet on the Chrome Web Store, you'll need to load it 
 
 ### Quick install
 
-1. **[Download flora-extension.zip](https://github.com/forrtproject/flora-chromium/raw/main/flora-extension.zip)** (built automatically from the latest code)
+1. **[Download flora-extension.zip](https://github.com/forrtproject/flora_chromium/raw/refs/heads/main/flora-extension.zip)** (built automatically from the latest code)
 2. **Unzip** it to a folder on your computer
 3. Open `chrome://extensions` (or `edge://extensions`)
 4. Enable **Developer mode** (toggle in the top-right corner)
