@@ -17,52 +17,33 @@ When you visit an article page (PubMed, journal websites, preprint servers, etc.
 
 Since this extension is not yet on the Chrome Web Store, you'll need to load it manually.
 
-### Prerequisites
+### Quick install
 
-- [Node.js](https://nodejs.org/) (v18 or later)
-- npm (comes with Node.js)
-- Chrome or Edge browser
+1. **[Download flora-extension.zip](https://github.com/forrtproject/flora-chromium/raw/main/flora-extension.zip)** (built automatically from the latest code)
+2. **Unzip** it to a folder on your computer
+3. Open `chrome://extensions` (or `edge://extensions`)
+4. Enable **Developer mode** (toggle in the top-right corner)
+5. Click **Load unpacked** and select the unzipped folder
+6. **You're done!** Navigate to any academic article page or Google Scholar to see FLoRA in action.
 
-### Steps
+### Building from source
 
-1. **Clone the repository**:
+If you want to develop or modify the extension:
+
+1. Install [Node.js](https://nodejs.org/) (v18 or later)
+
+2. Clone and build:
 
    ```bash
    git clone https://github.com/forrtproject/flora-chromium.git
    cd flora-chromium
-   ```
-
-2. **Install dependencies**:
-
-   ```bash
    npm install
-   ```
-
-3. **Build the extension**:
-
-   ```bash
    npm run build
    ```
 
-   This compiles TypeScript and bundles everything into the `dist/` folder.
+3. Load the project root folder as an unpacked extension (as above).
 
-4. **Load into Chrome/Edge**:
-   - Open `chrome://extensions` (or `edge://extensions`)
-   - Enable **Developer mode** (toggle in the top-right corner)
-   - Click **Load unpacked**
-   - Select the project root folder (the one containing `manifest.json`)
-
-5. **You're done!** Navigate to any academic article page or Google Scholar to see FLoRA in action.
-
-### Updating after code changes
-
-After making changes to the source code:
-
-```bash
-npm run build
-```
-
-Then go to `chrome://extensions` and click the **reload** icon on the FLoRA extension card.
+After making changes, run `npm run build` and click the **reload** icon on the FLoRA extension card in `chrome://extensions`.
 
 ## Development
 

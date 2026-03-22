@@ -1,0 +1,38 @@
+name: Build extension zip
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "flora-extension.zip"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Create zip
+        run: |
+          mkdir -p flora-extension
+          cp manifest.json flora-extension/
+          cp -r dist flora-extension/
+          zip -r flora-extension.zip flora-extension
+
+      - name: Commit zip
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add flora-extension.zip
+          git diff --staged --quiet && echo "No changes" || (git commit -m "Build: update flora-extension.zip" && git push)
