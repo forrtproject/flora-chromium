@@ -44,7 +44,15 @@ export async function processScholarResults(doc: Document): Promise<void> {
   if (rows.length === 0) return;
 
   const rowDois: { row: HTMLElement; doi: DoiString; source: DoiSource }[] = [];
-  const rowsWithoutDoi: { row: HTMLElement; title: string }[] = [];
+
+  // Phase 1: Extract DOIs from URLs and collect all titles for augmentation
+  interface RowInfo {
+    row: HTMLElement;
+    title: string;
+    extractedDoi: DoiString | null;
+    confident: boolean;
+  }
+  const rowInfos: RowInfo[] = [];
 
   for (const row of rows) {
     row.setAttribute(PROCESSED_ATTR, "true");
@@ -56,41 +64,64 @@ export async function processScholarResults(doc: Document): Promise<void> {
       continue;
     }
 
-    const doi = extractDoiFromScholarRow(row);
-    if (doi) {
-      rowDois.push({ row, doi, source: "extracted" });
-      injectDoiLabel(row, doi, "#1a7f37", false);
+    const extraction = extractDoiFromScholarRow(row);
+    const title = row.querySelector(".gs_rt")?.textContent?.trim() ?? "";
+
+    // Confident extractions (doi.org URLs, explicit text) → green immediately
+    if (extraction?.confident) {
+      rowDois.push({ row, doi: extraction.doi, source: "extracted" });
+      injectDoiLabel(row, extraction.doi, "#1a7f37", false);
     } else {
-      // No DOI found directly — extract title for augmentation
-      const titleEl = row.querySelector(".gs_rt");
-      const title = titleEl?.textContent?.trim();
-      if (title) {
-        rowsWithoutDoi.push({ row, title });
-      }
+      // Non-confident or no extraction — collect for augmentation cross-check
+      rowInfos.push({
+        row,
+        title,
+        extractedDoi: extraction?.doi ?? null,
+        confident: false,
+      });
     }
   }
 
-  // Augment missing DOIs via OpenAlex
-  if (rowsWithoutDoi.length > 0) {
+  // Phase 2: Augment ALL pending titles via OpenAlex to cross-validate
+  if (rowInfos.length > 0) {
+    const titlesToAugment = rowInfos.filter((r) => r.title).map((r) => r.title);
+    let augmented = new Map<string, DoiString | null>();
     try {
-      const titles = rowsWithoutDoi.map((r) => r.title);
-      const augmented = await augmentDOIs(titles);
-
-      for (const { row, title } of rowsWithoutDoi) {
-        const doi = augmented.get(title);
-        if (doi) {
-          rowDois.push({ row, doi, source: "augmented" });
-          injectDoiLabel(row, doi, "#656d76", true);
-        }
+      if (titlesToAugment.length > 0) {
+        augmented = await augmentDOIs(titlesToAugment);
       }
     } catch {
-      // Augmentation failed — continue with what we have
+      // Augmentation failed — fall through with empty map
+    }
+
+    for (const info of rowInfos) {
+      const augmentedDoi = augmented.get(info.title) ?? null;
+
+      if (info.extractedDoi && augmentedDoi === info.extractedDoi) {
+        // Cross-validated: URL extraction matches augmentation → green ✓
+        rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
+        injectDoiLabel(info.row, info.extractedDoi, "#1a7f37", false);
+      } else if (info.extractedDoi && augmentedDoi && augmentedDoi !== info.extractedDoi) {
+        // Conflict: prefer augmented DOI → gray (augmented)
+        debugLog("DOI conflict — extracted:", info.extractedDoi, "augmented:", augmentedDoi, "— using augmented");
+        rowDois.push({ row: info.row, doi: augmentedDoi, source: "augmented" });
+        injectDoiLabel(info.row, augmentedDoi, "#656d76", true);
+      } else if (info.extractedDoi && !augmentedDoi) {
+        // Extracted but unconfirmed → gray with dotted underline
+        rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
+        injectDoiLabel(info.row, info.extractedDoi, "#656d76", true);
+      } else if (!info.extractedDoi && augmentedDoi) {
+        // No extraction, only augmented → gray with dotted underline
+        rowDois.push({ row: info.row, doi: augmentedDoi, source: "augmented" });
+        injectDoiLabel(info.row, augmentedDoi, "#656d76", true);
+      }
+      // else: neither source found a DOI — no label
     }
   }
 
   const extracted = rowDois.filter((r) => r.source === "extracted").length;
-  const augmented = rowDois.filter((r) => r.source === "augmented").length;
-  debugLog(`${extracted} DOIs from Scholar, ${augmented} augmented via Crossref/OpenAlex`);
+  const augmentedCount = rowDois.filter((r) => r.source === "augmented").length;
+  debugLog(`${extracted} DOIs from Scholar, ${augmentedCount} augmented via Crossref/OpenAlex`);
 
   if (rowDois.length === 0) return;
 
@@ -320,12 +351,30 @@ function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmente
   target.appendChild(wrapper);
 }
 
-function extractDoiFromScholarRow(row: HTMLElement): DoiString | null {
-  // 1. Title link href
+interface ExtractionResult {
+  doi: DoiString;
+  /** true when the DOI comes from a doi.org URL (inherently trustworthy) */
+  confident: boolean;
+}
+
+function extractDoiFromScholarRow(row: HTMLElement): ExtractionResult | null {
+  // 1. Title link href — doi.org URL is inherently trustworthy
   const titleLink = row.querySelector<HTMLAnchorElement>(".gs_rt a");
   if (titleLink?.href) {
     const doi = normaliseDOI(titleLink.href);
-    if (doi) return doi;
+    if (doi) return { doi, confident: true };
+    // DOI explicitly named in query params (e.g. ?doi=10.xxx/yyy, ?identifierName=doi&identifierValue=10.xxx)
+    const doiFromParams = extractDoiFromQueryParams(titleLink.href);
+    if (doiFromParams) return { doi: doiFromParams, confident: true };
+    // DOI may be embedded in path (e.g. /edit/10.xxx/yyy/slug)
+    try {
+      const decoded = decodeURIComponent(titleLink.href);
+      const m = decoded.match(/\b(10\.\d{4,}(?:\.\d+)*\/[^\s&"'#?/]+)/);
+      if (m) {
+        const embeddedDoi = normaliseDOI(m[1]);
+        if (embeddedDoi) return { doi: embeddedDoi, confident: false };
+      }
+    } catch { /* invalid encoding — skip */ }
   }
 
   // 2. Author/source line text
@@ -336,18 +385,62 @@ function extractDoiFromScholarRow(row: HTMLElement): DoiString | null {
     );
     if (match) {
       const doi = normaliseDOI(match[1]);
-      if (doi) return doi;
+      if (doi) return { doi, confident: true };
     }
   }
 
-  // 3. Any link containing doi.org
+  // 3. Any link containing doi.org — inherently trustworthy
   const links = row.querySelectorAll<HTMLAnchorElement>("a[href]");
   for (const link of links) {
     if (link.href.includes("doi.org/")) {
       const doi = normaliseDOI(link.href);
-      if (doi) return doi;
+      if (doi) return { doi, confident: true };
     }
   }
 
+  // 4. DOI in query params of any link (explicitly labelled → confident)
+  for (const link of links) {
+    const paramDoi = extractDoiFromQueryParams(link.href);
+    if (paramDoi) return { doi: paramDoi, confident: true };
+  }
+
+  // 5. DOI embedded in any link URL path (e.g. /edit/10.xxx/yyy/slug)
+  const doiInUrlRe = /\b(10\.\d{4,}(?:\.\d+)*\/[^\s&"'#?/]+)/;
+  for (const link of links) {
+    try {
+      const decoded = decodeURIComponent(link.href);
+      const m = decoded.match(doiInUrlRe);
+      if (m) {
+        const doi = normaliseDOI(m[1]);
+        if (doi) return { doi, confident: false };
+      }
+    } catch { /* invalid encoding */ }
+  }
+
+  return null;
+}
+
+/** Extract a DOI from URL query params where the param name explicitly indicates a DOI. */
+function extractDoiFromQueryParams(href: string): DoiString | null {
+  try {
+    const url = new URL(href);
+    const params = url.searchParams;
+
+    // Direct param: ?doi=10.xxx/yyy
+    for (const key of params.keys()) {
+      if (key.toLowerCase() === "doi") {
+        const doi = normaliseDOI(params.get(key) ?? "");
+        if (doi) return doi;
+      }
+    }
+
+    // Indirect pattern: ?identifierName=doi&identifierValue=10.xxx/yyy
+    const idName = params.get("identifierName") ?? params.get("identifier_name") ?? "";
+    if (idName.toLowerCase() === "doi") {
+      const val = params.get("identifierValue") ?? params.get("identifier_value") ?? "";
+      const doi = normaliseDOI(val);
+      if (doi) return doi;
+    }
+  } catch { /* invalid URL */ }
   return null;
 }
