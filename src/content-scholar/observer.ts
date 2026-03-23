@@ -147,6 +147,7 @@ function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmente
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     color: white;
     background: ${color};
+    opacity: 0.75;
     padding: 2px 10px;
     border-radius: 20px;
     cursor: pointer;
@@ -155,9 +156,13 @@ function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmente
     letter-spacing: 0.02em;
   `;
   if (isAugmented) {
-    pill.innerHTML = `<span style="font-size:12px;font-weight:700;line-height:1;opacity:0.85;">?</span> DOI`;
+    const doiWord = document.createElement("span");
+    doiWord.textContent = "DOI";
+    doiWord.style.cssText = `text-decoration: underline dotted; text-underline-offset: 2px; text-decoration-thickness: 1px;`;
+    pill.appendChild(doiWord);
   } else {
-    pill.textContent = "DOI";
+    const checkSvg = `<svg width="12" height="12" viewBox="0 0 16 16" fill="white" style="display:inline-block;vertical-align:middle;"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path></svg>`;
+    pill.innerHTML = `DOI ${checkSvg}`;
   }
 
   const popover = document.createElement("div");
