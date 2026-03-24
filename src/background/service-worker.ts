@@ -3,8 +3,19 @@ import { lookupDOIs } from "../shared/flora-api";
 import type { DoiString, ReplicationResult } from "../shared/types";
 import type { LookupResponse, SheetFetchResponse } from "../shared/messages";
 import { isLookupRequest, isSheetFetchRequest } from "../shared/messages";
+import { isSetupComplete } from "../shared/settings";
 
 const cache = new SessionCache<ReplicationResult>("flora");
+
+// Open the options page on first install so the user can enter their email
+chrome.runtime.onInstalled.addListener(async (details) => {
+  if (details.reason === "install") {
+    const ready = await isSetupComplete();
+    if (!ready) {
+      chrome.runtime.openOptionsPage();
+    }
+  }
+});
 
 /** In-flight dedup: prevents duplicate API calls for the same DOI */
 const inflight = new Map<DoiString, Promise<ReplicationResult | null>>();
@@ -24,6 +35,15 @@ chrome.runtime.onMessage.addListener(
           } satisfies LookupResponse)
         );
       return true;
+    }
+
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      (message as { type?: string }).type === "FLORA_OPEN_OPTIONS"
+    ) {
+      chrome.runtime.openOptionsPage();
+      return false;
     }
 
     if (isSheetFetchRequest(message)) {

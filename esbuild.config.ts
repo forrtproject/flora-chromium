@@ -38,6 +38,8 @@ const configs: esbuild.BuildOptions[] = [
 function copyStaticAssets() {
   mkdirSync("dist", { recursive: true });
   copyFileSync("src/options/index.html", "dist/options.html");
+  copyFileSync("src/options/styles.css", "dist/styles.css");
+  copyFileSync("assets/forrt-logo.svg", "dist/forrt-logo.svg");
 }
 
 async function build() {

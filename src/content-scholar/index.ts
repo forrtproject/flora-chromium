@@ -1,10 +1,22 @@
 import { observeScholarResults, processScholarResults } from "./observer";
 import { debugLog } from "../shared/debug";
+import { isSetupComplete } from "../shared/settings";
+import { renderSetupPrompt } from "../content-general/injector";
 
-debugLog("Scholar content script loaded");
+(async () => {
+  if (window !== window.top) return;
 
-// Process any results already on the page
-processScholarResults(document);
+  if (!(await isSetupComplete())) {
+    debugLog("Setup incomplete — FLoRA is inactive on Scholar. Open extension options to configure.");
+    renderSetupPrompt();
+    return;
+  }
 
-// Start observing for dynamically loaded results
-observeScholarResults();
+  debugLog("Scholar content script loaded");
+
+  // Process any results already on the page
+  processScholarResults(document);
+
+  // Start observing for dynamically loaded results
+  observeScholarResults();
+})();
