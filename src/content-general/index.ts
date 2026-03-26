@@ -1,5 +1,6 @@
 import { extractDOIs, extractDOIsFromText } from "../shared/doi-extractor";
 import { augmentDOIs } from "../shared/doi-augment";
+import { validateDOIs } from "../shared/doi-validate";
 import { debounce } from "../shared/debounce";
 import type { DoiString, LookupState } from "../shared/types";
 import type { LookupRequest, LookupResponse, SheetFetchRequest, SheetFetchResponse } from "../shared/messages";
@@ -68,12 +69,27 @@ async function run(): Promise<void> {
   }
   debugLog(isSheets ? "Sheets:" : "General:", "Extracted DOIs:", dois.length, dois);
 
+  // Validate extracted DOIs via doi.org — remove invalid ones
+  if (dois.length > 0 && !isSheets) {
+    try {
+      const validation = await validateDOIs(dois);
+      const before = dois.length;
+      dois = dois.filter((doi) => validation.get(doi) !== false);
+      const removed = before - dois.length;
+      if (removed > 0) {
+        debugLog(`Validation: removed ${removed} invalid DOI(s)`);
+      }
+    } catch {
+      // Validation failed — keep all extracted DOIs as-is
+    }
+  }
+
   // Filter out already-processed DOIs
   const newDois = dois.filter((doi) => !processedDois.has(doi));
 
-  // If no new DOIs found directly, try augmenting from page title in the background
+  // If no valid DOIs found, try augmenting from page title in the background
   if (newDois.length === 0 && dois.length === 0) {
-    debugLog("No DOIs found on page, attempting title augmentation");
+    debugLog("No valid DOIs found on page, attempting title augmentation");
     if (!isSheets) augmentFromTitle();
     return;
   }
