@@ -232,19 +232,18 @@ async function fetchSheetDois(): Promise<void> {
   run();
 }
 
-// Gate: skip iframes (ads, embeds, etc.) and require email setup before activating
+// Gate: skip iframes and blocked domains
 (async () => {
   if (window !== window.top) return;
-
-  if (!(await isSetupComplete())) {
-    debugLog("Setup incomplete — FLoRA is inactive. Open extension options to configure.");
-    renderSetupPrompt();
-    return;
-  }
 
   if (await isDomainBlocked(location.hostname)) {
     debugLog("Domain is blocked:", location.hostname);
     return;
+  }
+
+  // Show setup prompt if email not configured (non-blocking — extension still runs)
+  if (!(await isSetupComplete())) {
+    renderSetupPrompt();
   }
 
   // Run immediately — same timing as PubPeer (fires after webNavigation.onCompleted)

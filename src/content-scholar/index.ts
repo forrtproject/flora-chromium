@@ -7,15 +7,13 @@ import { renderSetupPrompt, hideAllFloraUI, showAllFloraUI } from "../content-ge
 (async () => {
   if (window !== window.top) return;
 
-  if (!(await isSetupComplete())) {
-    debugLog("Setup incomplete — FLoRA is inactive on Scholar. Open extension options to configure.");
-    renderSetupPrompt();
-    return;
-  }
-
   if (await isDomainBlocked(location.hostname)) {
     debugLog("Domain is blocked:", location.hostname);
     return;
+  }
+
+  if (!(await isSetupComplete())) {
+    renderSetupPrompt();
   }
 
   debugLog("Scholar content script loaded");

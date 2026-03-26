@@ -38,10 +38,47 @@ const BG = {
   error: "background:#dc2626;",
 } as const;
 
+const REMIND_PILL_STYLE =
+  "all:unset;cursor:pointer;font-size:11px;font-family:inherit;font-weight:500;" +
+  "color:#5f6368;background:#f0f0f0;padding:3px 10px;border-radius:12px;" +
+  "transition:background 0.12s,color 0.12s;";
+
 const SETUP_HOST_ID = "flora-setup-prompt";
 
-export function renderSetupPrompt(): void {
+const SETUP_REMIND_KEY = "flora_setup_remind_after";
+
+async function isSetupPromptSuppressed(): Promise<boolean> {
+  // Dismissed this browser session? (relayed via background service worker)
+  try {
+    const resp = await chrome.runtime.sendMessage({ type: "FLORA_IS_SETUP_DISMISSED" });
+    if (resp?.dismissed) return true;
+  } catch { /* background unavailable */ }
+
+  // Snoozed until a future time?
+  try {
+    const synced = await chrome.storage.sync.get(SETUP_REMIND_KEY);
+    const remindAfter = synced[SETUP_REMIND_KEY] as number | undefined;
+    if (remindAfter && Date.now() < remindAfter) return true;
+  } catch { /* storage unavailable */ }
+
+  return false;
+}
+
+async function dismissSetupForSession(): Promise<void> {
+  try {
+    await chrome.runtime.sendMessage({ type: "FLORA_DISMISS_SETUP" });
+  } catch { /* ignore */ }
+}
+
+async function snoozeSetup(ms: number): Promise<void> {
+  try {
+    await chrome.storage.sync.set({ [SETUP_REMIND_KEY]: Date.now() + ms });
+  } catch { /* ignore */ }
+}
+
+export async function renderSetupPrompt(): Promise<void> {
   if (document.getElementById(SETUP_HOST_ID)) return;
+  if (await isSetupPromptSuppressed()) return;
 
   const host = document.createElement("div");
   host.id = SETUP_HOST_ID;
@@ -63,14 +100,24 @@ export function renderSetupPrompt(): void {
         ">\u00d7</span>
       </div>
       <div style="padding:12px 14px;">
-        <p style="margin:0 0 10px;font-size:13px;color:#3c4043;line-height:1.45;">
-          Add your email in extension settings to activate FLoRA replication tracking.
+        <p style="margin:0 0 6px;font-size:13px;color:#3c4043;line-height:1.45;">
+          Add your email for faster API access to Crossref &amp; OpenAlex DOI resolution.
         </p>
         <button class="flora-setup-open" style="
           all:unset;cursor:pointer;display:block;width:100%;text-align:center;
           padding:8px 0;font-size:13px;font-weight:600;color:#fff;
           background:linear-gradient(135deg,#16a34a,#15803d);border-radius:6px;
         ">Open settings</button>
+        <div style="margin-top:10px;border-top:1px solid #e8e8e8;padding-top:8px;">
+          <div style="font-size:11px;color:#9a9a9a;margin-bottom:5px;">Remind me later</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;" class="flora-remind-options">
+            <button data-ms="600000" style="${REMIND_PILL_STYLE}">10 min</button>
+            <button data-ms="3600000" style="${REMIND_PILL_STYLE}">1 hour</button>
+            <button data-ms="18000000" style="${REMIND_PILL_STYLE}">5 hours</button>
+            <button data-ms="86400000" style="${REMIND_PILL_STYLE}">1 day</button>
+            <button data-ms="604800000" style="${REMIND_PILL_STYLE}">1 week</button>
+          </div>
+        </div>
       </div>
     </div>
     <style>
@@ -82,11 +129,24 @@ export function renderSetupPrompt(): void {
 
   document.body.appendChild(host);
 
-  host.querySelector(".flora-setup-close")?.addEventListener("click", () => host.remove());
+  host.querySelector(".flora-setup-close")?.addEventListener("click", async () => {
+    await dismissSetupForSession();
+    host.remove();
+  });
+
   host.querySelector(".flora-setup-open")?.addEventListener("click", () => {
     chrome.runtime.sendMessage({ type: "FLORA_OPEN_OPTIONS" });
     host.remove();
   });
+
+  for (const btn of host.querySelectorAll<HTMLButtonElement>(".flora-remind-options button")) {
+    btn.addEventListener("click", async () => {
+      const ms = Number(btn.dataset.ms);
+      if (!ms) return;
+      await snoozeSetup(ms);
+      host.remove();
+    });
+  }
 }
 
 export function renderLoadingBanner(): void {
