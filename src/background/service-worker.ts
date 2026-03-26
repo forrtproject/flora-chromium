@@ -46,6 +46,28 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      (message as { type?: string }).type === "FLORA_DISMISS_SETUP"
+    ) {
+      chrome.storage.session.set({ flora_setup_dismissed: true }).then(() => {
+        sendResponse({ ok: true });
+      });
+      return true;
+    }
+
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      (message as { type?: string }).type === "FLORA_IS_SETUP_DISMISSED"
+    ) {
+      chrome.storage.session.get("flora_setup_dismissed").then((result) => {
+        sendResponse({ dismissed: !!result.flora_setup_dismissed });
+      });
+      return true;
+    }
+
     if (isSheetFetchRequest(message)) {
       handleSheetFetch(message.spreadsheetId, message.gid)
         .then(sendResponse)
