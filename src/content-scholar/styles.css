@@ -16,8 +16,8 @@
   color: #fff;
 }
 
-.badge--success { background: #1a7f37; }
-.badge--neutral { background: #656d76; }
+.badge--success { background: #853953; }
+.badge--neutral { background: #612D53; opacity: 0.75; }
 
 .badge-label {
   font-weight: 700;
