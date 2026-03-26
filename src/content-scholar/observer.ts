@@ -107,7 +107,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
         // doi.org confirms this DOI exists → treat as confident
         debugLog(`Scholar resolve [doi.org-validated] "${info.title}" → ${info.extractedDoi}`);
         rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
-        injectDoiLabel(info.row, info.extractedDoi, "#1a7f37", false);
+        injectDoiLabel(info.row, info.extractedDoi, "#853953", false);
       } else {
         if (info.extractedDoi) {
           debugLog(`Scholar: "${info.title}" — extracted ${info.extractedDoi} failed doi.org validation, falling back to augmentation`);
@@ -135,7 +135,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
           // Cross-validated: URL extraction matches augmentation → green ✓
           debugLog(`Scholar resolve [cross-validated] "${info.title}" → ${info.extractedDoi} (extracted = augmented)`);
           rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
-          injectDoiLabel(info.row, info.extractedDoi, "#1a7f37", false);
+          injectDoiLabel(info.row, info.extractedDoi, "#853953", false);
         } else if (info.extractedDoi && augmentedDoi && augmentedDoi !== info.extractedDoi) {
           // Conflict: prefer augmented DOI → gray (augmented)
           debugLog(`Scholar resolve [conflict] "${info.title}" → using augmented ${augmentedDoi} (extracted was ${info.extractedDoi})`);
@@ -151,7 +151,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
           if (valid) {
             debugLog(`Scholar resolve [extracted-revalidated] "${info.title}" → ${info.extractedDoi} (doi.org confirmed on retry)`);
             rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
-            injectDoiLabel(info.row, info.extractedDoi, "#1a7f37", false);
+            injectDoiLabel(info.row, info.extractedDoi, "#853953", false);
           } else {
             // Invalid DOI — show nothing rather than an incorrect DOI
             debugLog(`Scholar resolve [extracted-invalid] "${info.title}" → ${info.extractedDoi} rejected (doi.org says invalid)`);
