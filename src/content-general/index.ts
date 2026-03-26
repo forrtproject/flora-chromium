@@ -3,7 +3,7 @@ import { augmentDOIs } from "../shared/doi-augment";
 import { debounce } from "../shared/debounce";
 import type { DoiString, LookupState } from "../shared/types";
 import type { LookupRequest, LookupResponse, SheetFetchRequest, SheetFetchResponse } from "../shared/messages";
-import { renderErrorBanner, renderMatchedBanner, removeBanner, renderInlineBadges, renderSheetsModal, removeSheetsModal, renderSetupPrompt, hideAllFloraUI, showAllFloraUI } from "./injector";
+import { renderErrorBanner, renderMatchedBanner, removeBanner, renderInlineBadges, renderSheetsModal, removeSheetsModal, renderSetupPrompt, hideAllFloraUI, showAllFloraUI, type SheetsModalCallbacks } from "./injector";
 import { debugLog, debugWarn } from "../shared/debug";
 import { isSetupComplete } from "../shared/settings";
 import { isDomainBlocked } from "../shared/domains";
@@ -130,7 +130,9 @@ async function run(): Promise<void> {
 
     if (matched.length > 0) {
       if (isSheets) {
-        renderSheetsModal(matched);
+        if (!isSheetsModalSuppressed()) {
+          renderSheetsModal(matched, sheetsModalCallbacks);
+        }
       } else {
         renderMatchedBanner(matched);
       }
@@ -157,6 +159,33 @@ const debouncedRun = debounce(run, 1000);
 
 // DOIs extracted from the full sheet CSV (populated asynchronously on Sheets)
 let sheetCsvDois: DoiString[] = [];
+
+// ── Sheets modal: per-gid dismiss tracking & snooze ──
+/** Gids where the user explicitly dismissed the modal (session only). */
+const dismissedGids = new Set<string>();
+/** Timestamp until which all Sheets modals are snoozed. */
+let snoozeUntil = 0;
+
+function currentGid(): string {
+  return parseSheetsUrl(location.href)?.gid ?? "0";
+}
+
+function isSheetsModalSuppressed(): boolean {
+  if (Date.now() < snoozeUntil) return true;
+  if (dismissedGids.has(currentGid())) return true;
+  return false;
+}
+
+const sheetsModalCallbacks: SheetsModalCallbacks = {
+  onDismiss() {
+    dismissedGids.add(currentGid());
+    debugLog("Sheets modal dismissed for gid:", currentGid());
+  },
+  onSnooze() {
+    snoozeUntil = Date.now() + 10 * 60 * 1000; // 10 minutes
+    debugLog("Sheets modal snoozed until", new Date(snoozeUntil).toLocaleTimeString());
+  },
+};
 
 /**
  * Parse the spreadsheet ID and gid from a Google Sheets URL.
@@ -255,10 +284,10 @@ async function fetchSheetDois(): Promise<void> {
   // fire hashchange/popstate, so we poll for gid changes instead.
   let lastGid = parseSheetsUrl(location.href)?.gid ?? "0";
   setInterval(() => {
-    const currentGid = parseSheetsUrl(location.href)?.gid ?? "0";
-    if (currentGid !== lastGid) {
-      lastGid = currentGid;
-      console.log("[FLoRA:Sheets] Tab change detected (gid:", currentGid, ") — re-fetching…");
+    const nowGid = parseSheetsUrl(location.href)?.gid ?? "0";
+    if (nowGid !== lastGid) {
+      lastGid = nowGid;
+      console.log("[FLoRA:Sheets] Tab change detected (gid:", nowGid, ") — re-fetching…");
       sheetFetchGen++;
       sheetCsvDois = [];
       processedDois.clear();

@@ -329,8 +329,14 @@ function escapeHtml(s: string): string {
 
 const SHEETS_MODAL_ID = "flora-sheets-modal";
 
+export interface SheetsModalCallbacks {
+  onDismiss: () => void;
+  onSnooze: () => void;
+}
+
 export function renderSheetsModal(
-  matched: { doi: string; result: ReplicationResult }[]
+  matched: { doi: string; result: ReplicationResult }[],
+  callbacks?: SheetsModalCallbacks
 ): void {
   if (matched.length === 0) {
     removeSheetsModal();
@@ -425,7 +431,12 @@ export function renderSheetsModal(
       </div>
 
       <!-- Footer -->
-      <div style="padding:10px 16px 14px;display:flex;justify-content:flex-end;gap:8px;">
+      <div style="padding:10px 16px 14px;display:flex;align-items:center;gap:8px;">
+        <button class="flora-modal-snooze" title="Snooze for 10 minutes" style="
+          all:unset;cursor:pointer;padding:7px 8px;font-size:0;line-height:0;
+          color:#5f6368;border-radius:6px;transition:color 0.15s;
+          display:flex;align-items:center;justify-content:center;margin-right:auto;
+        "><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
         <button class="flora-modal-dismiss" style="
           all:unset;cursor:pointer;padding:7px 18px;font-size:13px;font-weight:500;
           color:#5f6368;border-radius:6px;transition:background 0.15s;
@@ -446,10 +457,19 @@ export function renderSheetsModal(
 
   document.body.appendChild(host);
 
-  // Wire up close / dismiss buttons
+  // Wire up close / dismiss
   for (const el of host.querySelectorAll(".flora-modal-close, .flora-modal-dismiss")) {
-    el.addEventListener("click", () => removeSheetsModal());
+    el.addEventListener("click", () => {
+      removeSheetsModal();
+      callbacks?.onDismiss();
+    });
   }
+
+  // Wire up snooze
+  host.querySelector(".flora-modal-snooze")?.addEventListener("click", () => {
+    removeSheetsModal();
+    callbacks?.onSnooze();
+  });
 }
 
 export function removeSheetsModal(): void {
