@@ -254,9 +254,14 @@ function adjustPageForBanner(): void {
   // Make space for the banner at the top of the body
   document.body.style.setProperty("padding-top", `${bannerHeight}px`, "important");
 
-  // Gather fixed elements and push them down
+  // Gather fixed elements and push them down (skip our own UI elements)
+  const setupPrompt = document.getElementById(SETUP_HOST_ID);
   const fixedElements = Array.from(document.querySelectorAll<HTMLElement>("*")).filter(
-    (el) => el !== banner && el !== inner && window.getComputedStyle(el).position === "fixed"
+    (el) =>
+      el !== banner &&
+      el !== inner &&
+      !setupPrompt?.contains(el) &&
+      window.getComputedStyle(el).position === "fixed"
   );
   for (const el of fixedElements) {
     if (isSheets) {
