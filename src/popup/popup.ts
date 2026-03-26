@@ -24,10 +24,10 @@ function showStatus(msg: string, type: "success" | "error"): void {
 
 function updateBlockUI(): void {
   if (blocked) {
-    blockLabel.textContent = "Remove from blacklist";
+    blockLabel.textContent = "Enable on this domain";
     blockBtn.classList.add("is-blocked");
   } else {
-    blockLabel.textContent = "Blacklist this domain";
+    blockLabel.textContent = "Disable on this domain";
     blockBtn.classList.remove("is-blocked");
   }
 }
