@@ -11,23 +11,24 @@
 }
 
 :root {
-  --primary: #3e3e3e;
-  --primary-light: #006080;
-  --primary-faint: #edf5f8;
-  --neutral: #3e3e3e;
-  --surface: #f4f3ee;
-  --surface-alt: #eae7de;
+  --primary: #853953;
+  --primary-dark: #612D53;
+  --primary-light: #a04d6b;
+  --primary-faint: #f9f0f4;
+  --neutral: #2C2C2C;
+  --surface: #F3F4F4;
+  --surface-alt: #e8e9e9;
   --white: #fff;
-  --success: #1a7a3a;
-  --success-bg: #e8f5ec;
-  --success-border: #b8dfca;
+  --success: #853953;
+  --success-bg: #f9f0f4;
+  --success-border: #d4a5b8;
   --error: #b42318;
   --error-bg: #fef0ee;
-  --text: #1a1a1a;
+  --text: #2C2C2C;
   --text-secondary: #4a4a4a;
   --text-muted: #888;
-  --border: #d8d4ca;
-  --border-light: #e8e5dc;
+  --border: #d0d1d1;
+  --border-light: #e0e1e1;
   --font-display: "Domine", Georgia, serif;
   --font-body: "Source Sans 3", "Segoe UI", sans-serif;
   --radius: 6px;
@@ -54,7 +55,7 @@ body {
    TOP BAR
 ═══════════════════════════════ */
 .topbar {
-  background: var(--primary);
+  background: var(--neutral);
   color: var(--white);
   display: flex;
   align-items: center;
@@ -334,7 +335,7 @@ label {
 
 .ab-input:focus {
   border-color: var(--primary-light);
-  box-shadow: 0 0 0 3px rgba(0, 96, 128, 0.08);
+  box-shadow: 0 0 0 3px rgba(133, 57, 83, 0.1);
 }
 
 .ab-input::placeholder {
@@ -362,15 +363,17 @@ label {
   background: var(--surface);
 }
 
-.ab-btn-primary {
+.ab-btn-primary,
+.ab-btn.accent {
   background: var(--primary);
   color: var(--white);
   border-color: var(--primary);
 }
 
-.ab-btn-primary:hover {
-  background: #2e2e2e;
-  border-color: #2e2e2e;
+.ab-btn-primary:hover,
+.ab-btn.accent:hover {
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
 }
 
 .ab-btn:disabled {

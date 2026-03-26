@@ -33,7 +33,7 @@ const CLOSE_STYLE =
 
 const BG = {
   loading: "background:#6b7280;",
-  success: "background:#16a34a;",
+  success: "background:#853953;",
   warning: "background:#ea580c;",
   error: "background:#dc2626;",
 } as const;
@@ -90,7 +90,7 @@ export async function renderSetupPrompt(): Promise<void> {
       font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
       overflow:hidden;animation:floraFadeIn 0.3s ease-out;
     ">
-      <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:10px 14px;display:flex;align-items:center;gap:8px;">
+      <div style="background:linear-gradient(135deg,#853953,#612D53);padding:10px 14px;display:flex;align-items:center;gap:8px;">
         <span style="color:#fff;font-weight:700;font-size:13px;background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:5px;">FLoRA</span>
         <span style="color:#fff;font-size:12px;font-weight:500;flex:1;">Setup Required</span>
         <span class="flora-setup-close" role="button" tabindex="0" aria-label="Close" style="
@@ -106,7 +106,7 @@ export async function renderSetupPrompt(): Promise<void> {
         <button class="flora-setup-open" style="
           all:unset;cursor:pointer;display:block;width:100%;text-align:center;
           padding:8px 0;font-size:13px;font-weight:600;color:#fff;
-          background:linear-gradient(135deg,#16a34a,#15803d);border-radius:6px;
+          background:linear-gradient(135deg,#853953,#612D53);border-radius:6px;
         ">Open settings</button>
         <div style="margin-top:10px;border-top:1px solid #e8e8e8;padding-top:8px;">
           <div style="font-size:11px;color:#9a9a9a;margin-bottom:5px;">Remind me later</div>
@@ -450,7 +450,7 @@ export function renderSheetsModal(
       overflow:hidden;animation:floraSlideIn 0.25s ease-out;
     ">
       <!-- Green accent header -->
-      <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:14px 16px;display:flex;align-items:center;gap:10px;">
+      <div style="background:linear-gradient(135deg,#853953,#612D53);padding:14px 16px;display:flex;align-items:center;gap:10px;">
         <span style="
           background:rgba(255,255,255,0.2);color:#fff;font-weight:700;font-size:13px;
           padding:4px 10px;border-radius:6px;letter-spacing:0.3px;
@@ -474,18 +474,18 @@ export function renderSheetsModal(
         <!-- Stat cards -->
         <div style="display:flex;gap:10px;margin-bottom:4px;">
           <div style="
-            flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+            flex:1;background:#f9f0f4;border:1px solid #d4a5b8;border-radius:8px;
             padding:12px;text-align:center;
           ">
-            <div data-flora-repl-count style="font-size:22px;font-weight:600;color:#16a34a;line-height:1;">${totalRepl}</div>
-            <div data-flora-repl-label style="font-size:11px;color:#15803d;margin-top:4px;font-weight:500;">Replication${totalRepl !== 1 ? "s" : ""}</div>
+            <div data-flora-repl-count style="font-size:22px;font-weight:600;color:#853953;line-height:1;">${totalRepl}</div>
+            <div data-flora-repl-label style="font-size:11px;color:#612D53;margin-top:4px;font-weight:500;">Replication${totalRepl !== 1 ? "s" : ""}</div>
           </div>
           <div style="
-            flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;
+            flex:1;background:#f9f0f4;border:1px solid #d4a5b8;border-radius:8px;
             padding:12px;text-align:center;
           ">
-            <div data-flora-repro-count style="font-size:22px;font-weight:600;color:#16a34a;line-height:1;">${totalRepro}</div>
-            <div data-flora-repro-label style="font-size:11px;color:#15803d;margin-top:4px;font-weight:500;">Reproduction${totalRepro !== 1 ? "s" : ""}</div>
+            <div data-flora-repro-count style="font-size:22px;font-weight:600;color:#853953;line-height:1;">${totalRepro}</div>
+            <div data-flora-repro-label style="font-size:11px;color:#612D53;margin-top:4px;font-weight:500;">Reproduction${totalRepro !== 1 ? "s" : ""}</div>
           </div>
         </div>
       </div>
@@ -503,7 +503,7 @@ export function renderSheetsModal(
         ">Dismiss</button>
         <a data-flora-details-link href="https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}" target="_blank" rel="noopener" style="
           all:unset;cursor:pointer;padding:7px 18px;font-size:13px;font-weight:500;
-          color:#fff;background:linear-gradient(135deg,#16a34a,#15803d);border-radius:6px;text-align:center;
+          color:#fff;background:linear-gradient(135deg,#853953,#612D53);border-radius:6px;text-align:center;
         ">View details</a>
       </div>
     </div>

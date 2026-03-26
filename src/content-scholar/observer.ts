@@ -70,7 +70,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
     // Confident extractions (doi.org URLs, explicit text) → green immediately
     if (extraction?.confident) {
       rowDois.push({ row, doi: extraction.doi, source: "extracted" });
-      injectDoiLabel(row, extraction.doi, "#1a7f37", false);
+      injectDoiLabel(row, extraction.doi, "#853953", false);
     } else {
       // Non-confident or no extraction — collect for augmentation cross-check
       rowInfos.push({
@@ -100,7 +100,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
       if (info.extractedDoi && augmentedDoi === info.extractedDoi) {
         // Cross-validated: URL extraction matches augmentation → green ✓
         rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
-        injectDoiLabel(info.row, info.extractedDoi, "#1a7f37", false);
+        injectDoiLabel(info.row, info.extractedDoi, "#853953", false);
       } else if (info.extractedDoi && augmentedDoi && augmentedDoi !== info.extractedDoi) {
         // Conflict: prefer augmented DOI → gray (augmented)
         debugLog("DOI conflict — extracted:", info.extractedDoi, "augmented:", augmentedDoi, "— using augmented");
@@ -256,7 +256,7 @@ function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmente
     e.stopPropagation();
     navigator.clipboard.writeText(doi).then(() => {
       copyBtn.innerHTML = checkSvg;
-      copyBtn.style.color = "#1a7f37";
+      copyBtn.style.color = "#853953";
       setTimeout(() => {
         copyBtn.innerHTML = clipboardSvg;
         copyBtn.style.color = "#656d76";
