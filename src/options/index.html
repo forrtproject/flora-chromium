@@ -125,11 +125,58 @@
             <div class="info-section">
               <p class="hint">
                 Your email is only sent as a <code>mailto</code> query parameter
-                to Crossref &amp; OpenAlex for polite API access. It is never
-                stored on any external server.
+                to Crossref &amp; OpenAlex for polite API access.
               </p>
               <p id="status-msg" class="status" hidden></p>
             </div>
+          </div>
+
+          <!-- ═══ BLOCKED DOMAINS ═══ -->
+          <div class="detail-card" style="margin-top: 1.25rem">
+            <div class="dh">
+              <div class="dh-label">Blocked Domains</div>
+              <h2 class="dh-title">Site Blocklist</h2>
+              <div class="dh-authors">
+                FLoRA runs on all websites by default. Add domains here to
+                prevent FLoRA from scanning them.
+              </div>
+            </div>
+
+            <!-- Add blocked domain -->
+            <div class="action-bar domain-add-bar">
+              <div class="ab-group">
+                <label class="ab-label" for="domain-input">Domain</label>
+                <input
+                  id="domain-input"
+                  type="text"
+                  class="ab-input"
+                  placeholder="example.com"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </div>
+              <div class="ab-sep"></div>
+              <div class="ab-group">
+                <button type="button" id="add-domain-btn" class="ab-btn accent">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Block
+                </button>
+              </div>
+            </div>
+
+            <!-- Blocked domain list -->
+            <div id="domain-list" class="domain-list"></div>
+
+            <p id="domain-status-msg" class="status domain-status" hidden></p>
           </div>
         </div>
       </div>

@@ -455,3 +455,37 @@ export function renderSheetsModal(
 export function removeSheetsModal(): void {
   document.getElementById(SHEETS_MODAL_ID)?.remove();
 }
+
+// ──────────────────────────────────────────────
+// Hide / show ALL FLoRA UI (popup toggle)
+// ──────────────────────────────────────────────
+
+export function hideAllFloraUI(): void {
+  const banner = document.getElementById(BANNER_HOST_ID);
+  if (banner) banner.style.display = "none";
+
+  const modal = document.getElementById(SHEETS_MODAL_ID);
+  if (modal) modal.style.display = "none";
+
+  for (const el of document.querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)) {
+    el.style.display = "none";
+  }
+
+  const setup = document.getElementById(SETUP_HOST_ID);
+  if (setup) setup.style.display = "none";
+}
+
+export function showAllFloraUI(): void {
+  const banner = document.getElementById(BANNER_HOST_ID);
+  if (banner) banner.style.display = "";
+
+  const modal = document.getElementById(SHEETS_MODAL_ID);
+  if (modal) modal.style.display = "";
+
+  for (const el of document.querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)) {
+    el.style.display = "";
+  }
+
+  const setup = document.getElementById(SETUP_HOST_ID);
+  if (setup) setup.style.display = "";
+}

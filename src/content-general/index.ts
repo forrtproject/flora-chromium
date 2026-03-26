@@ -3,9 +3,10 @@ import { augmentDOIs } from "../shared/doi-augment";
 import { debounce } from "../shared/debounce";
 import type { DoiString, LookupState } from "../shared/types";
 import type { LookupRequest, LookupResponse, SheetFetchRequest, SheetFetchResponse } from "../shared/messages";
-import { renderErrorBanner, renderMatchedBanner, removeBanner, renderInlineBadges, renderSheetsModal, removeSheetsModal, renderSetupPrompt } from "./injector";
+import { renderErrorBanner, renderMatchedBanner, removeBanner, renderInlineBadges, renderSheetsModal, removeSheetsModal, renderSetupPrompt, hideAllFloraUI, showAllFloraUI } from "./injector";
 import { debugLog, debugWarn } from "../shared/debug";
 import { isSetupComplete } from "../shared/settings";
+import { isDomainBlocked } from "../shared/domains";
 
 const pageState = new Map<DoiString, LookupState>();
 const processedDois = new Set<DoiString>();
@@ -153,6 +154,7 @@ async function run(): Promise<void> {
 const isSheets = location.href.includes("docs.google.com/spreadsheets");
 const debouncedRun = debounce(run, 1000);
 
+
 // DOIs extracted from the full sheet CSV (populated asynchronously on Sheets)
 let sheetCsvDois: DoiString[] = [];
 
@@ -211,6 +213,11 @@ async function fetchSheetDois(): Promise<void> {
     return;
   }
 
+  if (await isDomainBlocked(location.hostname)) {
+    debugLog("Domain is blocked:", location.hostname);
+    return;
+  }
+
   // Run immediately — same timing as PubPeer (fires after webNavigation.onCompleted)
   debouncedRun();
 
@@ -263,3 +270,24 @@ async function fetchSheetDois(): Promise<void> {
 }
 
 })();
+
+// Track whether the popup has hidden FLoRA UI on this page (session only)
+let floraHidden = false;
+
+// Listen for popup messages (works regardless of gate checks above)
+chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  if (typeof message !== "object" || message === null) return;
+  const type = (message as { type?: string }).type;
+
+  if (type === "FLORA_HIDE_UI") {
+    floraHidden = true;
+    hideAllFloraUI();
+    sendResponse({ ok: true });
+  } else if (type === "FLORA_SHOW_UI") {
+    floraHidden = false;
+    showAllFloraUI();
+    sendResponse({ ok: true });
+  } else if (type === "FLORA_GET_STATE") {
+    sendResponse({ hidden: floraHidden });
+  }
+});

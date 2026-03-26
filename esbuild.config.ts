@@ -33,12 +33,19 @@ const configs: esbuild.BuildOptions[] = [
     entryPoints: ["src/options/options.ts"],
     outfile: "dist/options.js",
   },
+  {
+    ...sharedOptions,
+    entryPoints: ["src/popup/popup.ts"],
+    outfile: "dist/popup.js",
+  },
 ];
 
 function copyStaticAssets() {
   mkdirSync("dist", { recursive: true });
   copyFileSync("src/options/index.html", "dist/options.html");
   copyFileSync("src/options/styles.css", "dist/styles.css");
+  copyFileSync("src/popup/popup.html", "dist/popup.html");
+  copyFileSync("src/popup/popup.css", "dist/popup.css");
   copyFileSync("assets/forrt-logo.svg", "dist/forrt-logo.svg");
 }
 
