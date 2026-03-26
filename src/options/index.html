@@ -1,13 +1,212 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>FLoRA Options</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <h1>FLoRA Settings</h1>
-  <div id="options-root"></div>
-  <script src="options.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FLoRA — Setup</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Domine:wght@400;500;600;700&family=Source+Sans+3:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- ═══ TOP BAR ═══ -->
+    <nav class="topbar">
+      <div class="topbar-left">
+        <a
+          class="topbar-brand"
+          href="https://forrt.org/apps/fred_explorer.html"
+          target="_blank"
+          rel="noopener"
+        >
+          <img
+            class="topbar-icon"
+            src="forrt-logo.svg"
+            alt="FORRT"
+            style="width: 20px; height: 20px"
+          />
+          <div class="topbar-name">
+            <strong>FReD</strong>
+            <span>Replication Hub</span>
+          </div>
+        </a>
+      </div>
+      <div class="topbar-right">
+        <a
+          class="topbar-link"
+          href="https://forrt.org/about/us/"
+          target="_blank"
+          rel="noopener"
+          >About</a
+        >
+        <a
+          class="topbar-link"
+          href="https://forrt.org/apps/fred_explorer.html"
+          target="_blank"
+          rel="noopener"
+          >FReD Explorer</a
+        >
+      </div>
+    </nav>
+
+    <!-- ═══ MAIN LAYOUT ═══ -->
+    <div class="main-layout">
+      <div class="right-panel">
+        <div class="detail-wrap">
+          <div class="detail-card">
+            <!-- Header -->
+            <div class="dh">
+              <div class="dh-label">Extension Setup</div>
+              <h1 class="dh-title">FLoRA &mdash; Replication Tracker</h1>
+              <div class="dh-authors">
+                Configure your browser extension to start surfacing replication
+                data on every article you read.
+              </div>
+
+              <div class="dh-apa">
+                <div class="dh-apa-label">Why an Email?</div>
+                <div class="dh-apa-text">
+                  FLoRA queries the
+                  <a
+                    href="https://api.crossref.org"
+                    target="_blank"
+                    rel="noopener"
+                    >Crossref</a
+                  >
+                  and
+                  <a
+                    href="https://api.openalex.org"
+                    target="_blank"
+                    rel="noopener"
+                    >OpenAlex</a
+                  >
+                  APIs to resolve article DOIs. Both services request a contact
+                  email for their polite-access pool &mdash; faster rate limits,
+                  never used for tracking.
+                </div>
+              </div>
+            </div>
+
+            <!-- Action bar with form -->
+            <form id="settings-form">
+              <div class="action-bar">
+                <div class="ab-group">
+                  <label class="ab-label" for="email-input">Email</label>
+                  <input
+                    id="email-input"
+                    type="email"
+                    class="ab-input"
+                    placeholder="you@university.edu"
+                    required
+                    autocomplete="email"
+                  />
+                </div>
+                <div class="ab-sep"></div>
+                <div class="ab-group">
+                  <button type="submit" id="save-btn" class="ab-btn accent">
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                    Save &amp; Activate
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            <!-- Info section -->
+            <div class="info-section">
+              <p class="hint">
+                Your email is only sent as a <code>mailto</code> query parameter
+                to Crossref &amp; OpenAlex for polite API access.
+              </p>
+              <p id="status-msg" class="status" hidden></p>
+            </div>
+          </div>
+
+          <!-- ═══ BLOCKED DOMAINS ═══ -->
+          <div class="detail-card" style="margin-top: 1.25rem">
+            <div class="dh">
+              <div class="dh-label">Blocked Domains</div>
+              <h2 class="dh-title">Site Blocklist</h2>
+              <div class="dh-authors">
+                FLoRA runs on all websites by default. Add domains here to
+                prevent FLoRA from scanning them.
+              </div>
+            </div>
+
+            <!-- Add blocked domain -->
+            <div class="action-bar domain-add-bar">
+              <div class="ab-group">
+                <label class="ab-label" for="domain-input">Domain</label>
+                <input
+                  id="domain-input"
+                  type="text"
+                  class="ab-input"
+                  placeholder="example.com"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </div>
+              <div class="ab-sep"></div>
+              <div class="ab-group">
+                <button type="button" id="add-domain-btn" class="ab-btn accent">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Block
+                </button>
+              </div>
+            </div>
+
+            <!-- Blocked domain list -->
+            <div id="domain-list" class="domain-list"></div>
+
+            <p id="domain-status-msg" class="status domain-status" hidden></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ FOOTER ═══ -->
+    <div class="footer-bar">
+      <span
+        >FORRT &middot; Framework for Open and Reproducible Research
+        Training</span
+      >
+      <div>
+        <a href="https://forrt.org/about/us/" target="_blank" rel="noopener"
+          >About</a
+        >
+        <a
+          href="https://forrt.org/apps/fred_explorer.html"
+          target="_blank"
+          rel="noopener"
+          >FReD Explorer</a
+        >
+        <a
+          href="https://forrt.org/about/community/"
+          target="_blank"
+          rel="noopener"
+          >Contact</a
+        >
+      </div>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
 </html>

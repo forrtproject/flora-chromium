@@ -38,6 +38,57 @@ const BG = {
   error: "background:#dc2626;",
 } as const;
 
+const SETUP_HOST_ID = "flora-setup-prompt";
+
+export function renderSetupPrompt(): void {
+  if (document.getElementById(SETUP_HOST_ID)) return;
+
+  const host = document.createElement("div");
+  host.id = SETUP_HOST_ID;
+  host.innerHTML = `
+    <div style="
+      position:fixed;bottom:20px;right:20px;z-index:2147483647;
+      max-width:320px;background:#fff;border-radius:10px;
+      box-shadow:0 4px 20px rgba(0,0,0,0.15),0 1px 4px rgba(0,0,0,0.08);
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+      overflow:hidden;animation:floraFadeIn 0.3s ease-out;
+    ">
+      <div style="background:linear-gradient(135deg,#16a34a,#15803d);padding:10px 14px;display:flex;align-items:center;gap:8px;">
+        <span style="color:#fff;font-weight:700;font-size:13px;background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:5px;">FLoRA</span>
+        <span style="color:#fff;font-size:12px;font-weight:500;flex:1;">Setup Required</span>
+        <span class="flora-setup-close" role="button" tabindex="0" aria-label="Close" style="
+          cursor:pointer;color:rgba(255,255,255,0.7);font-size:18px;line-height:1;
+          width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+          border-radius:50%;
+        ">\u00d7</span>
+      </div>
+      <div style="padding:12px 14px;">
+        <p style="margin:0 0 10px;font-size:13px;color:#3c4043;line-height:1.45;">
+          Add your email in extension settings to activate FLoRA replication tracking.
+        </p>
+        <button class="flora-setup-open" style="
+          all:unset;cursor:pointer;display:block;width:100%;text-align:center;
+          padding:8px 0;font-size:13px;font-weight:600;color:#fff;
+          background:linear-gradient(135deg,#16a34a,#15803d);border-radius:6px;
+        ">Open settings</button>
+      </div>
+    </div>
+    <style>
+      @keyframes floraFadeIn {
+        from { opacity:0; transform:translateY(8px); }
+        to { opacity:1; transform:translateY(0); }
+      }
+    </style>`;
+
+  document.body.appendChild(host);
+
+  host.querySelector(".flora-setup-close")?.addEventListener("click", () => host.remove());
+  host.querySelector(".flora-setup-open")?.addEventListener("click", () => {
+    chrome.runtime.sendMessage({ type: "FLORA_OPEN_OPTIONS" });
+    host.remove();
+  });
+}
+
 export function renderLoadingBanner(): void {
   const host = ensureBannerHost();
   host.innerHTML = `
@@ -403,4 +454,38 @@ export function renderSheetsModal(
 
 export function removeSheetsModal(): void {
   document.getElementById(SHEETS_MODAL_ID)?.remove();
+}
+
+// ──────────────────────────────────────────────
+// Hide / show ALL FLoRA UI (popup toggle)
+// ──────────────────────────────────────────────
+
+export function hideAllFloraUI(): void {
+  const banner = document.getElementById(BANNER_HOST_ID);
+  if (banner) banner.style.display = "none";
+
+  const modal = document.getElementById(SHEETS_MODAL_ID);
+  if (modal) modal.style.display = "none";
+
+  for (const el of document.querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)) {
+    el.style.display = "none";
+  }
+
+  const setup = document.getElementById(SETUP_HOST_ID);
+  if (setup) setup.style.display = "none";
+}
+
+export function showAllFloraUI(): void {
+  const banner = document.getElementById(BANNER_HOST_ID);
+  if (banner) banner.style.display = "";
+
+  const modal = document.getElementById(SHEETS_MODAL_ID);
+  if (modal) modal.style.display = "";
+
+  for (const el of document.querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)) {
+    el.style.display = "";
+  }
+
+  const setup = document.getElementById(SETUP_HOST_ID);
+  if (setup) setup.style.display = "";
 }

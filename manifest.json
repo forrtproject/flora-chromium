@@ -5,8 +5,12 @@
   "description": "Surfaces replication and reproduction data from the FLoRA database on academic article pages and Google Scholar.",
   "minimum_chrome_version": "116",
   "permissions": [
-    "storage"
+    "storage",
+    "activeTab"
   ],
+  "action": {
+    "default_popup": "dist/popup.html"
+  },
   "host_permissions": [
     "https://rep-api.forrt.org/*",
     "https://api.openalex.org/*",

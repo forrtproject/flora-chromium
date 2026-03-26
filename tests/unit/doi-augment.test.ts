@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
+
+// Mock settings so getUserEmail() returns a valid email
+vi.mock("../../src/shared/settings", () => ({
+  getSettings: vi.fn().mockResolvedValue({ email: "test@example.com" }),
+  isSetupComplete: vi.fn().mockResolvedValue(true),
+}));
+
 import { normalizeTitle, similarity, tokenSetRatio, augmentDOIs } from "../../src/shared/doi-augment";
 
 const OPENALEX_URL = "https://api.openalex.org/works";

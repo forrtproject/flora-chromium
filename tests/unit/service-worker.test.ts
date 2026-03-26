@@ -10,6 +10,12 @@ vi.mock("../../src/shared/flora-api", () => ({
   lookupDOIs: (...args: unknown[]) => mockLookupDOIs(...args),
 }));
 
+// Mock settings
+vi.mock("../../src/shared/settings", () => ({
+  isSetupComplete: vi.fn().mockResolvedValue(true),
+  getSettings: vi.fn().mockResolvedValue({ email: "test@example.com" }),
+}));
+
 // Mock cache
 const cacheStore = new Map<string, unknown>();
 vi.mock("../../src/shared/cache", () => ({

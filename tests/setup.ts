@@ -32,6 +32,10 @@ Object.defineProperty(globalThis, "chrome", {
         addListener: vi.fn(),
         removeListener: vi.fn(),
       },
+      onInstalled: {
+        addListener: vi.fn(),
+      },
+      openOptionsPage: vi.fn(),
     },
   },
   writable: true,

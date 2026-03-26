@@ -1,11 +1,20 @@
 import type { DoiString } from "./types";
 import { normaliseDOI } from "./doi-normalise";
+import { getSettings } from "./settings";
 
 const OPENALEX_BASE = "https://api.openalex.org/works";
 const CROSSREF_BASE = "https://api.crossref.org/works";
 const CACHE_PREFIX = "flora_doi:";
-const DEFAULT_EMAIL = "flora-extension@example.com";
 const MATCH_THRESHOLD_TSR = 88; // token_set_ratio threshold (0–100)
+
+/** Cached email — refreshed once per page/worker lifecycle. */
+let _cachedEmail: string | null = null;
+async function getUserEmail(): Promise<string> {
+  if (_cachedEmail) return _cachedEmail;
+  const { email } = await getSettings();
+  _cachedEmail = email;
+  return email;
+}
 
 /**
  * Normalize a title for comparison: lowercase, strip non-word chars, collapse spaces.
@@ -100,8 +109,10 @@ interface DoiCandidate {
  * Query Crossref for a single title, return the best-matching candidate.
  */
 async function queryCrossref(title: string): Promise<DoiCandidate | null> {
+  const email = await getUserEmail();
+  if (!email) return null;
   const cleaned = cleanTitleForSearch(title);
-  const url = `${CROSSREF_BASE}?query.title=${encodeURIComponent(cleaned)}&rows=5&mailto=${encodeURIComponent(DEFAULT_EMAIL)}`;
+  const url = `${CROSSREF_BASE}?query.title=${encodeURIComponent(cleaned)}&rows=5&mailto=${encodeURIComponent(email)}`;
   const response = await fetch(url);
   if (!response.ok) return null;
 
@@ -136,8 +147,10 @@ async function queryCrossref(title: string): Promise<DoiCandidate | null> {
  * Query OpenAlex for a single title, return the best-matching candidate.
  */
 async function queryOpenAlex(title: string): Promise<DoiCandidate | null> {
+  const email = await getUserEmail();
+  if (!email) return null;
   const cleaned = cleanTitleForSearch(title);
-  const url = `${OPENALEX_BASE}?filter=title.search:${encodeURIComponent(cleaned)}&select=id,doi,title&per_page=5&mailto=${encodeURIComponent(DEFAULT_EMAIL)}`;
+  const url = `${OPENALEX_BASE}?filter=title.search:${encodeURIComponent(cleaned)}&select=id,doi,title&per_page=5&mailto=${encodeURIComponent(email)}`;
 
   const response = await fetch(url);
   if (!response.ok) return null;
