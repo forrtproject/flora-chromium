@@ -1,5 +1,6 @@
 import { normaliseDOI } from "../shared/doi-normalise";
 import { augmentDOIs } from "../shared/doi-augment";
+import { validateDOI, validateDOIs } from "../shared/doi-validate";
 import type { DoiString, DoiSource } from "../shared/types";
 import type { LookupRequest, LookupResponse } from "../shared/messages";
 import { renderScholarBadge } from "./badge";
@@ -69,6 +70,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
 
     // Confident extractions (doi.org URLs, explicit text) → green immediately
     if (extraction?.confident) {
+      debugLog(`Scholar resolve [confident] "${title}" → ${extraction.doi}`);
       rowDois.push({ row, doi: extraction.doi, source: "extracted" });
       injectDoiLabel(row, extraction.doi, "#1a7f37", false);
     } else {
@@ -82,40 +84,87 @@ export async function processScholarResults(doc: Document): Promise<void> {
     }
   }
 
-  // Phase 2: Augment ALL pending titles via OpenAlex to cross-validate
+  // Phase 2: Validate extracted DOIs via doi.org, then augment only what's still unresolved
   if (rowInfos.length > 0) {
-    const titlesToAugment = rowInfos.filter((r) => r.title).map((r) => r.title);
-    let augmented = new Map<string, DoiString | null>();
-    try {
-      if (titlesToAugment.length > 0) {
-        augmented = await augmentDOIs(titlesToAugment);
+    // Step 1: Validate extracted DOIs with doi.org (cheap HEAD-like check)
+    const doisToValidate = rowInfos
+      .filter((r) => r.extractedDoi !== null)
+      .map((r) => r.extractedDoi!);
+
+    let validated = new Map<DoiString, boolean>();
+    if (doisToValidate.length > 0) {
+      try {
+        validated = await validateDOIs(doisToValidate);
+      } catch {
+        // Validation failed — all remain unvalidated
       }
-    } catch {
-      // Augmentation failed — fall through with empty map
     }
 
+    // Separate rows into validated (done) vs still-pending (need augmentation)
+    const pendingInfos: RowInfo[] = [];
     for (const info of rowInfos) {
-      const augmentedDoi = augmented.get(info.title) ?? null;
-
-      if (info.extractedDoi && augmentedDoi === info.extractedDoi) {
-        // Cross-validated: URL extraction matches augmentation → green ✓
+      if (info.extractedDoi && validated.get(info.extractedDoi)) {
+        // doi.org confirms this DOI exists → treat as confident
+        debugLog(`Scholar resolve [doi.org-validated] "${info.title}" → ${info.extractedDoi}`);
         rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
         injectDoiLabel(info.row, info.extractedDoi, "#1a7f37", false);
-      } else if (info.extractedDoi && augmentedDoi && augmentedDoi !== info.extractedDoi) {
-        // Conflict: prefer augmented DOI → gray (augmented)
-        debugLog("DOI conflict — extracted:", info.extractedDoi, "augmented:", augmentedDoi, "— using augmented");
-        rowDois.push({ row: info.row, doi: augmentedDoi, source: "augmented" });
-        injectDoiLabel(info.row, augmentedDoi, "#656d76", true);
-      } else if (info.extractedDoi && !augmentedDoi) {
-        // Extracted but unconfirmed → gray with dotted underline
-        rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
-        injectDoiLabel(info.row, info.extractedDoi, "#656d76", true);
-      } else if (!info.extractedDoi && augmentedDoi) {
-        // No extraction, only augmented → gray with dotted underline
-        rowDois.push({ row: info.row, doi: augmentedDoi, source: "augmented" });
-        injectDoiLabel(info.row, augmentedDoi, "#656d76", true);
+      } else {
+        if (info.extractedDoi) {
+          debugLog(`Scholar: "${info.title}" — extracted ${info.extractedDoi} failed doi.org validation, falling back to augmentation`);
+        }
+        pendingInfos.push(info);
       }
-      // else: neither source found a DOI — no label
+    }
+
+    // Step 2: Augment only the remaining unresolved rows
+    if (pendingInfos.length > 0) {
+      const titlesToAugment = pendingInfos.filter((r) => r.title).map((r) => r.title);
+      let augmented = new Map<string, DoiString | null>();
+      try {
+        if (titlesToAugment.length > 0) {
+          augmented = await augmentDOIs(titlesToAugment);
+        }
+      } catch {
+        // Augmentation failed — fall through with empty map
+      }
+
+      for (const info of pendingInfos) {
+        const augmentedDoi = augmented.get(info.title) ?? null;
+
+        if (info.extractedDoi && augmentedDoi === info.extractedDoi) {
+          // Cross-validated: URL extraction matches augmentation → green ✓
+          debugLog(`Scholar resolve [cross-validated] "${info.title}" → ${info.extractedDoi} (extracted = augmented)`);
+          rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
+          injectDoiLabel(info.row, info.extractedDoi, "#1a7f37", false);
+        } else if (info.extractedDoi && augmentedDoi && augmentedDoi !== info.extractedDoi) {
+          // Conflict: prefer augmented DOI → gray (augmented)
+          debugLog(`Scholar resolve [conflict] "${info.title}" → using augmented ${augmentedDoi} (extracted was ${info.extractedDoi})`);
+          rowDois.push({ row: info.row, doi: augmentedDoi, source: "augmented" });
+          injectDoiLabel(info.row, augmentedDoi, "#656d76", true);
+        } else if (info.extractedDoi && !augmentedDoi) {
+          // Extracted but augmentation found nothing — last-resort doi.org check
+          let valid = false;
+          try {
+            valid = await validateDOI(info.extractedDoi);
+          } catch { /* validation failed */ }
+
+          if (valid) {
+            debugLog(`Scholar resolve [extracted-revalidated] "${info.title}" → ${info.extractedDoi} (doi.org confirmed on retry)`);
+            rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
+            injectDoiLabel(info.row, info.extractedDoi, "#1a7f37", false);
+          } else {
+            // Invalid DOI — show nothing rather than an incorrect DOI
+            debugLog(`Scholar resolve [extracted-invalid] "${info.title}" → ${info.extractedDoi} rejected (doi.org says invalid)`);
+          }
+        } else if (!info.extractedDoi && augmentedDoi) {
+          // No extraction, only augmented → gray with dotted underline
+          debugLog(`Scholar resolve [augmented-only] "${info.title}" → ${augmentedDoi} (no extraction)`);
+          rowDois.push({ row: info.row, doi: augmentedDoi, source: "augmented" });
+          injectDoiLabel(info.row, augmentedDoi, "#656d76", true);
+        } else {
+          debugLog(`Scholar resolve [no-doi] "${info.title}" → no DOI from extraction or augmentation`);
+        }
+      }
     }
   }
 
@@ -358,21 +407,32 @@ interface ExtractionResult {
 }
 
 function extractDoiFromScholarRow(row: HTMLElement): ExtractionResult | null {
+  const title = row.querySelector(".gs_rt")?.textContent?.trim() ?? "(untitled)";
+
   // 1. Title link href — doi.org URL is inherently trustworthy
   const titleLink = row.querySelector<HTMLAnchorElement>(".gs_rt a");
   if (titleLink?.href) {
     const doi = normaliseDOI(titleLink.href);
-    if (doi) return { doi, confident: true };
+    if (doi) {
+      debugLog(`Scholar DOI [title-link doi.org] "${title}" → ${doi} (confident) from ${titleLink.href}`);
+      return { doi, confident: true };
+    }
     // DOI explicitly named in query params (e.g. ?doi=10.xxx/yyy, ?identifierName=doi&identifierValue=10.xxx)
     const doiFromParams = extractDoiFromQueryParams(titleLink.href);
-    if (doiFromParams) return { doi: doiFromParams, confident: true };
+    if (doiFromParams) {
+      debugLog(`Scholar DOI [title-link query-param] "${title}" → ${doiFromParams} (confident) from ${titleLink.href}`);
+      return { doi: doiFromParams, confident: true };
+    }
     // DOI may be embedded in path (e.g. /edit/10.xxx/yyy/slug)
     try {
       const decoded = decodeURIComponent(titleLink.href);
       const m = decoded.match(/\b(10\.\d{4,}(?:\.\d+)*\/[^\s&"'#?/]+)/);
       if (m) {
         const embeddedDoi = normaliseDOI(m[1]);
-        if (embeddedDoi) return { doi: embeddedDoi, confident: false };
+        if (embeddedDoi) {
+          debugLog(`Scholar DOI [title-link embedded-path] "${title}" → ${embeddedDoi} (not confident) from ${titleLink.href}`);
+          return { doi: embeddedDoi, confident: false };
+        }
       }
     } catch { /* invalid encoding — skip */ }
   }
@@ -385,7 +445,10 @@ function extractDoiFromScholarRow(row: HTMLElement): ExtractionResult | null {
     );
     if (match) {
       const doi = normaliseDOI(match[1]);
-      if (doi) return { doi, confident: true };
+      if (doi) {
+        debugLog(`Scholar DOI [author-line text] "${title}" → ${doi} (confident) from "${authorLine.textContent.trim()}"`);
+        return { doi, confident: true };
+      }
     }
   }
 
@@ -394,14 +457,20 @@ function extractDoiFromScholarRow(row: HTMLElement): ExtractionResult | null {
   for (const link of links) {
     if (link.href.includes("doi.org/")) {
       const doi = normaliseDOI(link.href);
-      if (doi) return { doi, confident: true };
+      if (doi) {
+        debugLog(`Scholar DOI [doi.org link] "${title}" → ${doi} (confident) from ${link.href}`);
+        return { doi, confident: true };
+      }
     }
   }
 
   // 4. DOI in query params of any link (explicitly labelled → confident)
   for (const link of links) {
     const paramDoi = extractDoiFromQueryParams(link.href);
-    if (paramDoi) return { doi: paramDoi, confident: true };
+    if (paramDoi) {
+      debugLog(`Scholar DOI [link query-param] "${title}" → ${paramDoi} (confident) from ${link.href}`);
+      return { doi: paramDoi, confident: true };
+    }
   }
 
   // 5. DOI embedded in any link URL path (e.g. /edit/10.xxx/yyy/slug)
@@ -412,11 +481,15 @@ function extractDoiFromScholarRow(row: HTMLElement): ExtractionResult | null {
       const m = decoded.match(doiInUrlRe);
       if (m) {
         const doi = normaliseDOI(m[1]);
-        if (doi) return { doi, confident: false };
+        if (doi) {
+          debugLog(`Scholar DOI [link embedded-path] "${title}" → ${doi} (not confident) from ${link.href}`);
+          return { doi, confident: false };
+        }
       }
     } catch { /* invalid encoding */ }
   }
 
+  debugLog(`Scholar DOI [none] "${title}" → no DOI extracted`);
   return null;
 }
 
