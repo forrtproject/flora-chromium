@@ -1,8 +1,8 @@
 /**
- * Domain blacklist for FLoRA.
+ * Disabled-domain list for FLoRA.
  *
- * FLoRA runs on ALL sites by default.  Users can block specific domains
- * from the options page.  A blocked domain prevents the content script
+ * FLoRA runs on ALL sites by default.  Users can disable specific domains
+ * from the options page.  A disabled domain prevents the content script
  * from scanning/injecting on that hostname (exact match or subdomain).
  */
 
