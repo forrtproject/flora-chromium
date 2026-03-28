@@ -12,11 +12,11 @@
 
 :root {
   --primary: #853953;
-  --primary-dark: #612D53;
+  --primary-dark: #612d53;
   --primary-light: #a04d6b;
   --primary-faint: #f9f0f4;
-  --neutral: #2C2C2C;
-  --surface: #F3F4F4;
+  --neutral: #2c2c2c;
+  --surface: #f3f4f4;
   --surface-alt: #e8e9e9;
   --white: #fff;
   --success: #853953;
@@ -24,7 +24,7 @@
   --success-border: #d4a5b8;
   --error: #b42318;
   --error-bg: #fef0ee;
-  --text: #2C2C2C;
+  --text: #2c2c2c;
   --text-secondary: #4a4a4a;
   --text-muted: #888;
   --border: #d0d1d1;
@@ -80,12 +80,9 @@ body {
   text-decoration: none;
   color: var(--white);
 }
-
 .topbar-icon {
   width: 30px;
   height: 30px;
-  /* border-radius: 6px;
-  object-fit: contain;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
@@ -95,14 +92,8 @@ body {
   font-weight: 700;
   font-size: 14px;
   font-family: var(--font-display);
-  letter-spacing: -0.5px; */
+  letter-spacing: -0.5px;
 }
-/* 
-.topbar-icon {
-  width: 30px;
-  height: 30px;
-  
-} */
 
 .topbar-name {
   display: flex;
