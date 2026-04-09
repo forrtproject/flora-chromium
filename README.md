@@ -11,7 +11,7 @@ When you visit an article page (PubMed, journal websites, preprint servers, etc.
 - **DOI extraction**: Extracts DOIs from meta tags, JSON-LD, link hrefs, visible text, and HTML tables. Handles word-break characters (zero-width spaces, soft hyphens) and validates DOI suffixes to avoid partial matches from split HTML.
 - **DOI augmentation**: When a page or Scholar result doesn't have a DOI in its HTML, FLoRA queries [Crossref](https://www.crossref.org/) and [OpenAlex](https://openalex.org/) to resolve the article title to a DOI via fuzzy matching (token-set-ratio > 88%).
 - **DOI popover**: Each DOI pill has a hover popover showing the full DOI string with a copy-to-clipboard button.
-- **Clicking badges/links**: Opens the [FORRT replication landing page](https://forrt.org/fred_repl_landing_page/) for the relevant DOI(s).
+- **Clicking badges/links**: Opens the [FORRT replication landing page](https://forrt.org/flora-replication-atlas/) for the relevant DOI(s).
 
 ## Installation (developer mode)
 
