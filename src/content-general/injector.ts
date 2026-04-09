@@ -212,7 +212,7 @@ export function renderMatchedBanner(
     <div style="${BANNER_BASE_STYLE}${BG.success}">
       <span style="${LOGO_STYLE}">FLoRA</span>
       <span style="${TEXT_STYLE}">${summary}</span>
-      <a style="${LINK_STYLE}" href="https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}" target="_blank" rel="noopener">View details</a>
+      <a style="${LINK_STYLE}" href="https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(doisParam)}" target="_blank" rel="noopener">View details</a>
       <button style="${CLOSE_STYLE}" aria-label="Close">\u00d7</button>
     </div>`;
   host.querySelector("button")?.addEventListener("click", () => removeBanner());
@@ -354,7 +354,7 @@ export function renderInlineBadges(
 
     const badge = document.createElement("a");
     badge.className = "flora-badge badge--success";
-    badge.href = `https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(r.doi)}`;
+    badge.href = `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(r.doi)}`;
     badge.target = "_blank";
     badge.rel = "noopener";
     badge.innerHTML = `
@@ -439,7 +439,7 @@ export function renderSheetsModal(
     if (replLabelEl) replLabelEl.textContent = `Replication${totalRepl !== 1 ? "s" : ""}`;
     if (reproCountEl) reproCountEl.textContent = String(totalRepro);
     if (reproLabelEl) reproLabelEl.textContent = `Reproduction${totalRepro !== 1 ? "s" : ""}`;
-    if (detailsLink) detailsLink.href = `https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}`;
+    if (detailsLink) detailsLink.href = `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(doisParam)}`;
     return;
   }
 
@@ -506,7 +506,7 @@ export function renderSheetsModal(
           all:unset;cursor:pointer;padding:7px 18px;font-size:13px;font-weight:500;
           color:#5f6368;border-radius:6px;transition:background 0.15s;
         ">Dismiss</button>
-        <a data-flora-details-link href="https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(doisParam)}" target="_blank" rel="noopener" style="
+        <a data-flora-details-link href="https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(doisParam)}" target="_blank" rel="noopener" style="
           all:unset;cursor:pointer;padding:7px 18px;font-size:13px;font-weight:500;
           color:#fff;background:linear-gradient(135deg,#853953,#612D53);border-radius:6px;text-align:center;
         ">View details</a>

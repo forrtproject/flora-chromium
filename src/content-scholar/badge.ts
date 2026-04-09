@@ -40,7 +40,7 @@ export function renderScholarBadge(
 
   const badge = document.createElement("a");
   badge.className = "flora-scholar-badge badge--success";
-  badge.href = `https://forrt.org/fred_repl_landing_page/?doi=${encodeURIComponent(r.doi)}`;
+  badge.href = `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(r.doi)}`;
   badge.target = "_blank";
   badge.rel = "noopener";
   badge.innerHTML = `
