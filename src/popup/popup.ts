@@ -6,12 +6,15 @@ const blockLabel = document.getElementById("block-btn-label")!;
 const hideBtn = document.getElementById("hide-btn")!;
 const hideLabel = document.getElementById("hide-btn-label")!;
 const optionsBtn = document.getElementById("options-btn")!;
+const reportBtn = document.getElementById("report-btn")!;
 const statusEl = document.getElementById("popup-status")!;
 
 let currentDomain = "";
 let blocked = false;
 let hidden = false;
 let activeTabId: number | undefined;
+
+reportBtn.style.display = "none";
 
 function showStatus(msg: string, type: "success" | "error"): void {
   statusEl.textContent = msg;
@@ -48,6 +51,7 @@ async function init(): Promise<void> {
     domainEl.textContent = "No active page";
     blockBtn.style.display = "none";
     hideBtn.style.display = "none";
+    reportBtn.style.display = "none";
     return;
   }
 
@@ -61,11 +65,13 @@ async function init(): Promise<void> {
     domainEl.textContent = "Internal page";
     blockBtn.style.display = "none";
     hideBtn.style.display = "none";
+    reportBtn.style.display = "none";
     return;
   }
 
   blocked = await isDomainBlocked(currentDomain);
   updateBlockUI();
+  reportBtn.style.display = "";
 
   // Ask the content script whether UI is currently hidden
   if (activeTabId != null) {
@@ -118,6 +124,16 @@ hideBtn.addEventListener("click", async () => {
   } catch {
     showStatus("No FLoRA content on this page", "error");
   }
+});
+
+// Report an issue on the current domain
+reportBtn.addEventListener("click", () => {
+  if (!currentDomain) return;
+  const title = encodeURIComponent(`Issue on domain: ${currentDomain}`);
+  const body = encodeURIComponent(`**Domain:** ${currentDomain}\n\n**Description:**\n`);
+  const url = `https://github.com/forrtproject/flora_chromium/issues/new?title=${title}&body=${body}&labels=domain-issue`;
+  chrome.tabs.create({ url });
+  window.close();
 });
 
 // Open settings page

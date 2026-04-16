@@ -133,6 +133,10 @@ body {
   color: var(--text-secondary);
 }
 
+.popup-btn--report {
+  color: var(--text-muted);
+}
+
 /* ─── Status toast ─── */
 .popup-status {
   padding: 8px 14px;
