@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     tags: ['*']
-  workflow_dispatch: 
+  workflow_dispatch:
 
 
 jobs:
@@ -27,9 +27,9 @@ jobs:
           zip -r flora-extension.zip flora-extension
       - name: Release
         uses: softprops/action-gh-release@v3
-        draft: github.ref_type != 'tag'
         with:
           # see: https://github.com/marketplace/actions/gh-release#-customizing
           make_latest: github.ref_type == 'tag'
+          draft: github.ref_type != 'tag'
           files: flora-extension.zip
           body: ""
