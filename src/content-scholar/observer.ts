@@ -72,7 +72,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
     if (extraction?.confident) {
       debugLog(`Scholar resolve [confident] "${title}" → ${extraction.doi}`);
       rowDois.push({ row, doi: extraction.doi, source: "extracted" });
-      injectDoiLabel(row, extraction.doi, "#853953", false);
+      preInjectDoiLabel(row, extraction.doi, "#853953", false);
     } else {
       // Non-confident or no extraction — collect for augmentation cross-check
       rowInfos.push({
@@ -107,7 +107,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
         // doi.org confirms this DOI exists → treat as confident
         debugLog(`Scholar resolve [doi.org-validated] "${info.title}" → ${info.extractedDoi}`);
         rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
-        injectDoiLabel(info.row, info.extractedDoi, "#853953", false);
+        preInjectDoiLabel(info.row, info.extractedDoi, "#853953", false);
       } else {
         if (info.extractedDoi) {
           debugLog(`Scholar: "${info.title}" — extracted ${info.extractedDoi} failed doi.org validation, falling back to augmentation`);
@@ -135,12 +135,12 @@ export async function processScholarResults(doc: Document): Promise<void> {
           // Cross-validated: URL extraction matches augmentation → green ✓
           debugLog(`Scholar resolve [cross-validated] "${info.title}" → ${info.extractedDoi} (extracted = augmented)`);
           rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
-          injectDoiLabel(info.row, info.extractedDoi, "#853953", false);
+          preInjectDoiLabel(info.row, info.extractedDoi, "#853953", false);
         } else if (info.extractedDoi && augmentedDoi && augmentedDoi !== info.extractedDoi) {
           // Conflict: prefer augmented DOI → gray (augmented)
           debugLog(`Scholar resolve [conflict] "${info.title}" → using augmented ${augmentedDoi} (extracted was ${info.extractedDoi})`);
           rowDois.push({ row: info.row, doi: augmentedDoi, source: "augmented" });
-          injectDoiLabel(info.row, augmentedDoi, "#656d76", true);
+          preInjectDoiLabel(info.row, augmentedDoi, "#656d76", true);
         } else if (info.extractedDoi && !augmentedDoi) {
           // Extracted but augmentation found nothing — last-resort doi.org check
           let valid = false;
@@ -151,7 +151,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
           if (valid) {
             debugLog(`Scholar resolve [extracted-revalidated] "${info.title}" → ${info.extractedDoi} (doi.org confirmed on retry)`);
             rowDois.push({ row: info.row, doi: info.extractedDoi, source: "extracted" });
-            injectDoiLabel(info.row, info.extractedDoi, "#853953", false);
+            preInjectDoiLabel(info.row, info.extractedDoi, "#853953", false);
           } else {
             // Invalid DOI — show nothing rather than an incorrect DOI
             debugLog(`Scholar resolve [extracted-invalid] "${info.title}" → ${info.extractedDoi} rejected (doi.org says invalid)`);
@@ -160,7 +160,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
           // No extraction, only augmented → gray with dotted underline
           debugLog(`Scholar resolve [augmented-only] "${info.title}" → ${augmentedDoi} (no extraction)`);
           rowDois.push({ row: info.row, doi: augmentedDoi, source: "augmented" });
-          injectDoiLabel(info.row, augmentedDoi, "#656d76", true);
+          preInjectDoiLabel(info.row, augmentedDoi, "#656d76", true);
         } else {
           debugLog(`Scholar resolve [no-doi] "${info.title}" → no DOI from extraction or augmentation`);
         }
@@ -201,6 +201,11 @@ export async function processScholarResults(doc: Document): Promise<void> {
 }
 
 const DOI_LABEL_CLASS = "flora-doi-label";
+
+function preInjectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmented = false): void {
+  redactionCheck(doi);
+  injectDoiLabel(row, doi, color, isAugmented);
+}
 
 function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmented = false): void {
   // Prefer the right-side PDF area; if absent, create one to match Scholar's layout
@@ -516,4 +521,8 @@ function extractDoiFromQueryParams(href: string): DoiString | null {
     }
   } catch { /* invalid URL */ }
   return null;
+}
+
+function redactionCheck(doi: string){
+  console.log("check me:", doi);
 }
