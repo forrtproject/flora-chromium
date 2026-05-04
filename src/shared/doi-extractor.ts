@@ -209,6 +209,19 @@ function extractFromVisibleText(doc: Document, found: Set<DoiString>): void {
 }
 
 /**
+ * Extract the primary DOI for the current page from authoritative sources only
+ * (URL, meta tags, JSON-LD). Does not scan body text or DOI links, which would
+ * pick up cited/referenced DOIs that are not the main article.
+ */
+export function extractPrimaryDOI(doc: Document): DoiString | null {
+  const found = new Set<DoiString>();
+  extractFromUrl(doc, found);
+  extractFromMeta(doc, found);
+  extractFromJsonLd(doc, found);
+  return found.size > 0 ? [...found][0] : null;
+}
+
+/**
  * Extract DOIs from raw text (e.g. CSV data).
  */
 export function extractDOIsFromText(text: string): DoiString[] {

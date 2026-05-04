@@ -1,4 +1,5 @@
 import type { DoiString, LookupState, ReplicationResult } from "../shared/types";
+import type { PubPeerFeedback } from "../shared/pubpeer-api";
 import { normaliseDOI } from "../shared/doi-normalise";
 import { debugLog } from "../shared/debug";
 import styles from "./styles.css";
@@ -558,6 +559,9 @@ export function hideAllFloraUI(): void {
 
   const setup = document.getElementById(SETUP_HOST_ID);
   if (setup) setup.style.display = "none";
+
+  const pubpeer = document.getElementById(PUBPEER_PANEL_ID);
+  if (pubpeer) pubpeer.style.display = "none";
 }
 
 export function showAllFloraUI(): void {
@@ -573,4 +577,169 @@ export function showAllFloraUI(): void {
 
   const setup = document.getElementById(SETUP_HOST_ID);
   if (setup) setup.style.display = "";
+
+  const pubpeer = document.getElementById(PUBPEER_PANEL_ID);
+  if (pubpeer) pubpeer.style.display = "";
+}
+
+// ──────────────────────────────────────────────
+// PubPeer panel
+// ──────────────────────────────────────────────
+
+const PUBPEER_PANEL_ID = "flora-pubpeer-panel";
+
+const PANEL_WIDTH = 500;
+
+export function renderPubPeerPanel(feedbacks: PubPeerFeedback[]): void {
+  document.getElementById(PUBPEER_PANEL_ID)?.remove();
+
+  const withComments = feedbacks.filter((f) => f.total_comments > 0);
+  if (withComments.length === 0) return;
+
+  const primary = withComments.reduce((best, f) =>
+    f.total_comments > best.total_comments ? f : best
+  );
+
+  if (!isSafePubPeerUrl(primary.url)) return;
+
+  const totalComments = withComments.reduce((sum, f) => sum + f.total_comments, 0);
+  const commentLabel = totalComments === 1 ? "comment" : "comments";
+  const paperLabel = withComments.length > 1 ? ` across ${withComments.length} papers` : "";
+
+  const host = document.createElement("div");
+  host.id = PUBPEER_PANEL_ID;
+
+  // Tab trigger — always visible on right edge
+  const tab = document.createElement("button");
+  tab.setAttribute("aria-label", "Open PubPeer panel");
+  tab.style.cssText =
+    "all:unset;cursor:pointer;pointer-events:all;" +
+    "position:fixed;right:0;top:50%;transform:translateY(-50%);" +
+    "width:28px;padding:18px 0;z-index:2147483647;" +
+    "background:linear-gradient(180deg,#853953,#612D53);" +
+    "border-radius:6px 0 0 6px;" +
+    "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;" +
+    "box-shadow:-2px 0 10px rgba(0,0,0,0.2);" +
+    "transition:right 0.3s cubic-bezier(0.4,0,0.2,1);";
+
+  const tabLabel = document.createElement("span");
+  tabLabel.style.cssText =
+    "color:#fff;font-size:10px;font-weight:700;letter-spacing:1.2px;" +
+    "writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);" +
+    "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;";
+  tabLabel.textContent = "FLoRA";
+
+  const arrow = document.createElement("span");
+  arrow.style.cssText =
+    "color:rgba(255,255,255,0.9);font-size:16px;line-height:1;" +
+    "transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);";
+  arrow.textContent = "‹";
+
+  tab.appendChild(tabLabel);
+  tab.appendChild(arrow);
+
+  // Sliding panel
+  const panel = document.createElement("div");
+  panel.style.cssText =
+    `position:fixed;top:0;right:0;height:100vh;width:${PANEL_WIDTH}px;` +
+    "background:#fff;display:flex;flex-direction:column;" +
+    "box-shadow:-4px 0 24px rgba(0,0,0,0.15);" +
+    "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+    "transform:translateX(100%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);" +
+    "z-index:2147483646;";
+
+  // Header
+  const header = document.createElement("div");
+  header.style.cssText =
+    "background:linear-gradient(135deg,#853953,#612D53);padding:14px 16px;" +
+    "display:flex;align-items:center;gap:10px;flex-shrink:0;";
+  header.innerHTML = `
+    <span style="color:#fff;font-weight:700;font-size:13px;background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:5px;">FLoRA</span>
+    <span style="color:#fff;font-size:12px;font-weight:500;flex:1;">Pubpeer has ${totalComments} ${commentLabel}${escapeHtml(paperLabel)}</span>`;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.setAttribute("aria-label", "Close panel");
+  closeBtn.style.cssText =
+    "all:unset;cursor:pointer;color:rgba(255,255,255,0.8);font-size:20px;line-height:1;" +
+    "width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;";
+  closeBtn.textContent = "×";
+  header.appendChild(closeBtn);
+  panel.appendChild(header);
+
+  // iframe
+  const iframeWrap = document.createElement("div");
+  iframeWrap.style.cssText = "flex:1;overflow:hidden;";
+  const iframe = document.createElement("iframe");
+  iframe.src = primary.url;
+  iframe.title = "PubPeer comments";
+  iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms");
+  iframe.style.cssText = "width:100%;height:100%;border:none;display:block;opacity:0;transition:opacity 0.15s;";
+
+  const revealIframe = (): void => { iframe.style.opacity = "1"; };
+  const fallbackTimer = setTimeout(revealIframe, 3000);
+  const onCssReady = (e: MessageEvent): void => {
+    if (e.source !== iframe.contentWindow) return;
+    if ((e.data as { type?: string })?.type !== "FLORA_PUBPEER_CSS_READY") return;
+    clearTimeout(fallbackTimer);
+    window.removeEventListener("message", onCssReady);
+    revealIframe();
+  };
+  window.addEventListener("message", onCssReady);
+
+  iframeWrap.appendChild(iframe);
+  panel.appendChild(iframeWrap);
+
+  // Footer
+  const footer = document.createElement("div");
+  footer.style.cssText =
+    "padding:10px 16px;display:flex;justify-content:flex-end;border-top:1px solid #e8e8e8;flex-shrink:0;";
+  const openLink = document.createElement("a");
+  openLink.href = primary.url;
+  openLink.target = "_blank";
+  openLink.rel = "noopener";
+  openLink.style.cssText =
+    "all:unset;cursor:pointer;padding:6px 16px;font-size:12px;font-weight:500;" +
+    "color:#fff;background:linear-gradient(135deg,#853953,#612D53);border-radius:6px;";
+  openLink.textContent = "Open in PubPeer";
+  footer.appendChild(openLink);
+  panel.appendChild(footer);
+
+  // Toggle logic
+  let isOpen = false;
+
+  const openPanel = (): void => {
+    isOpen = true;
+    panel.style.transform = "translateX(0)";
+    tab.style.right = `${PANEL_WIDTH}px`;
+    arrow.style.transform = "rotate(180deg)";
+    tab.setAttribute("aria-label", "Close PubPeer panel");
+  };
+
+  const closePanel = (): void => {
+    isOpen = false;
+    panel.style.transform = "translateX(100%)";
+    tab.style.right = "0";
+    arrow.style.transform = "rotate(0deg)";
+    tab.setAttribute("aria-label", "Open PubPeer panel");
+  };
+
+  tab.addEventListener("click", () => { if (isOpen) closePanel(); else openPanel(); });
+  closeBtn.addEventListener("click", () => closePanel());
+
+  host.appendChild(tab);
+  host.appendChild(panel);
+  document.body.appendChild(host);
+}
+
+export function removePubPeerPanel(): void {
+  document.getElementById(PUBPEER_PANEL_ID)?.remove();
+}
+
+function isSafePubPeerUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === "pubpeer.com" || parsed.hostname.endsWith(".pubpeer.com");
+  } catch {
+    return false;
+  }
 }

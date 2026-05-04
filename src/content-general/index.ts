@@ -1,10 +1,11 @@
-import { extractDOIs, extractDOIsFromText } from "../shared/doi-extractor";
+import { extractDOIs, extractDOIsFromText, extractPrimaryDOI } from "../shared/doi-extractor";
 import { augmentDOIs } from "../shared/doi-augment";
 import { validateDOIs } from "../shared/doi-validate";
 import { debounce } from "../shared/debounce";
 import type { DoiString, LookupState } from "../shared/types";
 import type { LookupRequest, LookupResponse, SheetFetchRequest, SheetFetchResponse } from "../shared/messages";
-import { renderErrorBanner, renderMatchedBanner, removeBanner, renderInlineBadges, renderSheetsModal, removeSheetsModal, renderSetupPrompt, hideAllFloraUI, showAllFloraUI, type SheetsModalCallbacks } from "./injector";
+import { renderErrorBanner, renderMatchedBanner, removeBanner, renderInlineBadges, renderSheetsModal, removeSheetsModal, renderSetupPrompt, renderPubPeerPanel, removePubPeerPanel, hideAllFloraUI, showAllFloraUI, type SheetsModalCallbacks } from "./injector";
+import { lookupPubPeer } from "../shared/pubpeer-api";
 import { debugLog, debugWarn } from "../shared/debug";
 import { isSetupComplete } from "../shared/settings";
 import { isDomainBlocked } from "../shared/domains";
@@ -13,6 +14,7 @@ const pageState = new Map<DoiString, LookupState>();
 const processedDois = new Set<DoiString>();
 let lastUrl = location.href;
 let augmentAttempted = false;
+let pubpeerChecked = false;
 
 /** Monotonic counter — incremented on each sheet tab switch to discard stale CSV responses. */
 let sheetFetchGen = 0;
@@ -45,6 +47,19 @@ async function augmentFromTitle(): Promise<void> {
   }
 }
 
+async function checkPubPeer(): Promise<void> {
+  if (pubpeerChecked || isSheets) return;
+  pubpeerChecked = true;
+  const primaryDoi = extractPrimaryDOI(document);
+  if (!primaryDoi) return;
+  try {
+    const feedbacks = await lookupPubPeer([primaryDoi], [location.href]);
+    renderPubPeerPanel(feedbacks);
+  } catch {
+    // PubPeer is supplementary — fail silently
+  }
+}
+
 async function run(): Promise<void> {
   // Detect full URL change (SPA navigation) — clear state
   const currentUrl = location.href;
@@ -53,10 +68,12 @@ async function run(): Promise<void> {
     processedDois.clear();
     pageState.clear();
     augmentAttempted = false;
+    pubpeerChecked = false;
     if (isSheets) {
       removeSheetsModal();
     } else {
       removeBanner();
+      removePubPeerPanel();
     }
   }
 
@@ -82,6 +99,11 @@ async function run(): Promise<void> {
     } catch {
       // Validation failed — keep all extracted DOIs as-is
     }
+  }
+
+  // Check PubPeer concurrently — runs once per page, fire-and-forget
+  if (!isSheets) {
+    void checkPubPeer();
   }
 
   // Filter out already-processed DOIs
@@ -250,7 +272,15 @@ async function fetchSheetDois(): Promise<void> {
 
 // Gate: skip iframes and blocked domains
 (async () => {
-  if (window !== window.top) return;
+  if (window !== window.top) {
+    if (location.hostname === "pubpeer.com" || location.hostname.endsWith(".pubpeer.com")) {
+      const style = document.createElement("style");
+      style.textContent = "nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.vertical-timeline-block.add-comment, div.sticky.affix, div.extension-installer.container, div.footer.fixed, div.page-component-up, div.comment-footer.clearfix { display: none !important; } a.forum-item-title {padding-top:10px!important;} div.vertical-timeline-block {margin:0 15px 0px 10px;}";
+      (document.head ?? document.documentElement).appendChild(style);
+      window.parent.postMessage({ type: "FLORA_PUBPEER_CSS_READY" }, "*");
+    }
+    return;
+  }
 
   if (await isDomainBlocked(location.hostname)) {
     debugLog("Domain is blocked:", location.hostname);
