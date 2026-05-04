@@ -275,7 +275,7 @@ async function fetchSheetDois(): Promise<void> {
   if (window !== window.top) {
     if (location.hostname === "pubpeer.com" || location.hostname.endsWith(".pubpeer.com")) {
       const style = document.createElement("style");
-      style.textContent = "nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.vertical-timeline-block.add-comment, div.sticky.affix, div.extension-installer.container, div.footer.fixed, div.page-component-up, div.comment-footer.clearfix { display: none !important; } a.forum-item-title {padding-top:10px!important;} div.vertical-timeline-block {margin:0 15px 0px 10px;}";
+      style.textContent = "nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.vertical-timeline-block.add-comment, div.sticky.affix, div.extension-installer.container, div.footer.fixed, div.page-component-up, div.comment-footer.clearfix { display: none !important; } a.forum-item-title {padding-top:10px!important;} div.vertical-timeline-block {margin:0 15px 0px 10px;} div.selected div {background-color: transparent!important;} div.wrapper {width: 500px!important;}}";
       (document.head ?? document.documentElement).appendChild(style);
       window.parent.postMessage({ type: "FLORA_PUBPEER_CSS_READY" }, "*");
     }
