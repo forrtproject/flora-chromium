@@ -1,12 +1,12 @@
 name: Release
 
+
 on:
   push:
-    branches: [ main ]
-    tags: ['*']
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: # on push to main
+      - main
+    tags: # or tag push (any branch)
+      - '*'
 
 
 jobs:
@@ -28,16 +28,17 @@ jobs:
           cp -r dist flora-extension/
           zip -r flora-extension.zip flora-extension
 
-      # see: https://github.com/marketplace/actions/gh-release#-customizing
+      # see customization options at:
+      # https://github.com/marketplace/actions/gh-release#-customizing
       - name: Draft release
-        if: github.ref_type != 'tag'
+        if: github.ref_type != 'tag' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: draft
           files: flora-extension.zip
           draft: true
       - name: Release
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v3
         with:
           files: flora-extension.zip
