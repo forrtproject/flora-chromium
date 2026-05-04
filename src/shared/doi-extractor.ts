@@ -2,16 +2,16 @@ import type { DoiString } from "./types";
 import { normaliseDOI } from "./doi-normalise";
 import { debugLog } from "./debug";
 
-// Allow parens inside DOIs (e.g. 10.1016/S0924-9338(98)80023-0)
-// but stop at whitespace, commas, quotes, fragments, query strings, etc.
-const DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*\/[^\s,;\]}>'"<#?&\\]+)/g;
-
+// Allow parens and semicolons inside DOIs (e.g. 10.1016/S0924-9338(98)80023-0,
+// 10.1002/(sici)...3.0.co;2-g). Disallow extra slashes so we stop before URL
+// path segments appended after the DOI (e.g. /10.1287/orsc.1040.0065/extra).
+const DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*\/[^\s,/\]}>'"<#?&\\]+)/g;
 
 // Characters inserted by browsers/sites for word-break purposes that can split DOIs
 const WORD_BREAK_CHARS = /[\u200B\u200C\u200D\u00AD\uFEFF\u2060]/g;
 
 // Encoded DOI pattern: 10.NNNN%2F... (percent-encoded slash)
-const ENCODED_DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*%2[fF][^\s,;\]}>'"<#?&\\]+)/g;
+const ENCODED_DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*%2[fF][^\s,/\]}>'"<#?&\\]+)/g;
 
 /**
  * Decode any percent-encoded DOIs in text so the main DOI_REGEX can find them.
