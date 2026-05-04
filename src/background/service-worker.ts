@@ -1,9 +1,9 @@
-import { SessionCache } from "../shared/cache";
-import { lookupDOIs } from "../shared/flora-api";
-import type { DoiString, ReplicationResult } from "../shared/types";
-import type { LookupResponse, SheetFetchResponse } from "../shared/messages";
-import { isLookupRequest, isSheetFetchRequest } from "../shared/messages";
-import { isSetupComplete } from "../shared/settings";
+import { SessionCache } from "@shared/cache";
+import { lookupDOIs } from "@shared/flora-api";
+import type { DoiString, ReplicationResult } from "@shared/types";
+import type { LookupResponse, SheetFetchResponse } from "@shared/messages";
+import { isLookupRequest, isSheetFetchRequest } from "@shared/messages";
+import { isSetupComplete } from "@shared/settings";
 
 const cache = new SessionCache<ReplicationResult>("flora");
 

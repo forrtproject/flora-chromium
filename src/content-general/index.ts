@@ -1,13 +1,13 @@
-import { extractDOIs, extractDOIsFromText } from "../shared/doi-extractor";
-import { augmentDOIs } from "../shared/doi-augment";
-import { validateDOIs } from "../shared/doi-validate";
-import { debounce } from "../shared/debounce";
-import type { DoiString, LookupState } from "../shared/types";
-import type { LookupRequest, LookupResponse, SheetFetchRequest, SheetFetchResponse } from "../shared/messages";
+import { extractDOIs, extractDOIsFromText } from "@shared/doi-extractor";
+import { augmentDOIs } from "@shared/doi-augment";
+import { validateDOIs } from "@shared/doi-validate";
+import { debounce } from "@shared/debounce";
+import type { DoiString, LookupState } from "@shared/types";
+import type { LookupRequest, LookupResponse, SheetFetchRequest, SheetFetchResponse } from "@shared/messages";
 import { renderErrorBanner, renderMatchedBanner, removeBanner, renderInlineBadges, renderSheetsModal, removeSheetsModal, renderSetupPrompt, hideAllFloraUI, showAllFloraUI, type SheetsModalCallbacks } from "./injector";
-import { debugLog, debugWarn } from "../shared/debug";
-import { isSetupComplete } from "../shared/settings";
-import { isDomainBlocked } from "../shared/domains";
+import { debugLog, debugWarn } from "@shared/debug";
+import { isSetupComplete } from "@shared/settings";
+import { isDomainBlocked } from "@shared/domains";
 
 const pageState = new Map<DoiString, LookupState>();
 const processedDois = new Set<DoiString>();
