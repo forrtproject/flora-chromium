@@ -160,4 +160,11 @@ describe("extractDOIs", () => {
     expect(dois).toContain("10.1038/nature12373");
     expect(dois).toContain("10.1126/science.9999999");
   });
+
+  it("finds retracted URL", () => {
+    const doc = loadFixture("redacted.html");
+    const dois = extractDOIs(doc);
+    expect(dois).toEqual(["10.1007/s00500-023-07906-6"])
+  });
+
 });
