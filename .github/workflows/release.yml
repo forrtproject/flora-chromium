@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test
+      - run: npm run build
+      - name: Create zip
+        run: |
+          mkdir -p flora-extension
+          cp manifest.json flora-extension/
+          cp -r dist flora-extension/
+          zip -r flora-extension.zip flora-extension
+      - name: Release
+        uses: softprops/action-gh-release@v3
+        draft: github.ref_type != 'tag'
+        with:
+          # see: https://github.com/marketplace/actions/gh-release#-customizing
+          make_latest: github.ref_type == 'tag'
+          files: flora-extension.zip
+          body: ""
