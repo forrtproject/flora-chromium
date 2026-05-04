@@ -2,8 +2,10 @@ name: Release
 
 on:
   push:
-    tags:
-      - '*'
+    branches: [ main ]
+    tags: ['*']
+  workflow_dispatch: 
+
 
 jobs:
   build:
