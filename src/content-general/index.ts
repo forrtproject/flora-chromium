@@ -1,6 +1,10 @@
 import {extractDOIs, extractDOIsFromText} from "@shared/doi-extractor";
 import {augmentDOIs} from "@shared/doi-augment";
-import {retractionCheck, injectRetractedBadge} from "@shared/doi-redaction"
+import {
+    retractionCheck,
+    injectWithLifecycle,
+    FLORA_RET_CHECK_KEY
+} from "@shared/doi-redaction"
 import {validateDOIs} from "@shared/doi-validate";
 import {debounce} from "@shared/debounce";
 import type {DoiString, LookupState} from "@shared/types";
@@ -27,10 +31,10 @@ import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 
 const pageState = new Map<DoiString, LookupState>();
+// Keep memory of detected DOIs to track dynamic page changes
 const processedDois = new Set<DoiString>();
 let lastUrl = location.href;
 let augmentAttempted = false;
-
 // Monotonic counter — incremented on each sheet tab switch to discard stale CSV responses
 let sheetFetchGen = 0;
 // DOIs extracted from the full sheet CSV (populated asynchronously on Sheets)
@@ -63,38 +67,8 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     }
 });
 
-/**
- * Silently try to resolve a DOI from the page title via Crossref/OpenAlex.
- * Runs in the background with no UI.
- */
-async function augmentFromTitle(): Promise<void> {
-    if (augmentAttempted) return;
-    augmentAttempted = true;
 
-    const pageTitle =
-        document.querySelector<HTMLHeadingElement>("h1")?.textContent?.trim() ||
-        document.title?.trim();
-
-    if (!pageTitle) return;
-
-    try {
-        const augmented = await augmentDOIs([pageTitle]);
-        const resolvedDoi = augmented.get(pageTitle);
-        debugLog("Title augmentation:", resolvedDoi ? `resolved to ${resolvedDoi}` : "no match", `(title: "${pageTitle}")`);
-        if (resolvedDoi) {
-            processedDois.add(resolvedDoi);
-            const request: LookupRequest = {
-                type: "FLORA_LOOKUP",
-                dois: [resolvedDoi]
-            };
-            await chrome.runtime.sendMessage(request);
-        }
-    } catch {
-        // Augmentation failed silently
-    }
-}
-
-async function run(): Promise<void> {
+async function renderChangeHandler(): Promise<void> {
     // Detect full URL change (SPA navigation) — clear state
     const currentUrl = location.href;
     if (currentUrl !== lastUrl) {
@@ -108,8 +82,10 @@ async function run(): Promise<void> {
             removeBanner();
         }
     }
-
     let dois = extractDOIs(document);
+
+    const hasDoiChange = processedDois.size !== dois.length ||
+        !dois.every(doi => processedDois.has(doi));
 
     // On Sheets, also extract DOIs from the full sheet data fetched via CSV
     if (isSheets && sheetCsvDois.length > 0) {
@@ -119,7 +95,7 @@ async function run(): Promise<void> {
     debugLog(isSheets ? "Sheets:" : "General:", "Extracted DOIs:", dois.length, dois);
 
     // Validate extracted DOIs via doi.org — remove invalid ones
-    if (!isSheets && dois.length > 0) {
+    if (hasDoiChange && !isSheets && dois.length > 0) {
         try {
             const validation = await validateDOIs(dois);
             const before = dois.length;
@@ -133,22 +109,21 @@ async function run(): Promise<void> {
         }
     }
 
-    // retraction check logic
-    if (!isSheets && dois.length > 0) {
-        const checked_key = "flora-ret-checked"
+    // retraction check logic -- always repeat on DOM changes
+    if (!isSheets) {
         for (const doi of dois) {
-            const container = findElementByText(doi) || findElementByAnyAttribute(doi)
-            if (container && !container.hasAttribute(checked_key)) {
-                container.setAttribute(checked_key, "1");
-                retractionCheck(doi).then(result => {
-                    if (result) {
-                        let styles = container.getAttribute("style") || "";
-                        styles += "text-color: red!important;";
-                        container.setAttribute("style", styles);
-                        injectRetractedBadge(container, result);
-                    }
-                }).catch();
+            const containers =
+                findAllBlocksByText(doi).concat(findAllBlocksByAnyAttribute(doi))
+                    .filter(c => c && !c.hasAttribute(FLORA_RET_CHECK_KEY));
+            if (!containers.length) continue;
+            for (let cnt of containers) cnt.setAttribute(FLORA_RET_CHECK_KEY, "1");
+            const result = await retractionCheck(doi);
+            if (result) {
+                for (let container of containers) {
+                    injectWithLifecycle(container, result);
+                }
             }
+
         }
     }
 
@@ -158,7 +133,7 @@ async function run(): Promise<void> {
     // If no valid DOIs found, try augmenting from page title in the background
     if (newDois.length === 0 && dois.length === 0) {
         debugLog("No valid DOIs found on page, attempting title augmentation");
-        if (!isSheets) augmentFromTitle();
+        if (!isSheets) augmentFromTitle().then().catch();
         return;
     }
 
@@ -248,7 +223,37 @@ async function run(): Promise<void> {
     }
 }
 
-const debouncedRun = debounce(run, 1000);
+
+/**
+ * Silently try to resolve a DOI from the page title via Crossref/OpenAlex.
+ * Runs in the background with no UI.
+ */
+async function augmentFromTitle(): Promise<void> {
+    if (augmentAttempted) return;
+    augmentAttempted = true;
+
+    const pageTitle =
+        document.querySelector<HTMLHeadingElement>("h1")?.textContent?.trim() ||
+        document.title?.trim();
+
+    if (!pageTitle) return;
+
+    try {
+        const augmented = await augmentDOIs([pageTitle]);
+        const resolvedDoi = augmented.get(pageTitle);
+        debugLog("Title augmentation:", resolvedDoi ? `resolved to ${resolvedDoi}` : "no match", `(title: "${pageTitle}")`);
+        if (resolvedDoi) {
+            processedDois.add(resolvedDoi);
+            const request: LookupRequest = {
+                type: "FLORA_LOOKUP",
+                dois: [resolvedDoi]
+            };
+            await chrome.runtime.sendMessage(request);
+        }
+    } catch {
+        // Augmentation failed silently
+    }
+}
 
 function currentGid(): string {
     return parseSheetsUrl(location.href)?.gid ?? "0";
@@ -316,75 +321,8 @@ async function fetchSheetDois(): Promise<void> {
 
     // Always run — even if CSV fetch failed, this ensures the modal state is
     // re-evaluated after a tab switch (processedDois was already cleared).
-    run();
+    renderChangeHandler();
 }
-
-// Gate: skip iframes and blocked domains
-(async () => {
-    if (window !== window.top) return;
-
-    if (await isDomainBlocked(location.hostname)) {
-        debugLog("Domain is blocked:", location.hostname);
-        return;
-    }
-
-    // Show setup prompt if email not configured (non-blocking — extension still runs)
-    if (!(await isSetupComplete())) {
-        renderSetupPrompt();
-    }
-
-    // Run immediately — same timing as PubPeer (fires after webNavigation.onCompleted)
-    debouncedRun();
-
-    // SPA pagination detection: watch for significant DOM changes (skip on Sheets —
-    // cell clicks/selections cause constant mutations that trigger needless re-scans)
-    if (!isSheets) {
-        const debouncedReRun = debounce(run, 5000);
-
-        if (document.body) {
-            const observer = new MutationObserver((mutations) => {
-                let addedCount = 0;
-                for (const mutation of mutations) {
-                    for (const node of mutation.addedNodes) {
-                        if (node.nodeType === Node.ELEMENT_NODE) {
-                            addedCount++;
-                        }
-                    }
-                }
-                if (addedCount >= 3) {
-                    debouncedReRun();
-                }
-            });
-
-            observer.observe(document.body, {childList: true, subtree: true});
-        }
-
-        // SPA URL-based navigation
-        window.addEventListener("popstate", () => debouncedReRun());
-        window.addEventListener("hashchange", () => debouncedReRun());
-    } else {
-        // Fetch full sheet data via CSV export to get all DOIs regardless of scroll
-        fetchSheetDois();
-
-        // Detect sheet tab switches — Google Sheets uses replaceState, which doesn't
-        // fire hashchange/popstate, so we poll for gid changes instead.
-        let lastGid = parseSheetsUrl(location.href)?.gid ?? "0";
-        setInterval(() => {
-            const nowGid = parseSheetsUrl(location.href)?.gid ?? "0";
-            if (nowGid !== lastGid) {
-                lastGid = nowGid;
-                console.log("[FLoRA:Sheets] Tab change detected (gid:", nowGid, ") — re-fetching…");
-                sheetFetchGen++;
-                sheetCsvDois = [];
-                processedDois.clear();
-                pageState.clear();
-                removeSheetsModal();
-                fetchSheetDois();
-            }
-        }, 1500);
-    }
-
-})();
 
 function getClosestBlock(el: HTMLElement | null): HTMLElement | null {
     if (!el) return null;
@@ -403,7 +341,8 @@ function getClosestBlock(el: HTMLElement | null): HTMLElement | null {
     return document.body; // Fallback to body if no block parent found
 }
 
-function findElementByText(searchText: string): HTMLElement | null {
+function findAllBlocksByText(searchText: string): HTMLElement[] {
+    const results = new Set<HTMLElement>();
     const walker = document.createTreeWalker(
         document.body,
         NodeFilter.SHOW_TEXT,
@@ -412,21 +351,79 @@ function findElementByText(searchText: string): HTMLElement | null {
     let node: Node | null;
     while (node = walker.nextNode()) {
         if (node.textContent?.includes(searchText)) {
-            return getClosestBlock(node.parentElement);
+            const block = getClosestBlock(node.parentElement);
+            if (block) results.add(block);
         }
     }
-    return null;
+    return Array.from(results);
 }
 
-function findElementByAnyAttribute(match: string): HTMLElement | null {
+function findAllBlocksByAnyAttribute(match: string): HTMLElement[] {
+    const results = new Set<HTMLElement>();
     const elements = document.querySelectorAll<HTMLElement>("*");
     for (const el of elements) {
         for (let i = 0; i < el.attributes.length; i++) {
-            const attr = el.attributes[i];
-            if (attr.value.includes(match)) {
-                return getClosestBlock(el);
+            if (el.attributes[i].value.includes(match)) {
+                const block = getClosestBlock(el);
+                if (block) results.add(block);
+                break;
             }
         }
     }
-    return null;
+    return Array.from(results);
 }
+
+function startDomListener(callback: () => void) {
+    let debounceTimer: number;
+    const observer = new MutationObserver((mutations) => {
+        const hasNewNodes = mutations.some(m => m.addedNodes.length > 0);
+        if (hasNewNodes) {
+            clearTimeout(debounceTimer);
+            debounceTimer = window.setTimeout(() => {
+                callback()
+            }, 300);
+        }
+    });
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+}
+
+// Gate: skip iframes and blocked domains
+(async () => {
+    // stop if  running inside an <iframe> or a sub-frame
+    if (window !== window.top) return;
+
+    if (await isDomainBlocked(location.hostname)) {
+        debugLog("Domain is blocked:", location.hostname);
+        return;
+    }
+    // Show setup prompt if email not configured (non-blocking — extension still runs)
+    if (!(await isSetupComplete())) {
+        renderSetupPrompt().then().catch();
+    }
+    if (isSheets) {
+        // Fetch full sheet data via CSV export to get all DOIs regardless of scroll
+        fetchSheetDois();
+        // Detect sheet tab switches — Google Sheets uses replaceState, which doesn't
+        // fire hashchange/popstate, so we poll for gid changes instead.
+        let lastGid = parseSheetsUrl(location.href)?.gid ?? "0";
+        setInterval(() => {
+            const nowGid = parseSheetsUrl(location.href)?.gid ?? "0";
+            if (nowGid !== lastGid) {
+                lastGid = nowGid;
+                console.log("[FLoRA:Sheets] Tab change detected (gid:", nowGid, ") — re-fetching…");
+                sheetFetchGen++;
+                sheetCsvDois = [];
+                processedDois.clear();
+                pageState.clear();
+                removeSheetsModal();
+                fetchSheetDois();
+            }
+        }, 1500);
+    } else {
+        debounce(renderChangeHandler, 500);
+        startDomListener(renderChangeHandler);
+    }
+})();
