@@ -1,6 +1,6 @@
 import {normaliseDOI} from "@shared/doi-normalise";
 import {augmentDOIs} from "@shared/doi-augment";
-import {retractionCheck} from "@shared/doi-redaction"
+import {injectRetractionInfo, retractionCheck} from "@shared/doi-redaction"
 import {validateDOI, validateDOIs} from "@shared/doi-validate";
 import type {DoiString, DoiSource} from "@shared/types";
 import type {
@@ -241,7 +241,9 @@ function preInjectLabels(row: HTMLElement, doi: string, color: string, isAugment
         const gsRi = row.querySelector(".gs_ri");
         row.insertBefore(target, gsRi);
     }
-    retractionCheck(target, doi).then().catch();
+    retractionCheck(doi).then(result => {
+        if (result) injectRetractionInfo(target, result)
+    }).catch();
     injectDoiLabel(row, doi, color, isAugmented);
 }
 

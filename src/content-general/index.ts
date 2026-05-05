@@ -1,12 +1,12 @@
 import {extractDOIs, extractDOIsFromText} from "@shared/doi-extractor";
 import {augmentDOIs} from "@shared/doi-augment";
-import {retractionCheck} from "@shared/doi-redaction"
+import {retractionCheck, injectRetractedBadge} from "@shared/doi-redaction"
 import {validateDOIs} from "@shared/doi-validate";
 import {debounce} from "@shared/debounce";
 import type {DoiString, LookupState} from "@shared/types";
 import type {
     LookupRequest,
-    LookupResponse,
+    LookupResponse, RetractionLookupResponse,
     SheetFetchRequest,
     SheetFetchResponse
 } from "@shared/messages";
@@ -119,7 +119,7 @@ async function run(): Promise<void> {
     debugLog(isSheets ? "Sheets:" : "General:", "Extracted DOIs:", dois.length, dois);
 
     // Validate extracted DOIs via doi.org — remove invalid ones
-    if (dois.length > 0 && !isSheets) {
+    if (!isSheets && dois.length > 0) {
         try {
             const validation = await validateDOIs(dois);
             const before = dois.length;
@@ -133,14 +133,21 @@ async function run(): Promise<void> {
         }
     }
 
+    // retraction check logic
     if (!isSheets && dois.length > 0) {
         const checked_key = "flora-ret-checked"
         for (const doi of dois) {
             const container = findElementByText(doi) || findElementByAnyAttribute(doi)
             if (container && !container.hasAttribute(checked_key)) {
-                console.log(`Found ${doi} in ${container}`);
                 container.setAttribute(checked_key, "1");
-                retractionCheck(container, doi).then().catch();
+                retractionCheck(doi).then(result => {
+                    if (result) {
+                        let styles = container.getAttribute("style") || "";
+                        styles += "text-color: red!important;";
+                        container.setAttribute("style", styles);
+                        injectRetractedBadge(container, result);
+                    }
+                }).catch();
             }
         }
     }
@@ -379,6 +386,22 @@ async function fetchSheetDois(): Promise<void> {
 
 })();
 
+function getClosestBlock(el: HTMLElement | null): HTMLElement | null {
+    if (!el) return null;
+
+    // Elements that typically behave as blocks/containers
+    const blockDisplayTypes = ['block', 'flex', 'grid', 'table', 'list-item', 'section'];
+
+    let current: HTMLElement | null = el;
+    while (current && current !== document.body) {
+        const display = window.getComputedStyle(current).display;
+        if (blockDisplayTypes.some(type => display.includes(type))) {
+            return current;
+        }
+        current = current.parentElement;
+    }
+    return document.body; // Fallback to body if no block parent found
+}
 
 function findElementByText(searchText: string): HTMLElement | null {
     const walker = document.createTreeWalker(
@@ -389,7 +412,7 @@ function findElementByText(searchText: string): HTMLElement | null {
     let node: Node | null;
     while (node = walker.nextNode()) {
         if (node.textContent?.includes(searchText)) {
-            return node.parentElement;
+            return getClosestBlock(node.parentElement);
         }
     }
     return null;
@@ -401,7 +424,7 @@ function findElementByAnyAttribute(match: string): HTMLElement | null {
         for (let i = 0; i < el.attributes.length; i++) {
             const attr = el.attributes[i];
             if (attr.value.includes(match)) {
-                return el.parentElement;
+                return getClosestBlock(el);
             }
         }
     }
