@@ -286,6 +286,7 @@ export async function retractionWatchLookup(doi: string): Promise<RetractionLook
     if (!response.ok) return null;
     const data = await response.json() as {
         message?: {
+            "title": string,
             "updated-by"?: Array<{
                 DOI?: string,
                 type?: string,
@@ -303,6 +304,7 @@ export async function retractionWatchLookup(doi: string): Promise<RetractionLook
     return {
         doi: retractionUpdate ? (retractionUpdate.DOI ?? doi) : doi,
         retracted: !!retractionUpdate,
+        title: retractionUpdate ? data.message?.title ?? "" : "",
         timestamp: retractionUpdate ? (retractionUpdate.updated ?? {}).timestamp ?? 0 : 0,
         source: (retractionUpdate ? retractionUpdate.source : undefined) ?? "crossref"
     }

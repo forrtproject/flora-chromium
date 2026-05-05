@@ -62,4 +62,5 @@ export interface RetractionLookupResponse {
     retracted: boolean;
     timestamp: number;
     source: string;
+    title: string;
 }

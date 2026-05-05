@@ -2,8 +2,8 @@ import {extractDOIs, extractDOIsFromText} from "@shared/doi-extractor";
 import {augmentDOIs} from "@shared/doi-augment";
 import {
     retractionCheck,
-    injectWithLifecycle,
-    FLORA_RET_CHECK_KEY
+    FLORA_RET_CHECK_KEY,
+    badgeQuerySelector
 } from "@shared/doi-redaction"
 import {validateDOIs} from "@shared/doi-validate";
 import {debounce} from "@shared/debounce";
@@ -17,6 +17,7 @@ import type {
 import {
     renderErrorBanner,
     renderMatchedBanner,
+    renderRetractedBanner,
     removeBanner,
     renderInlineBadges,
     renderSheetsModal,
@@ -31,6 +32,7 @@ import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 
 const pageState = new Map<DoiString, LookupState>();
+const redacts = new Map<DoiString, RetractionLookupResponse>();
 // Keep memory of detected DOIs to track dynamic page changes
 const processedDois = new Set<DoiString>();
 let lastUrl = location.href;
@@ -48,6 +50,7 @@ let snoozeUntil = 0;
 const isSheets = location.href.includes("docs.google.com/spreadsheets");
 // Track whether the popup has hidden FLoRA UI on this page (session only)
 let floraHidden = false;
+let dismissRedacts = false;
 
 // Listen for popup messages (works regardless of gate checks above)
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
@@ -67,8 +70,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     }
 });
 
-
-async function renderChangeHandler(): Promise<void> {
+async function pageRenderChangeHandler(): Promise<void> {
     // Detect full URL change (SPA navigation) — clear state
     const currentUrl = location.href;
     if (currentUrl !== lastUrl) {
@@ -109,21 +111,21 @@ async function renderChangeHandler(): Promise<void> {
         }
     }
 
-    // retraction check logic -- always repeat on DOM changes
-    if (!isSheets) {
+    // retraction check logic
+    if (!dismissRedacts && hasDoiChange && !isSheets && dois.length > 0) {
         for (const doi of dois) {
-            const containers =
-                findAllBlocksByText(doi).concat(findAllBlocksByAnyAttribute(doi))
-                    .filter(c => c && !c.hasAttribute(FLORA_RET_CHECK_KEY));
-            if (!containers.length) continue;
-            for (let cnt of containers) cnt.setAttribute(FLORA_RET_CHECK_KEY, "1");
             const result = await retractionCheck(doi);
-            if (result) {
-                for (let container of containers) {
-                    injectWithLifecycle(container, result);
-                }
-            }
-
+            if (result && result.retracted) redacts.set(doi, result);
+        }
+        if (redacts.size > 0 && !dismissRedacts) {
+            renderRetractedBanner([...redacts.entries()], {
+                onDismiss: () => {
+                    dismissRedacts: true
+                },
+                onSnooze: () => {
+                    dismissRedacts: true
+                },
+            });
         }
     }
 
@@ -223,7 +225,6 @@ async function renderChangeHandler(): Promise<void> {
     }
 }
 
-
 /**
  * Silently try to resolve a DOI from the page title via Crossref/OpenAlex.
  * Runs in the background with no UI.
@@ -298,7 +299,6 @@ async function fetchSheetDois(): Promise<void> {
     if (!parsed) return;
 
     const myGen = sheetFetchGen;
-    console.log("[FLoRA:Sheets] Fetching full sheet data via CSV export…");
     const request: SheetFetchRequest = {
         type: "FLORA_SHEET_FETCH",
         spreadsheetId: parsed.spreadsheetId,
@@ -321,7 +321,7 @@ async function fetchSheetDois(): Promise<void> {
 
     // Always run — even if CSV fetch failed, this ensures the modal state is
     // re-evaluated after a tab switch (processedDois was already cleared).
-    renderChangeHandler();
+    pageRenderChangeHandler();
 }
 
 function getClosestBlock(el: HTMLElement | null): HTMLElement | null {
@@ -341,7 +341,7 @@ function getClosestBlock(el: HTMLElement | null): HTMLElement | null {
     return document.body; // Fallback to body if no block parent found
 }
 
-function findAllBlocksByText(searchText: string): HTMLElement[] {
+function findAllBlocksByText(match: string): HTMLElement[] {
     const results = new Set<HTMLElement>();
     const walker = document.createTreeWalker(
         document.body,
@@ -350,9 +350,9 @@ function findAllBlocksByText(searchText: string): HTMLElement[] {
     );
     let node: Node | null;
     while (node = walker.nextNode()) {
-        if (node.textContent?.includes(searchText)) {
-            const block = getClosestBlock(node.parentElement);
-            if (block) results.add(block);
+        if (node.textContent?.includes(match) && node) {
+            if (collectBlocks(match, getClosestBlock(node.parentElement), results))
+                break;
         }
     }
     return Array.from(results);
@@ -364,13 +364,20 @@ function findAllBlocksByAnyAttribute(match: string): HTMLElement[] {
     for (const el of elements) {
         for (let i = 0; i < el.attributes.length; i++) {
             if (el.attributes[i].value.includes(match)) {
-                const block = getClosestBlock(el);
-                if (block) results.add(block);
-                break;
+                if (collectBlocks(match, getClosestBlock(el), results)) break;
             }
         }
     }
     return Array.from(results);
+}
+
+function collectBlocks(match: string, block: HTMLElement | null, results: Set<HTMLElement>) {
+    if (block && !block.hasAttribute(FLORA_RET_CHECK_KEY) && block.innerText.includes(match)
+        && !block.querySelector(badgeQuerySelector)) {
+        results.add(block);
+        return true
+    }
+    return false
 }
 
 function startDomListener(callback: () => void) {
@@ -423,7 +430,7 @@ function startDomListener(callback: () => void) {
             }
         }, 1500);
     } else {
-        debounce(renderChangeHandler, 500);
-        startDomListener(renderChangeHandler);
+        debounce(pageRenderChangeHandler, 1000);
+        startDomListener(pageRenderChangeHandler);
     }
 })();
