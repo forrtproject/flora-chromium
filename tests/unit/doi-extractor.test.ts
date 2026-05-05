@@ -173,6 +173,34 @@ describe("extractDOIs", () => {
     expect(dois).toContain("10.1002/(sici)1097-0266(199704)18:4<303::aid-smj869>3.0.co;2-g");
   });
 
+  it("extracts SICI DOI with literal angle brackets decoded from HTML entities in body text", () => {
+    // Real publisher pages (e.g. Wiley) render the DOI as &lt;303::AID-SMJ869&gt;
+    // in their HTML, which becomes literal < > in innerText. The extractor must
+    // not truncate at '<'.
+    const html = `<!DOCTYPE html>
+    <html><head></head><body>
+      <p>10.1002/(SICI)1097-0266(199704)18:4&lt;303::AID-SMJ869&gt;3.0.CO;2-G</p>
+    </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const dois = extractDOIs(doc);
+    expect(dois).toContain("10.1002/(sici)1097-0266(199704)18:4<303::aid-smj869>3.0.co;2-g");
+  });
+
+  it("extracts SICI DOI via doi.org link with percent-encoded angle brackets in href", () => {
+    // The href uses %3C/%3E; the link text shows decoded < > via HTML entities.
+    // Both extractFromDoiLinks (href) and extractFromVisibleText (text) must find the full DOI.
+    const html = `<!DOCTYPE html>
+    <html><head></head><body>
+      <a href="https://doi.org/10.1002/(SICI)1097-0266(199704)18:4%3C303::AID-SMJ869%3E3.0.CO;2-G">
+        https://doi.org/10.1002/(SICI)1097-0266(199704)18:4&lt;303::AID-SMJ869&gt;3.0.CO;2-G
+      </a>
+    </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const dois = extractDOIs(doc);
+    expect(dois).toContain("10.1002/(sici)1097-0266(199704)18:4<303::aid-smj869>3.0.co;2-g");
+    expect(dois).toHaveLength(1);
+  });
+
   it("stops extraction at extra URL path segments in body text", () => {
     const html = `<!DOCTYPE html>
     <html><head></head><body>
@@ -399,5 +427,28 @@ describe("extractDOIsFromText", () => {
   it("does not extract anything from text with no DOIs", () => {
     const dois = extractDOIsFromText("This paper has no DOI references.");
     expect(dois).toHaveLength(0);
+  });
+
+  // ── Official DOI spec examples (doi-handbook) ─────────────────────────────
+  it("extracts SMPTE DOI with dot-separated suffix (spec example 1)", () => {
+    const dois = extractDOIsFromText("10.5594/SMPTE.ST2067-21.2020");
+    expect(dois).toEqual(["10.5594/smpte.st2067-21.2020"]);
+  });
+
+  it("extracts DOI with slash inside the suffix (spec example 2)", () => {
+    // Per the DOI spec the suffix may contain a solidus: 10.NNNN/registrant/remainder
+    const dois = extractDOIsFromText("10.6338/JDA.202212/SP_17(4).0000");
+    expect(dois).toEqual(["10.6338/jda.202212/sp_17(4).0000"]);
+  });
+
+  it("does not over-capture URL routing segments after a slash-in-suffix DOI", () => {
+    // The routing word 'abstract' is not part of the DOI suffix.
+    const dois = extractDOIsFromText("10.6338/JDA.202212/SP_17(4).0000/abstract");
+    expect(dois).toEqual(["10.6338/jda.202212/sp_17(4).0000"]);
+  });
+
+  it("extracts DOI with Unicode characters in the suffix (spec example 3)", () => {
+    const dois = extractDOIsFromText("10.26321/Á.GUTIÉRREZ.ZARZA.02.2018.03");
+    expect(dois).toEqual(["10.26321/á.gutiérrez.zarza.02.2018.03"]);
   });
 });

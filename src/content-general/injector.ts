@@ -1,5 +1,6 @@
 import type { DoiString, LookupState, ReplicationResult } from "../shared/types";
 import { normaliseDOI } from "../shared/doi-normalise";
+import { DOI_TEXT_REGEX } from "../shared/doi-extractor";
 import { debugLog } from "../shared/debug";
 import styles from "./styles.css";
 
@@ -310,12 +311,12 @@ export function renderInlineBadges(
     if (link.nextElementSibling?.classList.contains(BADGE_CLASS)) continue;
 
     // Only badge links whose visible text contains a DOI, or that point to doi.org
-    const textMatch = link.textContent?.match(/\b(10\.\d{4,}(?:\.\d+)*\/\S+)\b/);
+    const textMatch = link.textContent?.match(DOI_TEXT_REGEX);
     const isDoiOrgLink = /^https?:\/\/(dx\.)?doi\.org\//i.test(link.href);
     const hrefMatch = isDoiOrgLink
       ? link.href.match(/\b(10\.\d{4,}(?:\.\d+)*\/\S+)\b/)
       : null;
-    const rawDoi = textMatch?.[1] ?? hrefMatch?.[1];
+    const rawDoi = textMatch?.[0] ?? hrefMatch?.[1];
     if (!rawDoi) continue;
 
     const doi = normaliseDOI(rawDoi);
