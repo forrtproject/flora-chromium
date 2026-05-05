@@ -26,8 +26,8 @@ export function injectRetractionInfo(target: Element, info: RetractionLookupResp
     const color = "#FF1744";
     const badgeSvg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="80" height="20" viewBox="0 0 80 20">
-      <rect width="80" height="20" rx="3" fill="${color}"/>
-      <text x="40" y="14" fill="#fff" font-family="Verdana" font-weight="bold" 
+      <rect width="80" height="20" rx="10" fill="${color}"/>
+      <text x="40" y="14" fill="#fff" font-family="Verdana" font-weight="normal" 
        font-size="11" text-anchor="middle">Retracted</text>
     </svg>`.trim();
     const img = document.createElement('img');
@@ -41,8 +41,6 @@ export function injectRetractionInfo(target: Element, info: RetractionLookupResp
     link.style.verticalAlign = 'bottom';
     link.style.marginLeft = "4px";
     link.style.marginTop = "4px";
-    // link.style.width = "100%";
-    // link.style.backgroundColor = color;
     link.appendChild(img);
     target.setAttribute(FLORA_RET_CHECK_KEY, '1');
     target.appendChild(link);

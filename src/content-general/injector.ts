@@ -3,7 +3,7 @@ import {normaliseDOI} from "../shared/doi-normalise";
 import {debugLog} from "../shared/debug";
 import styles from "./styles.css";
 import {RetractionLookupResponse} from "@shared/messages";
-import {retractionCheck} from "@shared/doi-redaction";
+import {retractionCheck} from "@shared/doi-retraction";
 
 const BANNER_HOST_ID = "flora-banner-host";
 const BADGE_CLASS = "flora-inline-badge";
@@ -610,11 +610,24 @@ export function renderRetractedBanner(
         let entry = m[1];
         let wrapper = document.createElement(matched.length > 1 ? "li" : "div");
         let link = document.createElement("a");
+        let doiref = document.createElement("span");
         link.href = `https://doi.org/${entry.doi}`;
         link.innerText = `${entry.title}`;
+        link.style.fontWeight = "normal";
         link.style.color = "#111";
         link.style.textDecoration = "none";
+        link.style.display = "block";
+        doiref.innerText = `doi.org/${m[0]}`;
+        doiref.style.display = "block";
+        doiref.style.fontSize = "85%";
+        doiref.style.color = "#666";
+        if (m != matched[0]) wrapper.style.marginTop = "8px";
+        if (matched.length > 1) {
+            wrapper.style.listStyleType = "bullet";
+            wrapper.style.marginLeft = "12px";
+        }
         wrapper.appendChild(link);
+        wrapper.appendChild(doiref);
         entries.appendChild(wrapper);
     }
     host.id = RETRACTS_MODAL_ID;
@@ -626,7 +639,7 @@ export function renderRetractedBanner(
       font-family:'Google Sans',Roboto,-apple-system,sans-serif;
       overflow:hidden;animation:floraSlideIn 0.25s ease-out;
     ">
-      <!-- Green accent header -->
+      <!-- header -->
       <div style="background:linear-gradient(135deg,#853953,#612D53);padding:14px 16px;display:flex;align-items:center;gap:10px;">
         <span style="
           background:rgba(255,255,255,0.2);color:#fff;font-weight:700;font-size:13px;
@@ -644,11 +657,12 @@ export function renderRetractedBanner(
       <!-- Body -->
       <div style="padding:16px;">
         <div style="font-size:13px;color:#3c4043;margin-bottom:14px;line-height:1.5;">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" style="width:22px!important; height:22px!important; display: inline-block; vertical-align: text-bottom"><path d="M320 64C334.7 64 348.2 72.1 355.2 85L571.2 485C577.9 497.4 577.6 512.4 570.4 524.5C563.2 536.6 550.1 544 536 544L104 544C89.9 544 76.8 536.6 69.6 524.5C62.4 512.4 62.1 497.4 68.8 485L284.8 85C291.8 72.1 305.3 64 320 64zM320 416C302.3 416 288 430.3 288 448C288 465.7 302.3 480 320 480C337.7 480 352 465.7 352 448C352 430.3 337.7 416 320 416zM320 224C301.8 224 287.3 239.5 288.6 257.7L296 361.7C296.9 374.2 307.4 384 319.9 384C332.5 384 342.9 374.3 343.8 361.7L351.2 257.7C352.5 239.5 338.1 224 319.8 224z"/></svg>
-        Found <strong data-flora-doi-count style="color:#202124;">${matched.length} mention${matched.length !== 1 ? "s" : ""} of retracted work</strong> on this page.
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" style="width:18px!important; height:18px!important; display: inline-block; vertical-align: text-bottom; margin-right:4px;"><path d="M320 64C334.7 64 348.2 72.1 355.2 85L571.2 485C577.9 497.4 577.6 512.4 570.4 524.5C563.2 536.6 550.1 544 536 544L104 544C89.9 544 76.8 536.6 69.6 524.5C62.4 512.4 62.1 497.4 68.8 485L284.8 85C291.8 72.1 305.3 64 320 64zM320 416C302.3 416 288 430.3 288 448C288 465.7 302.3 480 320 480C337.7 480 352 465.7 352 448C352 430.3 337.7 416 320 416zM320 224C301.8 224 287.3 239.5 288.6 257.7L296 361.7C296.9 374.2 307.4 384 319.9 384C332.5 384 342.9 374.3 343.8 361.7L351.2 257.7C352.5 239.5 338.1 224 319.8 224z"/></svg>
+        Found a mention of <strong data-flora-doi-count style="color:#202124;">${matched.length} retraction${matched.length !== 1 ? "s" : ""}</strong> on this page.
         </div>
         <!-- list of entries -->
-        <div style="font-size:13px;color:#3c4043;margin-bottom:14px;line-height:1.5;">
+        <div style="font-size:13px;color:#3c4043;margin-bottom:14px;line-height:1.5;flex:1;background:#f9f0f4;border:1px solid #d4a5b8;border-radius:8px;
+            padding:12px;text-align:left;max-height: 250px;overflow: auto">
         ${entries.outerHTML}
         </div>
       </div>  
@@ -669,7 +683,7 @@ export function renderRetractedBanner(
     </style>`;
     document.body.appendChild(host);
     for (const el of host.querySelectorAll(".flora-modal-close, .flora-modal-dismiss")) {
-        el.addEventListener("click", ()=>{
+        el.addEventListener("click", () => {
             removeRetractsModal();
             callbacks?.onDismiss();
         });

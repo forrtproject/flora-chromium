@@ -1,6 +1,6 @@
 import {normaliseDOI} from "@shared/doi-normalise";
 import {augmentDOIs} from "@shared/doi-augment";
-import {injectRetractionInfo, retractionCheck} from "@shared/doi-redaction"
+import {injectRetractionInfo, retractionCheck} from "@shared/doi-retraction"
 import {validateDOI, validateDOIs} from "@shared/doi-validate";
 import type {DoiString, DoiSource} from "@shared/types";
 import type {

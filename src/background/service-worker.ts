@@ -75,13 +75,15 @@ chrome.runtime.onMessage.addListener(
         if (isRetractionLookup(message)) {
             const doi = (message as RetractionLookupRequest).doi;
             const key = doi + "_red";
-            chrome.storage.local.get([key]).then((result) => {
-                console.log('local lookup', result);
+            chrome.storage.local.get(key, result => {
                 if (result && result.redacted)
                     sendResponse(result);
                 else retractionWatchLookup(doi)
                     .then(result => {
-                        chrome.storage.local.set({key: result});
+                        if (result?.retracted) {
+                            chrome.storage.local.set({[key]: result}, () => {
+                            });
+                        }
                         sendResponse(result)
                     }).catch();
             });

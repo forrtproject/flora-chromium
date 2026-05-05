@@ -4,7 +4,7 @@ import {
     retractionCheck,
     FLORA_RET_CHECK_KEY,
     badgeQuerySelector
-} from "@shared/doi-redaction"
+} from "@shared/doi-retraction"
 import {validateDOIs} from "@shared/doi-validate";
 import {debounce} from "@shared/debounce";
 import type {DoiString, LookupState} from "@shared/types";
@@ -120,10 +120,10 @@ async function pageRenderChangeHandler(): Promise<void> {
         if (redacts.size > 0 && !dismissRedacts) {
             renderRetractedBanner([...redacts.entries()], {
                 onDismiss: () => {
-                    dismissRedacts: true
+                    dismissRedacts = true
                 },
                 onSnooze: () => {
-                    dismissRedacts: true
+                    dismissRedacts = true
                 },
             });
         }
