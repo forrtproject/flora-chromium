@@ -2,16 +2,31 @@ import type { DoiString } from "./types";
 import { normaliseDOI } from "./doi-normalise";
 import { debugLog } from "./debug";
 
-// Allow parens inside DOIs (e.g. 10.1016/S0924-9338(98)80023-0)
-// but stop at whitespace, commas, quotes, fragments, query strings, etc.
-const DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*\/[^\s,;\]}>'"<#?&\\]+)/g;
+// Allow parens and semicolons inside DOIs (e.g. 10.1016/S0924-9338(98)80023-0,
+// 10.1002/(sici)...3.0.co;2-g). DOI suffixes may contain slashes per the spec
+// (e.g. 10.6338/JDA.202212/SP_17(4).0000), but we stop before URL routing
+// segments (e.g. /full, /abstract) that journals append after the DOI. A slash
+// is considered a routing separator — not part of the suffix — when the next
+// segment is purely [A-Za-z-] (English word/hyphen), which covers all known
+// journal routing words while leaving structured suffix segments (containing
+// digits, underscores, or brackets) intact.
+const SUFFIX_CHARS = `[^\\s,/\\]}>'"<#?&\\\\]`;
+const EXTRA_SLASH = `(?:\\/(?![a-zA-Z-]+(?:[/\\s,#?&<>{}\\[\\]]|$))${SUFFIX_CHARS}+)*`;
+const DOI_REGEX = new RegExp(`(10\\.\\d{4,}(?:\\.\\d+)*\\/${SUFFIX_CHARS}+${EXTRA_SLASH})`, "g");
 
+// For visible body text only — innerText contains no HTML tags, so < and >
+// appear as literal characters (e.g. SICI DOIs decoded from &lt; / &gt; HTML
+// entities). We allow them here so that DOIs like
+// 10.1002/(SICI)...18:4<303::AID-SMJ869>3.0.CO;2-G are not truncated at '<'.
+const TEXT_SUFFIX_CHARS = `[^\\s,/\\]'"#?&\\\\]`;
+const TEXT_EXTRA_SLASH = `(?:\\/(?![a-zA-Z-]+(?:[/\\s,#?&<>{}\\[\\]]|$))${TEXT_SUFFIX_CHARS}+)*`;
+export const DOI_TEXT_REGEX = new RegExp(`(10\\.\\d{4,}(?:\\.\\d+)*\\/${TEXT_SUFFIX_CHARS}+${TEXT_EXTRA_SLASH})`, "g");
 
 // Characters inserted by browsers/sites for word-break purposes that can split DOIs
 const WORD_BREAK_CHARS = /[\u200B\u200C\u200D\u00AD\uFEFF\u2060]/g;
 
 // Encoded DOI pattern: 10.NNNN%2F... (percent-encoded slash)
-const ENCODED_DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*%2[fF][^\s,;\]}>'"<#?&\\]+)/g;
+const ENCODED_DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*%2[fF][^\s,/\]}>'"<#?&\\]+)/g;
 
 /**
  * Decode any percent-encoded DOIs in text so the main DOI_REGEX can find them.
@@ -61,6 +76,14 @@ function cleanDoiTrailing(raw: string): string {
   cleaned = cleaned.slice(0, lastBalanced);
   // Strip trailing punctuation again after paren trimming
   cleaned = cleaned.replace(/[.,;:]+$/, "");
+  // Strip trailing balanced parenthetical groups appended as annotations
+  // (e.g. "...3.0.co;2-g(matched)" → "...3.0.co;2-g"). Uses a loop because
+  // removing one group can expose another that should also be stripped.
+  let prev: string;
+  do {
+    prev = cleaned;
+    cleaned = cleaned.replace(/\([^()]*\)$/, "").replace(/[.,;:]+$/, "");
+  } while (cleaned !== prev);
   return cleaned;
 }
 
@@ -181,14 +204,6 @@ function extractFromDoiLinks(doc: Document, found: Set<DoiString>): void {
   for (const link of links) {
     const href = link.href;
     if (!href) continue;
-    // Only extract from known DOI resolver domains
-    try {
-      const url = new URL(href);
-      const host = url.hostname.toLowerCase();
-      if (host !== "doi.org" && host !== "dx.doi.org") continue;
-    } catch {
-      continue;
-    }
     const doi = normaliseDOI(href);
     if (doi) found.add(doi);
   }
@@ -199,7 +214,7 @@ function extractFromVisibleText(doc: Document, found: Set<DoiString>): void {
   // Strip invisible word-break characters that sites insert for overflow-wrap/break-word
   // and decode any percent-encoded DOIs
   const bodyText = decodeEncodedDois(rawText.replace(WORD_BREAK_CHARS, ""));
-  const matches = bodyText.matchAll(DOI_REGEX);
+  const matches = bodyText.matchAll(DOI_TEXT_REGEX);
   for (const match of matches) {
     const cleaned = cleanDoiTrailing(match[1]);
     if (!isValidDoiSuffix(cleaned)) continue;

@@ -163,5 +163,46 @@ describe("injector", () => {
 
       expect(document.querySelector(".flora-inline-badge")).toBeNull();
     });
+
+    it("injects badge next to a SICI DOI link whose text contains literal angle brackets", () => {
+      // Real Wiley pages render the doi.org URL with &lt;/&gt; HTML entities in
+      // the link text but %3C/%3E in the href. Both must normalise to the same key.
+      document.body.innerHTML = `
+        <a href="https://doi.org/10.1002/(SICI)1097-0266(199704)18:4%3C303::AID-SMJ869%3E3.0.CO;2-G">
+          https://doi.org/10.1002/(SICI)1097-0266(199704)18:4&lt;303::AID-SMJ869&gt;3.0.CO;2-G
+        </a>
+      `;
+
+      const state = new Map<DoiString, LookupState>();
+      state.set(doi("10.1002/(sici)1097-0266(199704)18:4<303::aid-smj869>3.0.co;2-g"), {
+        status: "matched",
+        result: MOCK_RESULT,
+        source: "extracted",
+      });
+
+      renderInlineBadges(state);
+
+      expect(document.querySelector(".flora-inline-badge")).not.toBeNull();
+    });
+
+    it("injects badge next to a SICI DOI non-doi.org link whose text contains the full DOI", () => {
+      // Publisher pages sometimes link to their own URL but display the DOI in the link text.
+      document.body.innerHTML = `
+        <a href="https://onlinelibrary.wiley.com/doi/10.1002/(SICI)1097-0266(199704)18:4%3C303::AID-SMJ869%3E3.0.CO;2-G">
+          10.1002/(SICI)1097-0266(199704)18:4&lt;303::AID-SMJ869&gt;3.0.CO;2-G
+        </a>
+      `;
+
+      const state = new Map<DoiString, LookupState>();
+      state.set(doi("10.1002/(sici)1097-0266(199704)18:4<303::aid-smj869>3.0.co;2-g"), {
+        status: "matched",
+        result: MOCK_RESULT,
+        source: "extracted",
+      });
+
+      renderInlineBadges(state);
+
+      expect(document.querySelector(".flora-inline-badge")).not.toBeNull();
+    });
   });
 });
