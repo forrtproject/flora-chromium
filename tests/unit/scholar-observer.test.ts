@@ -68,6 +68,7 @@ describe("scholar observer", () => {
 
     const call = (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mock
       .calls[0][0];
+    console.log(call);
     expect(call.dois).toContain("10.1038/nature12373");
   });
 
