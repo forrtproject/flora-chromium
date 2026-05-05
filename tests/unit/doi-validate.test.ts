@@ -13,10 +13,16 @@ afterAll(() => server.close());
 
 const doi = (s: string) => s as DoiString;
 
-// The encoded DOI URL uses encodeURIComponent, so 10.1038/nature12373
-// becomes 10.1038%2Fnature12373 — a single path segment.
-// Use a wildcard to match all handle API requests.
-const HANDLE_PATTERN = "https://doi.org/api/handles/:encoded";
+// Slashes in the DOI are preserved as URL path separators, so
+// 10.1038/nature12373 → /api/handles/10.1038/nature12373 (two segments)
+// and 10.6338/JDA.202212/SP_17(4).0000 → /api/handles/10.6338/JDA.202212/SP_17(4).0000
+// Use a wildcard to match all handle API requests regardless of segment count.
+const HANDLE_PATTERN = "https://doi.org/api/handles/*";
+
+function handleFromRequest(request: Request): string {
+  const url = new URL(request.url);
+  return decodeURIComponent(url.pathname.replace("/api/handles/", ""));
+}
 
 describe("validateDOI", () => {
   beforeEach(() => {
@@ -144,10 +150,9 @@ describe("validateDOIs", () => {
 
   it("validates multiple DOIs in parallel", async () => {
     server.use(
-      http.get(HANDLE_PATTERN, ({ params }) => {
-        const encoded = params.encoded as string;
-        const decoded = decodeURIComponent(encoded);
-        if (decoded === "10.1038/valid1") {
+      http.get(HANDLE_PATTERN, ({ request }) => {
+        const handle = handleFromRequest(request);
+        if (handle === "10.1038/valid1") {
           return HttpResponse.json({ responseCode: 1 });
         }
         return HttpResponse.json({ responseCode: 100 });
@@ -161,6 +166,23 @@ describe("validateDOIs", () => {
 
     expect(results.get(doi("10.1038/valid1"))).toBe(true);
     expect(results.get(doi("10.1038/invalid1"))).toBe(false);
+  });
+
+  it("validates a DOI with a slash inside the suffix (spec example 2)", async () => {
+    // 10.6338/JDA.202212/SP_17(4).0000 has two slashes — the API URL must
+    // use a real path (not %2F) so doi.org routes it correctly.
+    server.use(
+      http.get(HANDLE_PATTERN, ({ request }) => {
+        const handle = handleFromRequest(request);
+        if (handle === "10.6338/jda.202212/sp_17(4).0000") {
+          return HttpResponse.json({ responseCode: 1 });
+        }
+        return HttpResponse.json({ responseCode: 100 });
+      })
+    );
+
+    const results = await validateDOIs([doi("10.6338/jda.202212/sp_17(4).0000")]);
+    expect(results.get(doi("10.6338/jda.202212/sp_17(4).0000"))).toBe(true);
   });
 
   it("mixes cached and uncached DOIs", async () => {
