@@ -201,6 +201,19 @@ describe("extractDOIs", () => {
     expect(dois).toHaveLength(1);
   });
 
+  it("extracts SICI DOI when an inline anchor tag splits the %3E boundary", () => {
+    // Some publisher pages hyperlink the '3E3.0.co' fragment inside the DOI,
+    // leaving '%' as a bare text node and '3E3.0.co' inside an <a> tag.
+    // The extractor must reassemble the full DOI from innerText.
+    const html = `<!DOCTYPE html>
+    <html><head></head><body>
+      <p>10.1002/(sici)1097-0266(199704)18:4%3C303::aid-smj869%<a href="http://3e3.0.co/">3E3.0.co</a>;2-g</p>
+    </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const dois = extractDOIs(doc);
+    expect(dois).toContain("10.1002/(sici)1097-0266(199704)18:4<303::aid-smj869>3.0.co;2-g");
+  });
+
   it("stops extraction at extra URL path segments in body text", () => {
     const html = `<!DOCTYPE html>
     <html><head></head><body>
