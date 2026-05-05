@@ -387,6 +387,19 @@ describe("extractDOIsFromText", () => {
     expect(dois).toEqual(["10.1002/(sici)1097-0266(199704)18:4<303::aid-smj869>3.0.co;2-g"]);
   });
 
+  it("strips trailing balanced annotation like (matched) from SICI DOI in visible text", () => {
+    // Sites sometimes append annotations such as "(matched)" directly after the DOI.
+    // These are balanced parens so the unbalanced-paren stripper misses them.
+    // Uses HTML entities so innerText exposes literal '<>' for DOI_TEXT_REGEX.
+    const html = `<!DOCTYPE html>
+    <html><head></head><body>
+      <p>10.1002/(sici)1097-0266(199704)18:4&lt;303::aid-smj869&gt;3.0.co;2-g(matched)</p>
+    </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const dois = extractDOIs(doc);
+    expect(dois).toEqual(["10.1002/(sici)1097-0266(199704)18:4<303::aid-smj869>3.0.co;2-g"]);
+  });
+
   // ── Trailing punctuation and parentheses ─────────────────────────────────
   it("strips trailing semicolon when DOI appears in a semicolon-separated list", () => {
     const dois = extractDOIsFromText("See 10.1037/a0029709; also 10.1038/nature12373.");

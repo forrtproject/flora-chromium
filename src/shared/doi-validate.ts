@@ -65,9 +65,12 @@ export async function validateDOIs(
   await Promise.allSettled(
     uncached.map(async (doi) => {
       try {
-        const response = await fetch(
-          `${HANDLE_API}${encodeURIComponent(doi)}`
-        );
+        // Preserve slashes as URL path separators so multi-slash DOIs
+        // (e.g. 10.6338/JDA.202212/SP_17(4).0000) route correctly on doi.org.
+        // encodeURIComponent on the full DOI would collapse all '/' to %2F,
+        // making the server see a single opaque segment instead of a path.
+        const encodedHandle = doi.split("/").map(encodeURIComponent).join("/");
+        const response = await fetch(`${HANDLE_API}${encodedHandle}`);
         if (!response.ok) {
           results.set(doi, false);
           cacheResult(doi, false);
@@ -85,7 +88,6 @@ export async function validateDOIs(
       }
     })
   );
-
   return results;
 }
 

@@ -76,6 +76,14 @@ function cleanDoiTrailing(raw: string): string {
   cleaned = cleaned.slice(0, lastBalanced);
   // Strip trailing punctuation again after paren trimming
   cleaned = cleaned.replace(/[.,;:]+$/, "");
+  // Strip trailing balanced parenthetical groups appended as annotations
+  // (e.g. "...3.0.co;2-g(matched)" → "...3.0.co;2-g"). Uses a loop because
+  // removing one group can expose another that should also be stripped.
+  let prev: string;
+  do {
+    prev = cleaned;
+    cleaned = cleaned.replace(/\([^()]*\)$/, "").replace(/[.,;:]+$/, "");
+  } while (cleaned !== prev);
   return cleaned;
 }
 
@@ -196,14 +204,6 @@ function extractFromDoiLinks(doc: Document, found: Set<DoiString>): void {
   for (const link of links) {
     const href = link.href;
     if (!href) continue;
-    // Only extract from known DOI resolver domains
-    try {
-      const url = new URL(href);
-      const host = url.hostname.toLowerCase();
-      if (host !== "doi.org" && host !== "dx.doi.org") continue;
-    } catch {
-      continue;
-    }
     const doi = normaliseDOI(href);
     if (doi) found.add(doi);
   }

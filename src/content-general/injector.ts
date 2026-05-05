@@ -311,7 +311,7 @@ export function renderInlineBadges(
     if (link.nextElementSibling?.classList.contains(BADGE_CLASS)) continue;
 
     // Only badge links whose visible text contains a DOI, or that point to doi.org
-    const textMatch = link.textContent?.match(DOI_TEXT_REGEX);
+    const textMatch = link.innerText?.match(/\b(10\.\d{4,}(?:\.\d+)*\/\S+)\b/);
     const isDoiOrgLink = /^https?:\/\/(dx\.)?doi\.org\//i.test(link.href);
     const hrefMatch = isDoiOrgLink
       ? link.href.match(/\b(10\.\d{4,}(?:\.\d+)*\/\S+)\b/)
