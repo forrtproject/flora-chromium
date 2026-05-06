@@ -55,6 +55,13 @@
     },
     {
       "matches": [
+        "*://forrt.org/*"
+      ],
+      "js": [ "dist/content-forrt.js" ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
         "*://scholar.google.com/*",
         "*://scholar.google.co.uk/*",
         "*://scholar.google.co.in/*",
