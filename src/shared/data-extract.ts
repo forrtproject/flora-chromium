@@ -27,10 +27,10 @@ export async function getRetractionMap() {
 }
 
 export async function storageSync() {
-    getRetractionMap().then(map => {
-        if (!map) return;
-        chrome.storage.local.set({[RET_MAP_KEY]: map});
-    });
+    let map = await getRetractionMap();
+    console.log('map', map)
+    if (!map) return;
+    await chrome.storage.local.set({[RET_MAP_KEY]: map});
 }
 
 

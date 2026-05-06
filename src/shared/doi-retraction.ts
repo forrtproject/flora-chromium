@@ -1,4 +1,4 @@
-import {RET_MAP_KEY} from "@shared/data-extract"
+import {RET_MAP_KEY, storageSync} from "@shared/data-extract"
 import retractionData from '../retractions.json';
 
 export const FLORA_RET_CHECK_KEY = "flora-ret-checked";
@@ -11,23 +11,21 @@ export interface RetractionResponse {
 /**
  * Request retraction status. Due to CORS policies, the request
  * must execute in the background context.
- * @param dois - DOIs to lookup
  */
-export function retractionCheck(dois: string[], callback): void {
-    chrome.storage.local.get([RET_MAP_KEY], retMap => {
-        const source = (retMap && Object.keys(retMap).length > 0) ?
-            retMap : retractionData;
-        let result = []
-        for (const doi of dois) {
-            // @ts-ignore
-            const retractionDOI = source[doi];
-            if (retractionDOI) result.push({
-                originDoi: doi,
-                doi: retractionDOI
-            });
-        }
-        callback(result);
-    });
+// @ts-ignore
+export async function retractionCheck(dois: string[]): Promise<RetractionResponse[]> {
+    const storageResult = await chrome.storage.local.get([RET_MAP_KEY]) || {};
+    const retMap = storageResult[RET_MAP_KEY] || {};
+    const source = (Object.keys(retMap).length > 0) ? retMap : retractionData;
+    let result = []
+    for (const doi of dois) {
+        const retractionDOI = source[doi];
+        if (retractionDOI) result.push({
+            originDoi: doi,
+            doi: retractionDOI
+        });
+    }
+    return result;
 }
 
 export function injectRetractionInfo(target: Element, info: RetractionResponse): void {

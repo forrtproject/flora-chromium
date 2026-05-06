@@ -229,7 +229,8 @@ export async function processScholarResults(doc: Document): Promise<void> {
 
 const DOI_LABEL_CLASS = "flora-doi-label";
 
-async function preInjectLabels(row: HTMLElement, doi: string, color: string, isAugmented = false): void {
+async function preInjectLabels(row: HTMLElement, doi: string, color: string, isAugmented = false): Promise<void> {
+    injectDoiLabel(row, doi, color, isAugmented);
     let target = row.querySelector(".gs_ggs");
     if (!target) {
         target = document.createElement("div");
@@ -237,12 +238,8 @@ async function preInjectLabels(row: HTMLElement, doi: string, color: string, isA
         const gsRi = row.querySelector(".gs_ri");
         row.insertBefore(target, gsRi);
     }
-    retractionCheck([doi], result => {
-        if (result) {
-            injectRetractionInfo(target, result[0])
-        }
-    });
-    injectDoiLabel(row, doi, color, isAugmented);
+    let result = await retractionCheck([doi]);
+    if (result) injectRetractionInfo(target, result[0])
 }
 
 function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmented = false): void {

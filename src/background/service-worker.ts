@@ -1,6 +1,6 @@
 import {SessionCache} from "@shared/cache";
 import {lookupDOIs} from "@shared/flora-api";
-import {storageSync} from "@shared/data-extract";
+import {RET_MAP_KEY, storageSync} from "@shared/data-extract";
 import type {DoiString, ReplicationResult} from "@shared/types";
 import {LookupResponse, SheetFetchResponse} from "@shared/messages";
 import {isLookupRequest, isSheetFetchRequest} from "@shared/messages";
@@ -169,19 +169,16 @@ async function handleSheetFetch(
 }
 
 async function syncRetractionsInfo() {
-    const key = "synctime";
-    chrome.storage.local.get([key], value => {
-        console.log(value)
-        const ts = Date.now();
-        // @ts-ignore
-        const update = !value || ts > (value + 86400000);
-        if (update) {
-            console.log("update");
-            storageSync().then(() => {
-                chrome.storage.local.set({key: ts})
-            });
-        }
-    })
+    const minInterval = 1000 * 60 * 60 * 24 * 7; // weekly
+    const currentTime = Date.now();
+    const previous = await chrome.storage.local.get(["synctime"]) ?? 0;
+    const lastSync = previous.synctime || 0;
+    const nextUpdate = lastSync + minInterval;
+    const storageResult = await chrome.storage.local.get(RET_MAP_KEY);
+    if (Object.keys(storageResult).length === 0 || currentTime > nextUpdate) {
+        await syncRetractionsInfo();
+        await chrome.storage.local.set({synctime: currentTime});
+    }
 }
 
 (() => {
