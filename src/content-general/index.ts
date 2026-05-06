@@ -1,10 +1,6 @@
 import {extractDOIs, extractDOIsFromText} from "@shared/doi-extractor";
 import {augmentDOIs} from "@shared/doi-augment";
-import {
-    retractionCheck,
-    FLORA_RET_CHECK_KEY,
-    badgeQuerySelector
-} from "@shared/doi-retraction"
+import {retractionCheck} from "@shared/doi-retraction"
 import {validateDOIs} from "@shared/doi-validate";
 import {debounce} from "@shared/debounce";
 import type {DoiString, LookupState} from "@shared/types";
@@ -322,62 +318,6 @@ async function fetchSheetDois(): Promise<void> {
     // Always run — even if CSV fetch failed, this ensures the modal state is
     // re-evaluated after a tab switch (processedDois was already cleared).
     pageRenderChangeHandler();
-}
-
-function getClosestBlock(el: HTMLElement | null): HTMLElement | null {
-    if (!el) return null;
-
-    // Elements that typically behave as blocks/containers
-    const blockDisplayTypes = ['block', 'flex', 'grid', 'table', 'list-item', 'section'];
-
-    let current: HTMLElement | null = el;
-    while (current && current !== document.body) {
-        const display = window.getComputedStyle(current).display;
-        if (blockDisplayTypes.some(type => display.includes(type))) {
-            return current;
-        }
-        current = current.parentElement;
-    }
-    return document.body; // Fallback to body if no block parent found
-}
-
-function findAllBlocksByText(match: string): HTMLElement[] {
-    const results = new Set<HTMLElement>();
-    const walker = document.createTreeWalker(
-        document.body,
-        NodeFilter.SHOW_TEXT,
-        null
-    );
-    let node: Node | null;
-    while (node = walker.nextNode()) {
-        if (node.textContent?.includes(match) && node) {
-            if (collectBlocks(match, getClosestBlock(node.parentElement), results))
-                break;
-        }
-    }
-    return Array.from(results);
-}
-
-function findAllBlocksByAnyAttribute(match: string): HTMLElement[] {
-    const results = new Set<HTMLElement>();
-    const elements = document.querySelectorAll<HTMLElement>("*");
-    for (const el of elements) {
-        for (let i = 0; i < el.attributes.length; i++) {
-            if (el.attributes[i].value.includes(match)) {
-                if (collectBlocks(match, getClosestBlock(el), results)) break;
-            }
-        }
-    }
-    return Array.from(results);
-}
-
-function collectBlocks(match: string, block: HTMLElement | null, results: Set<HTMLElement>) {
-    if (block && !block.hasAttribute(FLORA_RET_CHECK_KEY) && block.innerText.includes(match)
-        && !block.querySelector(badgeQuerySelector)) {
-        results.add(block);
-        return true
-    }
-    return false
 }
 
 function startDomListener(callback: () => void) {
