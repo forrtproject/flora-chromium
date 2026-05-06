@@ -1,6 +1,8 @@
-import type {DoiString, LookupState, ReplicationResult} from "../shared/types";
-import {normaliseDOI} from "../shared/doi-normalise";
-import {debugLog} from "../shared/debug";
+import type { DoiString, LookupState, ReplicationResult, ReplicationEntry, OriginalEntry, DoiContext } from "../shared/types";
+import type { PubPeerFeedback } from "../shared/pubpeer-api";
+import { normaliseDOI } from "../shared/doi-normalise";
+import { debugLog } from "../shared/debug";
+import { getSettings } from "../shared/settings";
 import styles from "./styles.css";
 import {RetractionLookupResponse} from "@shared/messages";
 import {retractionCheck} from "@shared/doi-retraction";
@@ -563,8 +565,11 @@ export function hideAllFloraUI(): void {
         el.style.display = "none";
     }
 
-    const setup = document.getElementById(SETUP_HOST_ID);
-    if (setup) setup.style.display = "none";
+  const setup = document.getElementById(SETUP_HOST_ID);
+  if (setup) setup.style.display = "none";
+
+  const pubpeer = document.getElementById(PUBPEER_PANEL_ID);
+  if (pubpeer) pubpeer.style.display = "none";
 }
 
 export function showAllFloraUI(): void {
@@ -578,8 +583,697 @@ export function showAllFloraUI(): void {
         el.style.display = "";
     }
 
-    const setup = document.getElementById(SETUP_HOST_ID);
-    if (setup) setup.style.display = "";
+  const setup = document.getElementById(SETUP_HOST_ID);
+  if (setup) setup.style.display = "";
+
+  const pubpeer = document.getElementById(PUBPEER_PANEL_ID);
+  if (pubpeer) pubpeer.style.display = "";
+}
+
+// ──────────────────────────────────────────────
+// PubPeer panel
+// ──────────────────────────────────────────────
+
+const PUBPEER_PANEL_ID = "flora-pubpeer-panel";
+
+const PANEL_WIDTH = 500;
+
+// ── Smart tab positioning + drag ──────────────────────────────────────────
+
+const TAB_STORAGE_KEY = "flora_tab_top_v1";
+
+let _tabPositionObserver: MutationObserver | null = null;
+let _tabResizeHandler: (() => void) | null = null;
+let _tabDragCleanup: (() => void) | null = null;
+// null = never set by user; number = user-dragged position in px from top
+let _customTabTop: number | null = (() => {
+  try {
+    const v = localStorage.getItem(TAB_STORAGE_KEY);
+    return v !== null ? Number(v) : null;
+  } catch { return null; }
+})();
+
+function cleanupTabPositioning(): void {
+  _tabPositionObserver?.disconnect();
+  _tabPositionObserver = null;
+  if (_tabResizeHandler) {
+    window.removeEventListener("resize", _tabResizeHandler);
+    _tabResizeHandler = null;
+  }
+  _tabDragCleanup?.();
+  _tabDragCleanup = null;
+}
+
+function positionTabOnRightEdge(tab: HTMLElement): void {
+  // Respect user-dragged position
+  if (_customTabTop !== null) {
+    const clamped = Math.max(0, Math.min(window.innerHeight - (tab.offsetHeight || 80), _customTabTop));
+    tab.style.top = `${Math.round(clamped)}px`;
+    return;
+  }
+
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const TAB_H = tab.offsetHeight || 80;
+  const MARGIN = 16;
+
+  // Collect occupied vertical ranges from ALL elements near the right edge.
+  // Use getBoundingClientRect so we catch fixed/sticky/absolute inside fixed containers.
+  const occupied: Array<[number, number]> = [];
+  for (const el of document.querySelectorAll<HTMLElement>("*")) {
+    if (el === tab || tab.contains(el) || el.contains(tab)) continue;
+    const rect = el.getBoundingClientRect();
+    // Element must touch the right edge (right side within 8px of viewport right)
+    if (rect.right < vw - 8) continue;
+    // Must have real size and be visible in the viewport
+    if (rect.width < 4 || rect.height < 4) continue;
+    if (rect.bottom < 0 || rect.top > vh) continue;
+    // Only count elements that are actually rendered (not hidden)
+    const cs = window.getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || cs.opacity === "0") continue;
+    occupied.push([rect.top, rect.bottom]);
+  }
+
+  occupied.sort((a, b) => a[0] - b[0]);
+
+  // Merge overlapping/adjacent intervals
+  const merged: Array<[number, number]> = [];
+  for (const [t, b] of occupied) {
+    if (merged.length && t <= merged[merged.length - 1][1] + MARGIN) {
+      merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], b);
+    } else {
+      merged.push([t, b]);
+    }
+  }
+
+  // Find free vertical gaps
+  const gaps: Array<[number, number]> = [];
+  let prev = 0;
+  for (const [t, b] of merged) {
+    if (t - prev >= TAB_H + 2 * MARGIN) gaps.push([prev, t]);
+    prev = b;
+  }
+  if (vh - prev >= TAB_H + 2 * MARGIN) gaps.push([prev, vh]);
+
+  const center = vh / 2;
+  let bestTop = center - TAB_H / 2;
+
+  if (gaps.length > 0) {
+    gaps.sort((a, b) => Math.abs((a[0] + a[1]) / 2 - center) - Math.abs((b[0] + b[1]) / 2 - center));
+    const [gs, ge] = gaps[0];
+    bestTop = Math.max(gs + MARGIN, Math.min(center - TAB_H / 2, ge - TAB_H - MARGIN));
+  }
+
+  tab.style.top = `${Math.round(bestTop)}px`;
+}
+
+function attachTabDrag(tab: HTMLElement): void {
+  let isDragging = false;
+  let didDrag = false;
+  let startY = 0;
+  let startTop = 0;
+
+  const onMouseDown = (e: MouseEvent): void => {
+    if (e.button !== 0) return;
+    isDragging = true;
+    didDrag = false;
+    startY = e.clientY;
+    startTop = parseInt(tab.style.top) || 0;
+    // Stop animation so it no longer controls 'right' or interferes
+    tab.style.animation = "none";
+    tab.style.transition = "filter 0.15s";
+    tab.style.cursor = "grabbing";
+    e.preventDefault();
+  };
+
+  const onMouseMove = (e: MouseEvent): void => {
+    if (!isDragging) return;
+    const delta = e.clientY - startY;
+    if (Math.abs(delta) > 5) didDrag = true;
+    if (!didDrag) return;
+    const tabH = tab.offsetHeight || 80;
+    const newTop = Math.max(0, Math.min(window.innerHeight - tabH, startTop + delta));
+    tab.style.top = `${Math.round(newTop)}px`;
+  };
+
+  const onMouseUp = (): void => {
+    if (!isDragging) return;
+    isDragging = false;
+    tab.style.cursor = "grab";
+    tab.style.transition = "right 0.3s cubic-bezier(0.4,0,0.2,1),filter 0.15s";
+    if (didDrag) {
+      tab.dataset.dragged = "1"; // click handler reads this to ignore the synthetic click after mouseup
+      _customTabTop = parseInt(tab.style.top);
+      try { localStorage.setItem(TAB_STORAGE_KEY, String(_customTabTop)); } catch { /* ignore */ }
+    }
+  };
+
+  tab.addEventListener("mousedown", onMouseDown);
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mouseup", onMouseUp);
+
+  _tabDragCleanup = (): void => {
+    tab.removeEventListener("mousedown", onMouseDown);
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+  };
+}
+
+function setupTabPositioning(tab: HTMLElement): void {
+  cleanupTabPositioning();
+  positionTabOnRightEdge(tab);
+  attachTabDrag(tab);
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const reposition = (): void => {
+    if (_customTabTop !== null) return; // user has a preferred spot
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => positionTabOnRightEdge(tab), 200);
+  };
+
+  // subtree:true catches plugins that inject into nested containers
+  _tabPositionObserver = new MutationObserver(reposition);
+  _tabPositionObserver.observe(document.body, { childList: true, subtree: true });
+
+  _tabResizeHandler = reposition;
+  window.addEventListener("resize", reposition, { passive: true });
+}
+
+export function renderPubPeerPanel(
+  articleFeedbacks: PubPeerFeedback[],
+  referenceFeedbacks: PubPeerFeedback[],
+  pageState: Map<DoiString, LookupState>,
+  doiContext: Map<DoiString, DoiContext>,
+  refFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map()
+): void {
+  const existingHost = document.getElementById(PUBPEER_PANEL_ID);
+  const existingPanel = existingHost?.querySelector<HTMLElement>(".flora-sliding-panel");
+  const wasOpen = existingPanel?.style.transform === "translateX(0)";
+  cleanupTabPositioning();
+  existingHost?.remove();
+
+  const withComments = articleFeedbacks.filter((f) => f.total_comments > 0);
+
+  // Article FORRT stats — computed before guard so they can trigger panel display
+  const articleDois = [...doiContext.entries()]
+    .filter(([, ctx]) => ctx === "article")
+    .map(([doi]) => doi);
+  let articleReplications = 0;
+  let articleReproductions = 0;
+  let articleOriginals = 0;
+  const allReplicationEntries: ReplicationEntry[] = [];
+  const allReproductionEntries: ReplicationEntry[] = [];
+  const allOriginalEntries: OriginalEntry[] = [];
+  for (const doi of articleDois) {
+    const state = pageState.get(doi);
+    if (state?.status === "matched") {
+      articleReplications += state.result.record.stats.n_replications_total;
+      articleReproductions += state.result.record.stats.n_reproductions_total;
+      articleOriginals += state.result.record.stats.n_originals_total;
+      allReplicationEntries.push(...state.result.record.replications);
+      if (state.result.record.reproductions) {
+        allReproductionEntries.push(...state.result.record.reproductions);
+      }
+      allOriginalEntries.push(...state.result.record.originals);
+    }
+  }
+
+  const hasReplicationData = articleReplications > 0 || articleReproductions > 0 || articleOriginals > 0;
+
+  if (withComments.length === 0 && !hasReplicationData) return;
+
+  const primary = withComments.length > 0
+    ? withComments.reduce((best, f) => f.total_comments > best.total_comments ? f : best)
+    : null;
+
+  if (primary && !isSafePubPeerUrl(primary.url)) return;
+
+  const host = document.createElement("div");
+  host.id = PUBPEER_PANEL_ID;
+
+  const hostStyle = document.createElement("style");
+  hostStyle.textContent = `
+    @keyframes flora-tab-enter {
+      0%   { opacity: 0; right: -28px; }
+      60%  { opacity: 1; right: 4px; }
+      100% { opacity: 1; right: 0; }
+    }
+    @keyframes flora-tab-pulse {
+      0%, 100% { box-shadow: -2px 0 10px rgba(0,0,0,0.2), 0 0 0 0 rgba(133,57,83,0.5); }
+      50%       { box-shadow: -2px 0 10px rgba(0,0,0,0.2), 0 0 0 10px rgba(133,57,83,0); }
+    }
+  `;
+  host.appendChild(hostStyle);
+
+  // Tab trigger — always visible on right edge
+  const tab = document.createElement("button");
+  tab.setAttribute("aria-label", "Open FLoRA panel");
+  // all:unset resets animation, so animation is declared explicitly after it.
+  // 'right' is animated by flora-tab-enter; openPanel/closePanel clear the animation
+  // before touching 'right' so the JS value isn't suppressed by the fill mode.
+  tab.style.cssText =
+    "all:unset;cursor:grab;pointer-events:all;" +
+    "position:fixed;right:0;top:0;" +
+    "width:28px;padding:14px 0;z-index:2147483647;" +
+    "background:linear-gradient(180deg,#853953,#612D53);" +
+    "border-radius:6px 0 0 6px;" +
+    "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;" +
+    "box-shadow:-2px 0 10px rgba(0,0,0,0.2);" +
+    "transition:right 0.3s cubic-bezier(0.4,0,0.2,1),filter 0.15s;" +
+    "animation:flora-tab-enter 0.5s cubic-bezier(0.34,1.4,0.64,1) forwards," +
+    "flora-tab-pulse 1.8s ease-in-out 0.6s 3;";
+  tab.addEventListener("mouseenter", () => { tab.style.filter = "brightness(1.15)"; });
+  tab.addEventListener("mouseleave", () => { tab.style.filter = ""; });
+
+  // Grip dots — visual hint that the tab is draggable
+  const grip = document.createElement("span");
+  grip.style.cssText =
+    "display:grid;grid-template-columns:repeat(2,3px);gap:2px;opacity:0.5;pointer-events:none;";
+  for (let i = 0; i < 6; i++) {
+    const dot = document.createElement("span");
+    dot.style.cssText = "width:3px;height:3px;border-radius:50%;background:#fff;";
+    grip.appendChild(dot);
+  }
+
+  const tabLabel = document.createElement("span");
+  tabLabel.style.cssText =
+    "color:#fff;font-size:10px;font-weight:700;letter-spacing:1.2px;" +
+    "writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);" +
+    "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+    "pointer-events:none;";
+  tabLabel.textContent = "FLoRA";
+
+  const arrow = document.createElement("span");
+  arrow.style.cssText =
+    "color:rgba(255,255,255,0.9);font-size:16px;line-height:1;" +
+    "transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);pointer-events:none;";
+  arrow.textContent = "‹";
+
+  tab.appendChild(grip);
+  tab.appendChild(tabLabel);
+  tab.appendChild(arrow);
+
+  // Sliding panel
+  const panel = document.createElement("div");
+  panel.className = "flora-sliding-panel";
+  panel.style.cssText =
+    `position:fixed;top:0;right:0;height:100vh;width:${PANEL_WIDTH}px;` +
+    "background:#fff;display:flex;flex-direction:column;" +
+    "box-shadow:-4px 0 24px rgba(0,0,0,0.15);" +
+    "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+    "transform:translateX(100%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);" +
+    "z-index:2147483647;overflow:hidden;";
+
+  // Header
+  const header = document.createElement("div");
+  header.style.cssText =
+    "background:linear-gradient(135deg,#853953,#612D53);padding:14px 16px;" +
+    "display:flex;align-items:center;gap:10px;flex-shrink:0;";
+  header.innerHTML = `
+    <span style="color:#fff;font-weight:700;font-size:13px;background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:5px;">FLoRA</span>
+    <span style="color:#fff;font-size:14px;font-weight:500;flex:1;">Meta Report</span>`;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.setAttribute("aria-label", "Close panel");
+  closeBtn.style.cssText =
+    "all:unset;cursor:pointer;color:rgba(255,255,255,0.8);font-size:20px;line-height:1;" +
+    "width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;";
+  closeBtn.textContent = "×";
+  header.appendChild(closeBtn);
+  panel.appendChild(header);
+
+  // Summary section
+  const summary = document.createElement("div");
+  summary.style.cssText =
+    "border-bottom:1px solid #e8e8e8;background:#f5f8fa;" +
+    "font-size:12px;color:#3c4043;line-height:1.6;flex-shrink:0;";
+
+  // Article title — use PubPeer title if available, else h1/document.title
+  const articleTitleText =
+    primary?.title ||
+    document.querySelector<HTMLHeadingElement>("h1")?.textContent?.trim() ||
+    document.title ||
+    "Article";
+  const articleFloraUrl = articleDois.length > 0
+    ? `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(articleDois[0])}`
+    : null;
+
+  const articleTitleEl = document.createElement("div");
+  if (articleFloraUrl) {
+    const titleLink = document.createElement("a");
+    titleLink.href = articleFloraUrl;
+    titleLink.target = "_blank";
+    titleLink.rel = "noopener";
+    titleLink.style.cssText =
+      "display:inline-flex;align-items:flex-start;gap:4px;color:#853953;font-weight:600;padding:12px 16px;" +
+      "font-size:18px;text-decoration:none;line-height:1.4;word-break:break-word;";
+    const titleSpan = document.createElement("span");
+    titleSpan.style.cssText = "text-transform:capitalize;";
+    titleSpan.textContent = articleTitleText;
+    titleLink.appendChild(titleSpan);
+    articleTitleEl.appendChild(titleLink);
+  } else {
+    articleTitleEl.style.cssText = "color:#853953;font-weight:600;font-size:18px;padding:12px 16px;";
+    articleTitleEl.textContent = articleTitleText;
+  }
+  summary.appendChild(articleTitleEl);
+
+  // Replication/reproduction/original entry lists from FORRT API
+  const renderEntrySection = (
+    entries: Array<{
+      doi?: string | null; title?: string | null;
+      authors?: Array<{ given?: string | null; family?: string | null }> | null;
+      journal?: string | null; year?: number | null; url?: string | null;
+      outcome?: string | null;
+    }>,
+    sectionTitle: string,
+    showOaPlaceholder = false
+  ): Map<string, HTMLElement> => {
+    const oaPlaceholders = new Map<string, HTMLElement>();
+    if (entries.length === 0) return oaPlaceholders;
+    const section = document.createElement("div");
+    section.style.cssText = "border-top:1px solid #e8e8e8;";
+    const sectionLabel = document.createElement("div");
+    sectionLabel.style.cssText =
+      "font-size:14px;font-weight:600;color:#5f6368;text-transform:uppercase;padding:0px 16px 10px 12px;" +
+      "letter-spacing:0.5px;margin-bottom:6px;border-bottom:1px solid #e8e8e8;padding:10px 16px;";
+    sectionLabel.textContent = sectionTitle;
+    section.appendChild(sectionLabel);
+    for (const entry of entries) {
+      const item = document.createElement("div");
+      item.style.cssText = "padding:6px 0;border-bottom:1px solid #f0f0f0;padding:10px 16px;";
+      const entryUrl = entry.url ?? (entry.doi ? `https://doi.org/${entry.doi}` : null);
+      const titleText = entry.title ?? entry.doi ?? "Unknown";
+      const titleRow = document.createElement("div");
+      titleRow.style.cssText = "display:flex;align-items:flex-start;gap:8px;";
+      if (entryUrl && /^https?:\/\//i.test(entryUrl)) {
+        const a = document.createElement("a");
+        a.href = entryUrl;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.style.cssText =
+          "font-size:12px;font-weight:500;color:#853953;text-decoration:none;line-height:1.4;flex:1;min-width:0;";
+        a.textContent = titleText;
+        titleRow.appendChild(a);
+      } else {
+        const titleEl = document.createElement("div");
+        titleEl.style.cssText = "font-size:12px;font-weight:500;color:#202124;line-height:1.4;flex:1;min-width:0;";
+        titleEl.textContent = titleText;
+        titleRow.appendChild(titleEl);
+      }
+      if (showOaPlaceholder && entry.doi) {
+        const placeholder = document.createElement("span");
+        titleRow.appendChild(placeholder);
+        oaPlaceholders.set(entry.doi, placeholder);
+      }
+      if (entry.outcome) {
+        const outcome = entry.outcome.toLowerCase();
+        const isSuccess = outcome.includes("success") || outcome.includes("replicated") || outcome === "yes";
+        const isFailure = outcome.includes("fail") || outcome === "no";
+        const badge = document.createElement("span");
+        badge.style.cssText =
+          "flex-shrink:0;font-size:10px;font-weight:600;" +
+          "padding:1px 7px;border-radius:10px;line-height:1.6;" +
+          (isSuccess
+            ? "background:#d1fae5;color:#065f46;"
+            : isFailure
+            ? "background:#fee2e2;color:#991b1b;"
+            : "background:#fef8e8;color:#b8860b;");
+        badge.textContent = entry.outcome;
+        titleRow.appendChild(badge);
+      }
+      item.appendChild(titleRow);
+      const meta: string[] = [];
+      if (entry.authors?.length) {
+        const first = entry.authors[0];
+        const authorStr = first.family ?? first.given ?? "";
+        if (authorStr) meta.push(entry.authors.length > 1 ? `${authorStr} et al.` : authorStr);
+      }
+      if (entry.year) meta.push(String(entry.year));
+      if (entry.journal) meta.push(entry.journal);
+      if (meta.length > 0) {
+        const metaEl = document.createElement("div");
+        metaEl.style.cssText = "font-size:11px;color:#5f6368;margin-top:2px;";
+        metaEl.textContent = meta.join(" · ");
+        item.appendChild(metaEl);
+      }
+      section.appendChild(item);
+    }
+    summary.appendChild(section);
+    return oaPlaceholders;
+  };
+
+  const oaPlaceholders = renderEntrySection(allReplicationEntries, `Replication${allReplicationEntries.length !== 1 ? "s" : ""}`, true);
+  renderEntrySection(allReproductionEntries, `Reproduction${allReproductionEntries.length !== 1 ? "s" : ""}`);
+  renderEntrySection(allOriginalEntries, `Original Paper${allOriginalEntries.length !== 1 ? "s" : ""}`);
+
+  void (async () => {
+    if (oaPlaceholders.size === 0) return;
+    const { email } = await getSettings();
+    if (!email) return;
+    for (const [doi, placeholder] of oaPlaceholders) {
+      try {
+        const resp = await fetch(
+          `https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`
+        );
+        if (!resp.ok) continue;
+        const data = await resp.json() as {
+          is_oa?: boolean;
+          best_oa_location?: { url_for_pdf?: string | null; url?: string | null } | null;
+        };
+        if (!data.is_oa) continue;
+        const oaUrl = data.best_oa_location?.url_for_pdf ?? data.best_oa_location?.url;
+        if (!oaUrl) continue;
+        const icon = document.createElement("a");
+        icon.href = oaUrl;
+        icon.target = "_blank";
+        icon.rel = "noopener noreferrer";
+        icon.title = "Free PDF available via Unpaywall";
+        icon.style.cssText =
+          "flex-shrink:0;display:inline-flex;align-items:center;color:#853953;line-height:1;";
+        icon.innerHTML =
+          `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" ` +
+          `stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">` +
+          `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>` +
+          `<path d="M7 11V7a5 5 0 0 1 9.9-1"/>` +
+          `</svg>`;
+        placeholder.replaceWith(icon);
+      } catch {
+        // ignore network errors per entry
+      }
+    }
+  })();
+
+  // References — names + per-reference PubPeer comment count + replication tags
+  const refFeedbacksWithComments = referenceFeedbacks.filter((f) => f.total_comments > 0);
+  if (refFeedbacksWithComments.length > 0) {
+    const refSection = document.createElement("div");
+    refSection.style.cssText = "border-top:1px solid #e8e8e8;";
+
+    const refLabel = document.createElement("div");
+    refLabel.style.cssText =
+      "font-size:14px;font-weight:600;color:#5f6368;text-transform:uppercase;" +
+      "letter-spacing:0.5px;border-bottom:1px solid #e8e8e8;padding:10px 16px;";
+    refLabel.textContent = "References";
+    refSection.appendChild(refLabel);
+
+    const refList = document.createElement("ul");
+    refList.style.cssText = "margin:0;list-style:none;padding:0;";
+
+    // Build URL→DOI reverse map from individual-lookup results for exact matching.
+    // PubPeer feedbacks carry no DOI, but a single-DOI lookup yields the same URL
+    // as the batch lookup, so URL is a stable key.
+    const feedbackUrlToDoi = new Map<string, DoiString>();
+    for (const [doi, feedback] of refFeedbackByDoi) {
+      feedbackUrlToDoi.set(feedback.url, doi);
+    }
+
+    for (const ref of refFeedbacksWithComments) {
+      const li = document.createElement("li");
+      li.style.cssText = "padding:10px 16px;border-bottom:1px solid #f0f0f0;";
+
+      const titleLink = document.createElement("a");
+      titleLink.href = ref.url;
+      titleLink.target = "_blank";
+      titleLink.rel = "noopener";
+      titleLink.style.cssText =
+        "display:block;font-size:12px;font-weight:500;color:#853953;" +
+        "text-decoration:none;line-height:1.4;margin-bottom:6px;";
+      titleLink.textContent = ref.title || "Unknown reference";
+
+      const tagsRow = document.createElement("div");
+      tagsRow.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:4px;";
+
+      const matchedDoi = feedbackUrlToDoi.get(ref.url);
+      if (matchedDoi) {
+        const s = pageState.get(matchedDoi);
+        if (s?.status === "matched") {
+          const { n_replications_total, n_reproductions_total, n_originals_total } = s.result.record.stats;
+          const floraUrl = `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(matchedDoi)}`;
+          const makeTag = (label: string, bg: string, fg: string, border: string): HTMLAnchorElement => {
+            const tag = document.createElement("a");
+            tag.href = floraUrl;
+            tag.target = "_blank";
+            tag.rel = "noopener noreferrer";
+            tag.style.cssText =
+              `flex-shrink:0;font-size:10px;font-weight:600;color:${fg};` +
+              `background:${bg};border:1px solid ${border};padding:1px 7px;border-radius:10px;` +
+              "white-space:nowrap;text-decoration:none;cursor:pointer;";
+            tag.textContent = label;
+            return tag;
+          };
+          if (n_replications_total > 0) {
+            tagsRow.appendChild(makeTag(
+              `${n_replications_total} Replication${n_replications_total === 1 ? "" : "s"}`,
+              "#e0f2fe", "#0369a1", "#7dd3fc"
+            ));
+          }
+          if (n_reproductions_total > 0) {
+            tagsRow.appendChild(makeTag(
+              `${n_reproductions_total} Reproduction${n_reproductions_total === 1 ? "" : "s"}`,
+              "#ede9fe", "#6d28d9", "#c4b5fd"
+            ));
+          }
+          if (n_originals_total > 0) {
+            tagsRow.appendChild(makeTag("Is Replication", "#fef9c3", "#854d0e", "#fde047"));
+          }
+        }
+      }
+
+      const countPill = document.createElement("a");
+      countPill.href = ref.url;
+      countPill.target = "_blank";
+      countPill.rel = "noopener";
+      countPill.style.cssText =
+        "flex-shrink:0;font-size:10px;font-weight:600;color:#853953;" +
+        "background:#f9f0f4;border:1px solid #d4a5b8;padding:1px 7px;border-radius:10px;white-space:nowrap;" +
+        "text-decoration:none;cursor:pointer;";
+      countPill.textContent = `${ref.total_comments} ${ref.total_comments === 1 ? "comment" : "comments"}`;
+      tagsRow.appendChild(countPill);
+
+      li.appendChild(titleLink);
+      li.appendChild(tagsRow);
+      refList.appendChild(li);
+    }
+
+    refSection.appendChild(refList);
+    summary.appendChild(refSection);
+  }
+
+  // Single scrollable body between header and footer
+  const scrollBody = document.createElement("div");
+  scrollBody.style.cssText = "flex:1;overflow-y:auto;";
+  scrollBody.appendChild(summary);
+
+  // PubPeer comments section — only rendered when there is a primary PubPeer URL
+  if (primary) {
+    const commentsHeader = document.createElement("p");
+    commentsHeader.style.cssText =
+      "padding:12px 16px;font-size:14px;color:#5f6368;line-height:1.6;" +
+      "flex-shrink:0;margin:0;font-weight:600;background:#f5f8fa;text-transform:uppercase;";
+    commentsHeader.textContent = "Comments";
+    scrollBody.appendChild(commentsHeader);
+
+    const iframeWrap = document.createElement("div");
+    iframeWrap.style.cssText = "height:500px;overflow:hidden;";
+    const iframe = document.createElement("iframe");
+    iframe.src = primary.url;
+    iframe.title = "PubPeer comments";
+    iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms");
+    iframe.style.cssText = "width:100%;height:100%;border:none;display:block;opacity:0;transition:opacity 0.15s;";
+
+    const revealIframe = (): void => { iframe.style.opacity = "1"; };
+    const fallbackTimer = setTimeout(revealIframe, 3000);
+    const onCssReady = (e: MessageEvent): void => {
+      if (e.source !== iframe.contentWindow) return;
+      if ((e.data as { type?: string })?.type !== "FLORA_PUBPEER_CSS_READY") return;
+      clearTimeout(fallbackTimer);
+      window.removeEventListener("message", onCssReady);
+      revealIframe();
+    };
+    window.addEventListener("message", onCssReady);
+
+    iframeWrap.appendChild(iframe);
+    scrollBody.appendChild(iframeWrap);
+  }
+
+  panel.appendChild(scrollBody);
+
+  // Footer — always pinned at bottom, links to FLoRA Atlas for the article DOI
+  if (articleDois.length > 0) {
+    const footer = document.createElement("div");
+    footer.style.cssText =
+      "padding:10px 16px;display:flex;justify-content:flex-end;border-top:1px solid #e8e8e8;flex-shrink:0;";
+    const openLink = document.createElement("a");
+    openLink.href = `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(articleDois[0])}`;
+    openLink.target = "_blank";
+    openLink.rel = "noopener";
+    openLink.style.cssText =
+      "all:unset;cursor:pointer;padding:6px 16px;font-size:12px;font-weight:500;" +
+      "color:#fff;background:linear-gradient(135deg,#853953,#612D53);border-radius:6px;";
+    openLink.textContent = "Open in FLoRA Atlas";
+    footer.appendChild(openLink);
+    panel.appendChild(footer);
+  }
+
+  // Toggle logic
+  let isOpen = false;
+
+  const openPanel = (): void => {
+    // Clear animation fill so JS can freely control 'right'
+    tab.style.animation = "none";
+    isOpen = true;
+    panel.style.transform = "translateX(0)";
+    tab.style.right = `${PANEL_WIDTH}px`;
+    arrow.style.transform = "rotate(180deg)";
+    tab.setAttribute("aria-label", "Close FLoRA panel");
+    const style = document.createElement("style");
+    style.textContent = "#scite-popup{z-index:2147483646 !important;}";
+    (document.head ?? document.documentElement).appendChild(style);
+  };
+
+  const closePanel = (): void => {
+    tab.style.animation = "none";
+    isOpen = false;
+    panel.style.transform = "translateX(100%)";
+    tab.style.right = "0";
+    arrow.style.transform = "rotate(0deg)";
+    tab.setAttribute("aria-label", "Open FLoRA panel");
+    const style = document.createElement("style");
+    style.textContent = "#scite-popup{z-index:2147483647 !important;}";
+    (document.head ?? document.documentElement).appendChild(style);
+  };
+
+  // Use a shared didDrag flag so the click handler can tell drag from tap.
+  // attachTabDrag (called inside setupTabPositioning) sets this via its own closure,
+  // so we read it off the tab element via a data attribute instead.
+  tab.addEventListener("click", () => {
+    if (tab.dataset.dragged === "1") { tab.dataset.dragged = ""; return; }
+    if (isOpen) closePanel(); else openPanel();
+  });
+  closeBtn.addEventListener("click", () => closePanel());
+
+  host.appendChild(tab);
+  host.appendChild(panel);
+  document.body.appendChild(host);
+
+  setupTabPositioning(tab);
+
+  if (wasOpen) openPanel();
+}
+
+export function removePubPeerPanel(): void {
+  cleanupTabPositioning();
+  document.getElementById(PUBPEER_PANEL_ID)?.remove();
+}
+
+function isSafePubPeerUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === "pubpeer.com" || parsed.hostname.endsWith(".pubpeer.com");
+  } catch {
+    return false;
+  }
 }
 
 // ──────────────────────────────────────────────
