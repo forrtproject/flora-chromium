@@ -5,6 +5,8 @@ on:
   push:
     branches: # on push to main
       - main
+    paths-ignore:
+      - "**/*.json"
     tags: # or tag push (any branch)
       - '*'
 
