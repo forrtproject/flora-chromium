@@ -16,6 +16,8 @@ export interface RetractionResponse {
 export async function retractionCheck(dois: string[]): Promise<RetractionResponse[]> {
     const storageResult = await chrome.storage.local.get([RET_MAP_KEY]) || {};
     const retMap = storageResult[RET_MAP_KEY] || {};
+    if (!storageResult[RET_MAP_KEY])
+        chrome.runtime.sendMessage({type: "FLORA_RET_SYNC"}).then().catch();
     const source = (Object.keys(retMap).length > 0) ? retMap : retractionData;
     let result = []
     for (const doi of dois) {

@@ -1,4 +1,4 @@
-export const RET_MAP_KEY = "FLORA_RETRACTION_LOOKUP"
+export const RET_MAP_KEY = "RetractionLookupLocal"
 const SOURCE_URL = 'https://gitlab.com/crossref/retraction-watch-data/-/raw/main/retraction_watch.csv?ref_type=heads'
 
 export async function getRetractionMap() {

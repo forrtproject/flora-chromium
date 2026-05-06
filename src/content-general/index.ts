@@ -132,11 +132,9 @@ async function pageRenderChangeHandler(): Promise<void> {
     }
 
     // retraction check logic
-    if (!dismissRedacts && hasDoiChange && !isSheets && dois.length > 0) {
+    if (hasDoiChange && dois.length > 0) {
         redacts = await retractionCheck(dois);
-        if (redacts.length > 0) {
-            // TODO: do something with retractions
-        }
+        // TODO: do something with redacts, if any
     }
 
     // Filter out already-processed DOIs

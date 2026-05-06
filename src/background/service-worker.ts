@@ -18,6 +18,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     }
 });
 
+
 /** In-flight dedup: prevents duplicate API calls for the same DOI */
 const inflight = new Map<DoiString, Promise<ReplicationResult | null>>();
 
@@ -68,6 +69,15 @@ chrome.runtime.onMessage.addListener(
             });
             return true;
         }
+        if (
+            typeof message === "object" &&
+            message !== null &&
+            (message as { type?: string }).type === "FLORA_RET_SYNC"
+        ) {
+            syncRetractionsInfo().then().catch();
+            return true;
+        }
+
         if (isSheetFetchRequest(message)) {
             handleSheetFetch(message.spreadsheetId, message.gid)
                 .then(sendResponse)
@@ -168,7 +178,7 @@ async function handleSheetFetch(
     }
 }
 
-async function syncRetractionsInfo() {
+export async function syncRetractionsInfo() {
     const minInterval = 1000 * 60 * 60 * 24 * 7; // weekly
     const currentTime = Date.now();
     const previous = await chrome.storage.local.get(["synctime"]) ?? 0;
@@ -180,7 +190,3 @@ async function syncRetractionsInfo() {
         await chrome.storage.local.set({synctime: currentTime});
     }
 }
-
-(() => {
-    syncRetractionsInfo().then();
-})();

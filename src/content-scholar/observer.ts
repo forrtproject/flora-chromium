@@ -239,7 +239,7 @@ async function preInjectLabels(row: HTMLElement, doi: string, color: string, isA
         row.insertBefore(target, gsRi);
     }
     let result = await retractionCheck([doi]);
-    if (result) injectRetractionInfo(target, result[0])
+    if (result && result[0] != undefined) injectRetractionInfo(target, result[0])
 }
 
 function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmented = false): void {
