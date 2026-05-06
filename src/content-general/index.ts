@@ -6,7 +6,7 @@ import {debounce} from "@shared/debounce";
 import type {DoiString, LookupState} from "@shared/types";
 import type {
     LookupRequest,
-    LookupResponse, RetractionLookupResponse,
+    LookupResponse,
     SheetFetchRequest,
     SheetFetchResponse
 } from "@shared/messages";

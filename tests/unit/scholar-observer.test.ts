@@ -2,11 +2,7 @@ import {describe, it, expect, vi, beforeEach} from "vitest";
 import {readFileSync} from "fs";
 import {join} from "path";
 import {JSDOM} from "jsdom";
-import {
-    LookupRequest,
-    LookupResponse,
-    RetractionLookupRequest
-} from "../../src/shared/messages";
+import {LookupRequest, LookupResponse} from "../../src/shared/messages";
 import {mockResult} from "../helpers";
 
 const MOCK_RESULT = mockResult();

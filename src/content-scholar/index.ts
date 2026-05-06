@@ -1,7 +1,7 @@
 import { observeScholarResults, processScholarResults } from "./observer";
-import { debugLog } from "../shared/debug";
-import { isSetupComplete } from "../shared/settings";
-import { isDomainBlocked } from "../shared/domains";
+import { debugLog } from "@shared/debug";
+import { isSetupComplete } from "@shared/settings";
+import { isDomainBlocked } from "@shared/domains";
 import { renderSetupPrompt, hideAllFloraUI, showAllFloraUI } from "../content-general/injector";
 
 (async () => {

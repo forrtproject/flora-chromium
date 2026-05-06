@@ -13,14 +13,10 @@ export interface RetractionResponse {
  * must execute in the background context.
  * @param dois - DOIs to lookup
  */
-export async function retractionCheck(dois: string[]): Promise<RetractionResponse[] | void> {
-    console.log('dois', dois)
+export function retractionCheck(dois: string[], callback): void {
     chrome.storage.local.get([RET_MAP_KEY], retMap => {
         const source = (retMap && Object.keys(retMap).length > 0) ?
             retMap : retractionData;
-        if (!retMap) {
-            // TODO: sync storage in background (just call storageSync)
-        }
         let result = []
         for (const doi of dois) {
             // @ts-ignore
@@ -30,7 +26,7 @@ export async function retractionCheck(dois: string[]): Promise<RetractionRespons
                 doi: retractionDOI
             });
         }
-        return result;
+        callback(result);
     });
 }
 
