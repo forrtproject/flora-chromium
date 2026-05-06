@@ -1,4 +1,4 @@
-import type { DoiString } from "./types";
+import type { DoiString, ClassifiedDois, PageType } from "./types";
 import { normaliseDOI } from "./doi-normalise";
 import { debugLog } from "./debug";
 
@@ -250,6 +250,121 @@ export function extractDOIsFromText(text: string): DoiString[] {
   }
   debugLog(`extractDOIsFromText: ${found.size} DOI(s) from ${text.length} chars`);
   return [...found];
+}
+
+// Class/id tokens that indicate a reference or bibliography section
+const REFERENCE_SECTION_RE = /^(?:cited|cites?|citations?|bibliography|bibliograph(?:y|ies)|references?|reflist|ref-list|works-cited|footnotes?)$/i;
+
+function isReferenceContainer(el: Element): boolean {
+  if (el.className) {
+    const cls = typeof el.className === "string" ? el.className : "";
+    for (const token of cls.split(/\s+/)) {
+      if (token && REFERENCE_SECTION_RE.test(token)) return true;
+    }
+  }
+  if (el.id && REFERENCE_SECTION_RE.test(el.id)) return true;
+  return false;
+}
+
+function findReferenceContainers(doc: Document): Element[] {
+  const matched: Element[] = [];
+  for (const el of doc.querySelectorAll<Element>("[class],[id]")) {
+    if (isReferenceContainer(el)) matched.push(el);
+  }
+  // Keep only outermost containers to avoid double-counting nested elements
+  return matched.filter(
+    (el) => !matched.some((other) => other !== el && other.contains(el))
+  );
+}
+
+function extractFromReferenceContainers(doc: Document, found: Set<DoiString>): void {
+  for (const container of findReferenceContainers(doc)) {
+    // DOI links inside the container
+    for (const link of container.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+      const doi = normaliseDOI(link.href);
+      if (doi) found.add(doi);
+    }
+    // Visible text inside the container
+    const text = (container as HTMLElement).innerText ?? container.textContent ?? "";
+    const cleaned = decodeEncodedDois(text.replace(WORD_BREAK_CHARS, ""));
+    for (const match of cleaned.matchAll(DOI_TEXT_REGEX)) {
+      const raw = cleanDoiTrailing(match[1]);
+      if (!isValidDoiSuffix(raw)) continue;
+      const doi = normaliseDOI(raw);
+      if (doi) found.add(doi);
+    }
+  }
+}
+
+/**
+ * Detect whether the current page is an individual article, a listing/index
+ * page, or unknown.
+ *
+ * An article page has a primary DOI in its URL, meta tags, or JSON-LD.
+ * Listing pages are inferred from URL path segments when no primary DOI is
+ * present.
+ */
+export function detectPageType(doc: Document): PageType {
+  const primaryDoi = extractPrimaryDOI(doc);
+  if (primaryDoi) return "article";
+
+  const path = doc.location?.pathname?.toLowerCase() ?? "";
+  if (/\/(toc|issues?|volumes?|search|browse|list|results?|catalog|archive|index)(\/|$)/.test(path)) {
+    return "listing";
+  }
+  return "unknown";
+}
+
+/**
+ * Extract and classify all DOIs on the page into three groups:
+ * - articleDois: the DOI(s) that identify the current paper (URL / meta / JSON-LD)
+ * - referenceDois: DOIs found inside reference/bibliography section elements
+ * - otherDois: everything else (body text, other links)
+ *
+ * Also returns the detected page type.
+ */
+export function classifyPageDois(doc: Document): ClassifiedDois {
+  // Article DOIs — authoritative sources only
+  const articleFound = new Set<DoiString>();
+  extractFromUrl(doc, articleFound);
+  extractFromMeta(doc, articleFound);
+  extractFromJsonLd(doc, articleFound);
+
+  // Reference section DOIs
+  const referenceFound = new Set<DoiString>();
+  extractFromReferenceContainers(doc, referenceFound);
+  // The article's own DOI might appear in its reference list — keep it as article
+  for (const doi of articleFound) referenceFound.delete(doi);
+
+  // All DOIs on the page
+  const allFound = new Set<DoiString>();
+  extractFromUrl(doc, allFound);
+  extractFromMeta(doc, allFound);
+  extractFromJsonLd(doc, allFound);
+  extractFromDoiLinks(doc, allFound);
+  extractFromVisibleText(doc, allFound);
+
+  // Other = everything not already classified
+  const otherFound = new Set<DoiString>();
+  for (const doi of allFound) {
+    if (!articleFound.has(doi) && !referenceFound.has(doi)) otherFound.add(doi);
+  }
+
+  const pageType = detectPageType(doc);
+
+  debugLog(
+    `classifyPageDois: pageType=${pageType}`,
+    `article=${articleFound.size}`,
+    `references=${referenceFound.size}`,
+    `other=${otherFound.size}`
+  );
+
+  return {
+    pageType,
+    articleDois: [...articleFound],
+    referenceDois: [...referenceFound],
+    otherDois: [...otherFound],
+  };
 }
 
 function isGoogleSheets(doc: Document): boolean {

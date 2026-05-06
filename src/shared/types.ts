@@ -27,24 +27,59 @@ const StatsSchema = z.object({
   n_unique_original_dois: z.number(),
 });
 
+const AuthorSchema = z.object({
+  sequence: z.string().nullable().optional(),
+  given: z.string().nullable().optional(),
+  family: z.string().nullable().optional(),
+});
+
+/** A single replication or reproduction entry from the FORRT API */
+export const ReplicationEntrySchema = z.object({
+  doi: z.string().nullable().optional(),
+  doi_hash: z.string().optional(),
+  type: z.string().nullable().optional(),
+  title: z.string().nullable().optional(),
+  authors: z.array(AuthorSchema).nullable().optional(),
+  journal: z.string().nullable().optional(),
+  year: z.number().nullable().optional(),
+  volume: z.string().nullable().optional(),
+  issue: z.string().nullable().optional(),
+  pages: z.string().nullable().optional(),
+  url: z.string().nullable().optional(),
+  outcome: z.string().nullable().optional(),
+  outcome_quote: z.string().nullable().optional(),
+  outcome_quote_source: z.string().nullable().optional(),
+});
+
+export type ReplicationEntry = z.infer<typeof ReplicationEntrySchema>;
+
+/** An original/target study entry (when the queried paper is itself a replication) */
+export const OriginalEntrySchema = z.object({
+  doi: z.string().nullable().optional(),
+  doi_hash: z.string().optional(),
+  title: z.string().nullable().optional(),
+  authors: z.array(AuthorSchema).nullable().optional(),
+  journal: z.string().nullable().optional(),
+  year: z.number().nullable().optional(),
+  url: z.string().nullable().optional(),
+});
+
+export type OriginalEntry = z.infer<typeof OriginalEntrySchema>;
+
 /** Zod schema for a single result from the FORRT replication API */
 export const ReplicationResultSchema = z.object({
   doi: z.string(),
+  types: z.array(z.string()).optional(),
   title: z.string().nullable(),
-  authors: z.array(
-    z.object({
-      sequence: z.string().nullable().optional(),
-      given: z.string().nullable().optional(),
-      family: z.string().nullable().optional(),
-    })
-  ).nullable(),
+  authors: z.array(AuthorSchema).nullable(),
   journal: z.string().nullable(),
   year: z.number().nullable(),
   url: z.string().nullable(),
   record: z.object({
     stats: StatsSchema,
-    replications: z.array(z.unknown()),
-    originals: z.array(z.unknown()),
+    replications: z.array(ReplicationEntrySchema),
+    reproductions: z.array(ReplicationEntrySchema).optional(),
+    originals: z.array(OriginalEntrySchema),
   }),
 });
 
@@ -61,4 +96,21 @@ export type ApiResponse = z.infer<typeof ApiResponseSchema>;
 export interface CachedEntry<T> {
   data: T;
   timestamp: number;
+}
+
+/** How a DOI was classified on the page */
+export type DoiContext = "article" | "reference" | "other";
+
+/** What kind of page we're on */
+export type PageType = "article" | "listing" | "unknown";
+
+/** DOIs grouped by where they were found on the page */
+export interface ClassifiedDois {
+  pageType: PageType;
+  /** DOI(s) representing the current article — from URL, meta tags, or JSON-LD */
+  articleDois: DoiString[];
+  /** DOIs found inside reference/bibliography sections */
+  referenceDois: DoiString[];
+  /** All other DOIs found on the page */
+  otherDois: DoiString[];
 }

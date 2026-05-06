@@ -1,20 +1,24 @@
-import { extractDOIs, extractDOIsFromText, extractPrimaryDOI } from "../shared/doi-extractor";
+import { extractDOIs, extractDOIsFromText, extractPrimaryDOI, classifyPageDois } from "../shared/doi-extractor";
 import { augmentDOIs } from "../shared/doi-augment";
 import { validateDOIs } from "../shared/doi-validate";
 import { debounce } from "../shared/debounce";
-import type { DoiString, LookupState } from "../shared/types";
+import type { DoiString, LookupState, DoiContext } from "../shared/types";
 import type { LookupRequest, LookupResponse, SheetFetchRequest, SheetFetchResponse } from "../shared/messages";
-import { renderErrorBanner, renderMatchedBanner, removeBanner, renderInlineBadges, renderSheetsModal, removeSheetsModal, renderSetupPrompt, renderPubPeerPanel, removePubPeerPanel, hideAllFloraUI, showAllFloraUI, type SheetsModalCallbacks } from "./injector";
-import { lookupPubPeer } from "../shared/pubpeer-api";
+import { renderInlineBadges, renderSheetsModal, removeSheetsModal, renderSetupPrompt, renderPubPeerPanel, removePubPeerPanel, hideAllFloraUI, showAllFloraUI, type SheetsModalCallbacks } from "./injector";
+import { lookupPubPeer, type PubPeerFeedback } from "../shared/pubpeer-api";
 import { debugLog, debugWarn } from "../shared/debug";
 import { isSetupComplete } from "../shared/settings";
 import { isDomainBlocked } from "../shared/domains";
 
 const pageState = new Map<DoiString, LookupState>();
 const processedDois = new Set<DoiString>();
+const doiContext = new Map<DoiString, DoiContext>();
 let lastUrl = location.href;
 let augmentAttempted = false;
 let pubpeerChecked = false;
+let lastArticleFeedbacks: PubPeerFeedback[] = [];
+let lastReferenceFeedbacks: PubPeerFeedback[] = [];
+let lastRefFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map();
 
 /** Monotonic counter — incremented on each sheet tab switch to discard stale CSV responses. */
 let sheetFetchGen = 0;
@@ -53,8 +57,42 @@ async function checkPubPeer(): Promise<void> {
   const primaryDoi = extractPrimaryDOI(document);
   if (!primaryDoi) return;
   try {
-    const feedbacks = await lookupPubPeer([primaryDoi], [location.href]);
-    renderPubPeerPanel(feedbacks);
+    const referenceDois = [...doiContext.entries()]
+      .filter(([, ctx]) => ctx === "reference")
+      .map(([doi]) => doi);
+    const [articleFeedbacks, referenceFeedbacks] = await Promise.all([
+      lookupPubPeer([primaryDoi], [location.href]),
+      referenceDois.length > 0 ? lookupPubPeer(referenceDois, []) : Promise.resolve([]),
+    ]);
+    lastArticleFeedbacks = articleFeedbacks;
+    lastReferenceFeedbacks = referenceFeedbacks;
+
+    // For reference DOIs with FORRT replication data, do individual PubPeer lookups so
+    // we can build a reliable DOI→feedback map (the batch call returns no DOI per entry).
+    const replicationRefDois = referenceDois.filter((doi) => {
+      const s = pageState.get(doi);
+      return (
+        s?.status === "matched" &&
+        (s.result.record.stats.n_replications_total > 0 ||
+          s.result.record.stats.n_reproductions_total > 0 ||
+          s.result.record.stats.n_originals_total > 0)
+      );
+    });
+    const refFeedbackByDoi = new Map<DoiString, PubPeerFeedback>();
+    if (replicationRefDois.length > 0) {
+      const pairs = await Promise.all(
+        replicationRefDois.map(async (doi) => ({
+          doi,
+          feedback: (await lookupPubPeer([doi], []))[0] ?? null,
+        }))
+      );
+      for (const { doi, feedback } of pairs) {
+        if (feedback) refFeedbackByDoi.set(doi, feedback);
+      }
+    }
+    lastRefFeedbackByDoi = refFeedbackByDoi;
+
+    renderPubPeerPanel(articleFeedbacks, referenceFeedbacks, pageState, doiContext, refFeedbackByDoi);
   } catch {
     // PubPeer is supplementary — fail silently
   }
@@ -67,23 +105,36 @@ async function run(): Promise<void> {
     lastUrl = currentUrl;
     processedDois.clear();
     pageState.clear();
+    doiContext.clear();
     augmentAttempted = false;
     pubpeerChecked = false;
+    lastArticleFeedbacks = [];
+    lastReferenceFeedbacks = [];
+    lastRefFeedbackByDoi = new Map();
     if (isSheets) {
       removeSheetsModal();
     } else {
-      removeBanner();
       removePubPeerPanel();
     }
   }
 
-  let dois = extractDOIs(document);
+  let dois: DoiString[];
 
-  // On Sheets, also extract DOIs from the full sheet data fetched via CSV
-  if (isSheets && sheetCsvDois.length > 0) {
-    const combined = new Set([...dois, ...sheetCsvDois]);
-    dois = [...combined];
+  if (isSheets) {
+    dois = extractDOIs(document);
+    if (sheetCsvDois.length > 0) {
+      dois = [...new Set([...dois, ...sheetCsvDois])];
+    }
+  } else {
+    const classified = classifyPageDois(document);
+    for (const doi of classified.articleDois) doiContext.set(doi, "article");
+    for (const doi of classified.referenceDois) doiContext.set(doi, "reference");
+    for (const doi of classified.otherDois) doiContext.set(doi, "other");
+    dois = [...classified.articleDois, ...classified.referenceDois, ...classified.otherDois];
+    debugLog("General: pageType =", classified.pageType);
+    debugLog(classified.articleDois, "article DOIs,", classified.referenceDois, "reference DOIs,", classified.otherDois, "other DOIs");
   }
+
   debugLog(isSheets ? "Sheets:" : "General:", "Extracted DOIs:", dois.length, dois);
 
   // Validate extracted DOIs via doi.org — remove invalid ones
@@ -172,13 +223,12 @@ async function run(): Promise<void> {
           renderSheetsModal(matched, sheetsModalCallbacks);
         }
       } else {
-        renderMatchedBanner(matched);
+        // Re-render the panel so FORRT stat cards appear alongside PubPeer data
+        // renderPubPeerPanel(lastArticleFeedbacks, lastReferenceFeedbacks, pageState, doiContext);
       }
     } else {
       if (isSheets) {
         removeSheetsModal();
-      } else {
-        removeBanner();
       }
     }
 
@@ -187,7 +237,7 @@ async function run(): Promise<void> {
       renderInlineBadges(pageState);
     }
   } catch {
-    renderErrorBanner("Failed to contact FLoRA service");
+    debugWarn("Failed to contact FLoRA service");
   }
 }
 
@@ -275,7 +325,7 @@ async function fetchSheetDois(): Promise<void> {
   if (window !== window.top) {
     if (location.hostname === "pubpeer.com" || location.hostname.endsWith(".pubpeer.com")) {
       const style = document.createElement("style");
-      style.textContent = "nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.vertical-timeline-block.add-comment, div.sticky.affix, div.extension-installer.container, div.footer.fixed, div.page-component-up, div.comment-footer.clearfix { display: none !important; } a.forum-item-title {padding-top:10px!important;} div.vertical-timeline-block {margin:0 15px 0px 10px;} div.selected div {background-color: transparent!important;} div.wrapper {width: 500px!important;}}";
+      style.textContent = "nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.sticky.affix, div.extension-installer.container, div.footer.fixed, div.page-component-up, a.forum-item-title, .ibox-title span { display: none !important; } div.vertical-timeline-block {margin:0 15px 0px 10px;} div.selected div {background-color: transparent!important;} div.wrapper {width: 500px!important;} .ibox-title div, .ibox-title strong, .ibox-title span, .ibox-title em, .ibox-content a{color:#853953!important;}  .all-user-footer div:nth-child(1){visibility:hidden;} .el-button{background-color:#853953!important; border-color:#853953!important;} .ibox-bordered:before{background-color:#853953!important;} #comment-editor .nav>li>a{color#fff!important;} .btn-link.manual-file-chooser-text{color:#853953!important;} #comment-editor.nav>li>a:nth-child(2){color:#fff!important;}}";
       (document.head ?? document.documentElement).appendChild(style);
       window.parent.postMessage({ type: "FLORA_PUBPEER_CSS_READY" }, "*");
     }

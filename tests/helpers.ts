@@ -1,7 +1,32 @@
-import type { DoiString, ReplicationResult } from "../src/shared/types";
+import type { DoiString, ReplicationResult, ReplicationEntry, OriginalEntry } from "../src/shared/types";
 
 export function doi(s: string): DoiString {
   return s as DoiString;
+}
+
+export function mockEntry(overrides: Partial<ReplicationEntry> = {}): ReplicationEntry {
+  return {
+    doi: "10.1000/mock.replication",
+    type: "replication",
+    title: "Mock Replication Study",
+    authors: [{ sequence: "first", given: "Alice", family: "Smith" }],
+    journal: "Mock Journal",
+    year: 2022,
+    outcome: "failed",
+    outcome_quote: "We were unable to replicate the original findings.",
+    ...overrides,
+  };
+}
+
+export function mockOriginal(overrides: Partial<OriginalEntry> = {}): OriginalEntry {
+  return {
+    doi: "10.1000/mock.original",
+    title: "Mock Original Study",
+    authors: [{ sequence: "first", given: "Bob", family: "Jones" }],
+    journal: "Original Journal",
+    year: 2018,
+    ...overrides,
+  };
 }
 
 export function mockResult(
@@ -27,6 +52,7 @@ export function mockResult(
         n_unique_original_dois: 1,
       },
       replications: [],
+      reproductions: [],
       originals: [],
     },
     ...overrides,
