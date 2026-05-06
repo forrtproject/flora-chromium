@@ -5,7 +5,6 @@ import { debounce } from "../shared/debounce";
 import type { DoiString, LookupState, DoiContext } from "../shared/types";
 import type { LookupRequest, LookupResponse, SheetFetchRequest, SheetFetchResponse, RetractionLookupResponse } from "../shared/messages";
 import { renderErrorBanner,
-    renderMatchedBanner,
     renderRetractedBanner,
     removeBanner,renderInlineBadges, renderSheetsModal, removeSheetsModal, renderSetupPrompt, renderPubPeerPanel, removePubPeerPanel, hideAllFloraUI, showAllFloraUI, type SheetsModalCallbacks } from "./injector";
 import { lookupPubPeer, type PubPeerFeedback } from "../shared/pubpeer-api";
@@ -65,12 +64,16 @@ async function pageRenderChangeHandler(): Promise<void> {
     if (currentUrl !== lastUrl) {
         lastUrl = currentUrl;
         processedDois.clear();
+        doiContext.clear();
+        lastArticleFeedbacks = [];
+        lastReferenceFeedbacks = [];
+        lastRefFeedbackByDoi = new Map();
         pageState.clear();
         augmentAttempted = false;
         if (isSheets) {
             removeSheetsModal();
         } else {
-            removeBanner();
+            removePubPeerPanel();
         }
     }
     let dois = extractDOIs(document);
@@ -82,6 +85,14 @@ async function pageRenderChangeHandler(): Promise<void> {
     if (isSheets && sheetCsvDois.length > 0) {
         const combined = new Set([...dois, ...sheetCsvDois]);
         dois = [...combined];
+    }else if(hasDoiChange){
+        const classified = classifyPageDois(document);
+        for (const doi of classified.articleDois) doiContext.set(doi, "article");
+        for (const doi of classified.referenceDois) doiContext.set(doi, "reference");
+        for (const doi of classified.otherDois) doiContext.set(doi, "other");
+        dois = [...classified.articleDois, ...classified.referenceDois, ...classified.otherDois];
+        debugLog("General: pageType =", classified.pageType);
+        debugLog(classified.articleDois, "article DOIs,", classified.referenceDois, "reference DOIs,", classified.otherDois, "other DOIs");
     }
     debugLog(isSheets ? "Sheets:" : "General:", "Extracted DOIs:", dois.length, dois);
 
@@ -195,7 +206,7 @@ async function pageRenderChangeHandler(): Promise<void> {
                     renderSheetsModal(matched, sheetsModalCallbacks);
                 }
             } else {
-                renderMatchedBanner(matched);
+                void checkPubPeer();
             }
         } else {
             if (isSheets) {
@@ -282,153 +293,9 @@ async function checkPubPeer(): Promise<void> {
       }
     }
     lastRefFeedbackByDoi = refFeedbackByDoi;
-
     renderPubPeerPanel(articleFeedbacks, referenceFeedbacks, pageState, doiContext, refFeedbackByDoi);
   } catch {
     // PubPeer is supplementary — fail silently
-  }
-}
-
-async function run(): Promise<void> {
-  // Detect full URL change (SPA navigation) — clear state
-  const currentUrl = location.href;
-  if (currentUrl !== lastUrl) {
-    lastUrl = currentUrl;
-    processedDois.clear();
-    pageState.clear();
-    doiContext.clear();
-    augmentAttempted = false;
-    pubpeerChecked = false;
-    lastArticleFeedbacks = [];
-    lastReferenceFeedbacks = [];
-    lastRefFeedbackByDoi = new Map();
-    if (isSheets) {
-      removeSheetsModal();
-    } else {
-      removePubPeerPanel();
-    }
-  }
-
-  let dois: DoiString[];
-
-  if (isSheets) {
-    dois = extractDOIs(document);
-    if (sheetCsvDois.length > 0) {
-      dois = [...new Set([...dois, ...sheetCsvDois])];
-    }
-  } else {
-    const classified = classifyPageDois(document);
-    for (const doi of classified.articleDois) doiContext.set(doi, "article");
-    for (const doi of classified.referenceDois) doiContext.set(doi, "reference");
-    for (const doi of classified.otherDois) doiContext.set(doi, "other");
-    dois = [...classified.articleDois, ...classified.referenceDois, ...classified.otherDois];
-    debugLog("General: pageType =", classified.pageType);
-    debugLog(classified.articleDois, "article DOIs,", classified.referenceDois, "reference DOIs,", classified.otherDois, "other DOIs");
-  }
-
-  debugLog(isSheets ? "Sheets:" : "General:", "Extracted DOIs:", dois.length, dois);
-
-  // Validate extracted DOIs via doi.org — remove invalid ones
-  if (dois.length > 0 && !isSheets) {
-    try {
-      const validation = await validateDOIs(dois);
-      const before = dois.length;
-      dois = dois.filter((doi) => validation.get(doi) !== false);
-      const removed = before - dois.length;
-      if (removed > 0) {
-        debugLog(`Validation: removed ${removed} invalid DOI(s)`);
-      }
-    } catch {
-      // Validation failed — keep all extracted DOIs as-is
-    }
-  }
-
-  // Check PubPeer concurrently — runs once per page, fire-and-forget
-  if (!isSheets) {
-    void checkPubPeer();
-  }
-
-  // Filter out already-processed DOIs
-  const newDois = dois.filter((doi) => !processedDois.has(doi));
-
-  // If no valid DOIs found, try augmenting from page title in the background
-  if (newDois.length === 0 && dois.length === 0) {
-    debugLog("No valid DOIs found on page, attempting title augmentation");
-    if (!isSheets) augmentFromTitle();
-    return;
-  }
-
-  if (newDois.length === 0) {
-    debugLog("No new DOIs (all already processed)");
-    return;
-  }
-  debugLog(isSheets ? "Sheets:" : "General:", "New DOIs to look up:", newDois.length, newDois);
-
-  for (const doi of newDois) {
-    processedDois.add(doi);
-  }
-
-  // Mark all as loading
-  for (const doi of newDois) {
-    pageState.set(doi, { status: "loading" });
-  }
-
-  const request: LookupRequest = { type: "FLORA_LOOKUP", dois: newDois };
-
-  try {
-    const response: LookupResponse =
-      await chrome.runtime.sendMessage(request);
-    debugLog("Lookup response:", Object.keys(response.results).length, "results,", Object.keys(response.errors).length, "errors");
-
-    for (const doi of newDois) {
-      if (response.errors[doi]) {
-        pageState.set(doi, { status: "error", message: response.errors[doi] });
-      } else if (response.results[doi]) {
-        pageState.set(doi, { status: "matched", result: response.results[doi], source: "extracted" });
-      } else {
-        pageState.set(doi, { status: "no-match" });
-      }
-    }
-
-    // Collect matched DOIs for display
-    // On Sheets, skip the "still in DOM" re-check — the canvas DOM is unreliable
-    const currentDois = isSheets ? null : new Set(extractDOIs(document));
-    const matched = [...pageState.entries()]
-      .filter(([doi, s]) => {
-        if (s.status !== "matched") return false;
-        if (!isSheets && !currentDois!.has(doi)) return false;
-        // Only include DOIs that actually have replication or reproduction data
-        const stats = s.result.record.stats;
-        return stats.n_replications_total > 0 || stats.n_reproductions_total > 0;
-      })
-      .map(([doi, s]) => ({
-        doi,
-        result: (s as { status: "matched"; result: import("../shared/types").ReplicationResult; source: "extracted" }).result,
-      }));
-
-    debugLog("Matched DOIs with replication data:", matched.length, matched.map(m => m.doi));
-
-    if (matched.length > 0) {
-      if (isSheets) {
-        if (!isSheetsModalSuppressed()) {
-          renderSheetsModal(matched, sheetsModalCallbacks);
-        }
-      } else {
-        // Re-render the panel so FORRT stat cards appear alongside PubPeer data
-        // renderPubPeerPanel(lastArticleFeedbacks, lastReferenceFeedbacks, pageState, doiContext);
-      }
-    } else {
-      if (isSheets) {
-        removeSheetsModal();
-      }
-    }
-
-    // Inline badges (skip on Google Sheets — modal only)
-    if (!isSheets) {
-      renderInlineBadges(pageState);
-    }
-  } catch {
-    debugWarn("Failed to contact FLoRA service");
   }
 }
 
