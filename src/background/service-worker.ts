@@ -12,13 +12,10 @@ import {retractionWatchLookup} from "@shared/doi-augment";
 
 const cache = new SessionCache<ReplicationResult>("flora");
 
-// Open the options page on first install so the user can enter their email
-chrome.runtime.onInstalled.addListener(async (details) => {
+// Open the walkthrough on first install
+chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === "install") {
-        const ready = await isSetupComplete();
-        if (!ready) {
-            chrome.runtime.openOptionsPage();
-        }
+        chrome.tabs.create({ url: chrome.runtime.getURL("dist/walkthrough.html") });
     }
 });
 
