@@ -1,39 +1,31 @@
-import {extractDOIs, extractDOIsFromText} from "@shared/doi-extractor";
-import {augmentDOIs} from "@shared/doi-augment";
-import {retractionCheck, RetractionResponse} from "@shared/doi-retraction"
-import {validateDOIs} from "@shared/doi-validate";
-import {debounce} from "@shared/debounce";
-import type {DoiString, LookupState} from "@shared/types";
-import type {
-    LookupRequest,
-    LookupResponse,
-    SheetFetchRequest,
-    SheetFetchResponse
-} from "@shared/messages";
-import {
-    renderErrorBanner,
-    renderMatchedBanner,
+import { extractDOIs, extractDOIsFromText, extractPrimaryDOI, classifyPageDois } from "../shared/doi-extractor";
+import { augmentDOIs } from "../shared/doi-augment";
+import { validateDOIs } from "../shared/doi-validate";
+import { debounce } from "../shared/debounce";
+import type { DoiString, LookupState, DoiContext } from "../shared/types";
+import type { LookupRequest, LookupResponse, SheetFetchRequest, SheetFetchResponse, RetractionLookupResponse } from "../shared/messages";
+import { renderErrorBanner,
     renderRetractedBanner,
-    removeBanner,
-    renderInlineBadges,
-    renderSheetsModal,
-    removeSheetsModal,
-    renderSetupPrompt,
-    hideAllFloraUI,
-    showAllFloraUI,
-    type SheetsModalCallbacks
-} from "./injector";
-import {debugLog} from "@shared/debug";
-import {isSetupComplete} from "@shared/settings";
-import {isDomainBlocked} from "@shared/domains";
+    removeBanner,renderInlineBadges, renderSheetsModal, removeSheetsModal, renderSetupPrompt, renderPubPeerPanel, removePubPeerPanel, hideAllFloraUI, showAllFloraUI, type SheetsModalCallbacks } from "./injector";
+import { lookupPubPeer, type PubPeerFeedback } from "../shared/pubpeer-api";
+import { debugLog, debugWarn } from "../shared/debug";
+import { isSetupComplete } from "../shared/settings";
+import { isDomainBlocked } from "../shared/domains";
+import {retractionCheck} from "@shared/doi-retraction"
 
 const pageState = new Map<DoiString, LookupState>();
-let redacts: RetractionResponse[] = [];
+const redacts = new Map<DoiString, RetractionLookupResponse>();
 // Keep memory of detected DOIs to track dynamic page changes
 const processedDois = new Set<DoiString>();
+const doiContext = new Map<DoiString, DoiContext>();
 let lastUrl = location.href;
 let augmentAttempted = false;
-// Monotonic counter — incremented on each sheet tab switch to discard stale CSV responses
+let pubpeerChecked = false;
+let lastArticleFeedbacks: PubPeerFeedback[] = [];
+let lastReferenceFeedbacks: PubPeerFeedback[] = [];
+let lastRefFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map();
+
+/** Monotonic counter — incremented on each sheet tab switch to discard stale CSV responses. */
 let sheetFetchGen = 0;
 // DOIs extracted from the full sheet CSV (populated asynchronously on Sheets)
 let sheetCsvDois: DoiString[] = [];
@@ -72,12 +64,16 @@ async function pageRenderChangeHandler(): Promise<void> {
     if (currentUrl !== lastUrl) {
         lastUrl = currentUrl;
         processedDois.clear();
+        doiContext.clear();
+        lastArticleFeedbacks = [];
+        lastReferenceFeedbacks = [];
+        lastRefFeedbackByDoi = new Map();
         pageState.clear();
         augmentAttempted = false;
         if (isSheets) {
             removeSheetsModal();
         } else {
-            removeBanner();
+            removePubPeerPanel();
         }
     }
     let dois = extractDOIs(document);
@@ -89,6 +85,14 @@ async function pageRenderChangeHandler(): Promise<void> {
     if (isSheets && sheetCsvDois.length > 0) {
         const combined = new Set([...dois, ...sheetCsvDois]);
         dois = [...combined];
+    }else if(hasDoiChange){
+        const classified = classifyPageDois(document);
+        for (const doi of classified.articleDois) doiContext.set(doi, "article");
+        for (const doi of classified.referenceDois) doiContext.set(doi, "reference");
+        for (const doi of classified.otherDois) doiContext.set(doi, "other");
+        dois = [...classified.articleDois, ...classified.referenceDois, ...classified.otherDois];
+        debugLog("General: pageType =", classified.pageType);
+        debugLog(classified.articleDois, "article DOIs,", classified.referenceDois, "reference DOIs,", classified.otherDois, "other DOIs");
     }
     debugLog(isSheets ? "Sheets:" : "General:", "Extracted DOIs:", dois.length, dois);
 
@@ -109,10 +113,12 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     // retraction check logic
     if (!dismissRedacts && hasDoiChange && !isSheets && dois.length > 0) {
-        redacts = await retractionCheck(dois) ?? [];
-        const mainTitleRedacted = null; // redacts.find(item => item.originDoi==mainDOI)
-        if (!dismissRedacts && mainTitleRedacted) {
-            renderRetractedBanner([mainTitleRedacted], {
+        for (const doi of dois) {
+            const result = await retractionCheck(doi);
+            if (result && result.retracted) redacts.set(doi, result);
+        }
+        if (redacts.size > 0 && !dismissRedacts) {
+            renderRetractedBanner([...redacts.entries()], {
                 onDismiss: () => {
                     dismissRedacts = true
                 },
@@ -200,7 +206,7 @@ async function pageRenderChangeHandler(): Promise<void> {
                     renderSheetsModal(matched, sheetsModalCallbacks);
                 }
             } else {
-                renderMatchedBanner(matched);
+                void checkPubPeer();
             }
         } else {
             if (isSheets) {
@@ -233,21 +239,64 @@ async function augmentFromTitle(): Promise<void> {
 
     if (!pageTitle) return;
 
-    try {
-        const augmented = await augmentDOIs([pageTitle]);
-        const resolvedDoi = augmented.get(pageTitle);
-        debugLog("Title augmentation:", resolvedDoi ? `resolved to ${resolvedDoi}` : "no match", `(title: "${pageTitle}")`);
-        if (resolvedDoi) {
-            processedDois.add(resolvedDoi);
-            const request: LookupRequest = {
-                type: "FLORA_LOOKUP",
-                dois: [resolvedDoi]
-            };
-            await chrome.runtime.sendMessage(request);
-        }
-    } catch {
-        // Augmentation failed silently
+  try {
+    const augmented = await augmentDOIs([pageTitle]);
+    const resolvedDoi = augmented.get(pageTitle);
+    debugLog("Title augmentation:", resolvedDoi ? `resolved to ${resolvedDoi}` : "no match", `(title: "${pageTitle}")`);
+    if (resolvedDoi) {
+      processedDois.add(resolvedDoi);
+      const request: LookupRequest = { type: "FLORA_LOOKUP", dois: [resolvedDoi] };
+      await chrome.runtime.sendMessage(request);
     }
+  } catch {
+    // Augmentation failed silently
+  }
+}
+
+async function checkPubPeer(): Promise<void> {
+  if (pubpeerChecked || isSheets) return;
+  pubpeerChecked = true;
+  const primaryDoi = extractPrimaryDOI(document);
+  if (!primaryDoi) return;
+  try {
+    const referenceDois = [...doiContext.entries()]
+      .filter(([, ctx]) => ctx === "reference")
+      .map(([doi]) => doi);
+    const [articleFeedbacks, referenceFeedbacks] = await Promise.all([
+      lookupPubPeer([primaryDoi], [location.href]),
+      referenceDois.length > 0 ? lookupPubPeer(referenceDois, []) : Promise.resolve([]),
+    ]);
+    lastArticleFeedbacks = articleFeedbacks;
+    lastReferenceFeedbacks = referenceFeedbacks;
+
+    // For reference DOIs with FORRT replication data, do individual PubPeer lookups so
+    // we can build a reliable DOI→feedback map (the batch call returns no DOI per entry).
+    const replicationRefDois = referenceDois.filter((doi) => {
+      const s = pageState.get(doi);
+      return (
+        s?.status === "matched" &&
+        (s.result.record.stats.n_replications_total > 0 ||
+          s.result.record.stats.n_reproductions_total > 0 ||
+          s.result.record.stats.n_originals_total > 0)
+      );
+    });
+    const refFeedbackByDoi = new Map<DoiString, PubPeerFeedback>();
+    if (replicationRefDois.length > 0) {
+      const pairs = await Promise.all(
+        replicationRefDois.map(async (doi) => ({
+          doi,
+          feedback: (await lookupPubPeer([doi], []))[0] ?? null,
+        }))
+      );
+      for (const { doi, feedback } of pairs) {
+        if (feedback) refFeedbackByDoi.set(doi, feedback);
+      }
+    }
+    lastRefFeedbackByDoi = refFeedbackByDoi;
+    renderPubPeerPanel(articleFeedbacks, referenceFeedbacks, pageState, doiContext, refFeedbackByDoi);
+  } catch {
+    // PubPeer is supplementary — fail silently
+  }
 }
 
 function currentGid(): string {
@@ -331,15 +380,21 @@ function startDomListener(callback: () => void) {
     });
     observer.observe(document.body, {
         childList: true,
-        subtree: true,
-        attributeFilter: ['class', 'data-custom-attr']
+        subtree: true
     });
 }
 
 // Gate: skip iframes and blocked domains
 (async () => {
-    // stop if  running inside an <iframe> or a sub-frame
-    if (window !== window.top) return;
+  if (window !== window.top) {
+    if (location.hostname === "pubpeer.com" || location.hostname.endsWith(".pubpeer.com")) {
+      const style = document.createElement("style");
+      style.textContent = "nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.sticky.affix, div.extension-installer.container, div.footer.fixed, div.page-component-up, a.forum-item-title, .ibox-title span { display: none !important; } div.vertical-timeline-block {margin:0 15px 0px 10px;} div.selected div {background-color: transparent!important;} div.wrapper {width: 500px!important;} .ibox-title div, .ibox-title strong, .ibox-title span, .ibox-title em, .ibox-content a{color:#853953!important;}  .all-user-footer div:nth-child(1){visibility:hidden;} .el-button{background-color:#853953!important; border-color:#853953!important;} .ibox-bordered:before{background-color:#853953!important;} #comment-editor .nav>li>a{color#fff!important;} .btn-link.manual-file-chooser-text{color:#853953!important;} #comment-editor.nav>li>a:nth-child(2){color:#fff!important;}}";
+      (document.head ?? document.documentElement).appendChild(style);
+      window.parent.postMessage({ type: "FLORA_PUBPEER_CSS_READY" }, "*");
+    }
+    return;
+  }
 
     if (await isDomainBlocked(location.hostname)) {
         debugLog("Domain is blocked:", location.hostname);

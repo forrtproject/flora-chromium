@@ -15,7 +15,9 @@
     "https://rep-api.forrt.org/*",
     "https://api.openalex.org/*",
     "https://api.crossref.org/*",
-    "https://docs.google.com/*"
+    "https://api.unpaywall.org/*",
+    "https://docs.google.com/*",
+    "https://pubpeer.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js"
@@ -49,6 +51,13 @@
         "dist/content-general.js"
       ],
       "all_frames": true,
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://forrt.org/*"
+      ],
+      "js": [ "dist/content-forrt.js" ],
       "run_at": "document_idle"
     },
     {
