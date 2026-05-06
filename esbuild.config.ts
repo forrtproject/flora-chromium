@@ -25,6 +25,11 @@ const configs: esbuild.BuildOptions[] = [
   },
   {
     ...sharedOptions,
+    entryPoints: ["src/content-forrt/index.ts"],
+    outfile: "dist/content-forrt.js",
+  },
+  {
+    ...sharedOptions,
     entryPoints: ["src/background/service-worker.ts"],
     outfile: "dist/background.js",
   },
