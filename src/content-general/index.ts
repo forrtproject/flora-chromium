@@ -1,6 +1,6 @@
 import {extractDOIs, extractDOIsFromText} from "@shared/doi-extractor";
 import {augmentDOIs} from "@shared/doi-augment";
-import {retractionCheck} from "@shared/doi-retraction"
+import {retractionCheck, RetractionResponse} from "@shared/doi-retraction"
 import {validateDOIs} from "@shared/doi-validate";
 import {debounce} from "@shared/debounce";
 import type {DoiString, LookupState} from "@shared/types";
@@ -28,7 +28,7 @@ import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 
 const pageState = new Map<DoiString, LookupState>();
-const redacts = new Map<DoiString, RetractionLookupResponse>();
+let redacts: RetractionResponse[] = [];
 // Keep memory of detected DOIs to track dynamic page changes
 const processedDois = new Set<DoiString>();
 let lastUrl = location.href;
@@ -109,12 +109,10 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     // retraction check logic
     if (!dismissRedacts && hasDoiChange && !isSheets && dois.length > 0) {
-        for (const doi of dois) {
-            const result = await retractionCheck(doi);
-            if (result && result.retracted) redacts.set(doi, result);
-        }
-        if (redacts.size > 0 && !dismissRedacts) {
-            renderRetractedBanner([...redacts.entries()], {
+        redacts = await retractionCheck(dois) ?? [];
+        const mainTitleRedacted = null; // redacts.find(item => item.originDoi==mainDOI)
+        if (!dismissRedacts && mainTitleRedacted) {
+            renderRetractedBanner([mainTitleRedacted], {
                 onDismiss: () => {
                     dismissRedacts = true
                 },
@@ -333,7 +331,8 @@ function startDomListener(callback: () => void) {
     });
     observer.observe(document.body, {
         childList: true,
-        subtree: true
+        subtree: true,
+        attributeFilter: ['class', 'data-custom-attr']
     });
 }
 

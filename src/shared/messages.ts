@@ -42,25 +42,3 @@ export function isSheetFetchRequest(msg: unknown): msg is SheetFetchRequest {
         (msg as Record<string, unknown>).type === "FLORA_SHEET_FETCH"
     );
 }
-
-export function isRetractionLookup(msg: unknown): msg is RetractionLookupRequest {
-    return (
-        typeof msg === "object" &&
-        msg !== null &&
-        (msg as Record<string, unknown>).type === "RET_WATCH_FETCH"
-    );
-}
-
-export interface RetractionLookupRequest {
-    type: "RET_WATCH_FETCH";
-    doi: string
-}
-
-/** Service worker → content script: raw CSV text */
-export interface RetractionLookupResponse {
-    doi: string;
-    retracted: boolean;
-    timestamp: number;
-    source: string;
-    title: string;
-}

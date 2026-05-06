@@ -1,14 +1,10 @@
 import {SessionCache} from "@shared/cache";
 import {lookupDOIs} from "@shared/flora-api";
+import {storageSync} from "@shared/data-extract";
 import type {DoiString, ReplicationResult} from "@shared/types";
-import {
-    isRetractionLookup,
-    LookupResponse, RetractionLookupRequest, RetractionLookupResponse,
-    SheetFetchResponse
-} from "@shared/messages";
+import {LookupResponse, SheetFetchResponse} from "@shared/messages";
 import {isLookupRequest, isSheetFetchRequest} from "@shared/messages";
 import {isSetupComplete} from "@shared/settings";
-import {retractionWatchLookup} from "@shared/doi-augment";
 
 const cache = new SessionCache<ReplicationResult>("flora");
 
@@ -72,24 +68,6 @@ chrome.runtime.onMessage.addListener(
             });
             return true;
         }
-        if (isRetractionLookup(message)) {
-            const doi = (message as RetractionLookupRequest).doi;
-            const key = doi + "_red";
-            chrome.storage.local.get(key, result => {
-                if (result && result.redacted)
-                    sendResponse(result);
-                else retractionWatchLookup(doi)
-                    .then(result => {
-                        if (result?.retracted) {
-                            chrome.storage.local.set({[key]: result}, () => {
-                            });
-                        }
-                        sendResponse(result)
-                    }).catch();
-            });
-            return true;
-        }
-
         if (isSheetFetchRequest(message)) {
             handleSheetFetch(message.spreadsheetId, message.gid)
                 .then(sendResponse)
@@ -189,3 +167,23 @@ async function handleSheetFetch(
         };
     }
 }
+
+async function syncRetractionsInfo() {
+    const key = "synctime";
+    chrome.storage.local.get([key], value => {
+        console.log(value)
+        const ts = Date.now();
+        // @ts-ignore
+        const update = !value || ts > (value + 86400000);
+        if (update) {
+            console.log("update");
+            storageSync().then(() => {
+                chrome.storage.local.set({key: ts})
+            });
+        }
+    })
+}
+
+(() => {
+    syncRetractionsInfo().then();
+})();

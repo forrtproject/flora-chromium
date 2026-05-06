@@ -6,7 +6,6 @@ import type {DoiString, DoiSource} from "@shared/types";
 import type {
     LookupRequest,
     LookupResponse,
-    RetractionLookupResponse
 } from "@shared/messages";
 import {renderScholarBadge} from "./badge";
 import {debugLog} from "@shared/debug";
@@ -241,8 +240,10 @@ function preInjectLabels(row: HTMLElement, doi: string, color: string, isAugment
         const gsRi = row.querySelector(".gs_ri");
         row.insertBefore(target, gsRi);
     }
-    retractionCheck(doi).then(result => {
-        if (result) injectRetractionInfo(target, result)
+    retractionCheck([doi]).then(result => {
+        if (result) {
+            injectRetractionInfo(target, result[0])
+        }
     }).catch();
     injectDoiLabel(row, doi, color, isAugmented);
 }
