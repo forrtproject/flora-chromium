@@ -4,8 +4,7 @@ import { normaliseDOI } from "../shared/doi-normalise";
 import { debugLog } from "../shared/debug";
 import { getSettings } from "../shared/settings";
 import styles from "./styles.css";
-import {RetractionLookupResponse} from "@shared/messages";
-import {retractionCheck, RetractionResponse} from "@shared/doi-retraction";
+import {RetractionResponse} from "@shared/doi-retraction";
 
 const BANNER_HOST_ID = "flora-banner-host";
 const BADGE_CLASS = "flora-inline-badge";
@@ -1288,7 +1287,7 @@ export interface RetractsModalCallbacks {
 }
 
 export function renderRetractedBanner(
-    matched: [doi: DoiString, result: RetractionResponse][],
+    matched: RetractionResponse[],
     callbacks?: RetractsModalCallbacks
 ): void {
     if (matched.length === 0) {
@@ -1301,11 +1300,10 @@ export function renderRetractedBanner(
     const host = document.createElement("div");
     let entries = document.createElement(matched.length > 1 ? "ol" : "div");
     for (const m of matched) {
-        let entry = m[1];
         let wrapper = document.createElement(matched.length > 1 ? "li" : "div");
         let link = document.createElement("a");
-        link.href = `https://doi.org/${entry.doi}`;
-        link.innerText = `${entry.doi}`;
+        link.href = `https://doi.org/${m.doi}`;
+        link.innerText = m.originDoi;
         link.style.fontWeight = "normal";
         link.style.color = "#111";
         link.style.textDecoration = "none";

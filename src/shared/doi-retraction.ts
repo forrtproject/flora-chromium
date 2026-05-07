@@ -1,10 +1,12 @@
-import {RET_MAP_KEY, storageSync} from "@shared/data-extract"
+import {RET_MAP_KEY} from "@shared/data-extract"
+import {normaliseDOI} from "@shared/doi-normalise";
 import retractionData from '../retractions.json';
+import {DoiString} from "@shared/types";
 
 export const FLORA_RET_CHECK_KEY = "flora-ret-checked";
 
 export interface RetractionResponse {
-    originDoi: string;
+    originDoi: DoiString;
     doi: string;
 }
 
@@ -13,7 +15,7 @@ export interface RetractionResponse {
  * must execute in the background context.
  */
 // @ts-ignore
-export async function retractionCheck(dois: string[]): Promise<RetractionResponse[]> {
+export async function retractionCheck(dois: DoiString[]): Promise<RetractionResponse[]> {
     const storageResult = await chrome.storage.local.get([RET_MAP_KEY]) || {};
     const retMap = storageResult[RET_MAP_KEY] || {};
     if (!storageResult[RET_MAP_KEY])

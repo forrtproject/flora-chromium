@@ -134,7 +134,8 @@ async function pageRenderChangeHandler(): Promise<void> {
     // retraction check logic
     if (hasDoiChange && dois.length > 0) {
         redacts = await retractionCheck(dois);
-        // TODO: do something with redacts, if any
+        for (const {originDoi} of redacts) doiContext.set(originDoi, "retracted");
+        // TODO: now do something with redacts
     }
 
     // Filter out already-processed DOIs

@@ -1,18 +1,14 @@
-import {getRetractionMap} from "../src/shared/data-extract.ts"
+// @ts-ignore
+import {getRetractionMap} from "./src/shared/data-extract.ts"
+// @ts-ignore
 import fs from 'node:fs';
 
 const FS_OUTPUT_PATH = './src/retractions.json';
 
-(async () => {
-    getRetractionMap().then(map => {
-        if (map) fs.writeFile(FS_OUTPUT_PATH, JSON.stringify(map, null, 2), err => {
-            if (err) {
-                console.error(err);
-            }
-        });
-        else {
-            console.error('read error');
-        }
-    });
-})()
+getRetractionMap().then(map => {
+    if (map) fs.writeFile(
+        FS_OUTPUT_PATH, JSON.stringify(map, null, 2),
+        console.error);
+    else console.error('read error');
+});
 
