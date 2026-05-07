@@ -2,11 +2,7 @@ import {describe, it, expect, vi, beforeEach} from "vitest";
 import {readFileSync} from "fs";
 import {join} from "path";
 import {JSDOM} from "jsdom";
-import {
-    LookupRequest,
-    LookupResponse,
-    RetractionLookupRequest
-} from "../../src/shared/messages";
+import {LookupRequest, LookupResponse} from "../../src/shared/messages";
 import {mockResult} from "../helpers";
 
 const MOCK_RESULT = mockResult();
@@ -66,12 +62,5 @@ describe("scholar observer", () => {
             .find(args => args[0]?.type === "FLORA_LOOKUP")?.[0] as LookupRequest | undefined;
         expect(call).to.not.be.undefined;
         if (call) expect(call.dois).toContain("10.1126/science.9999999");
-    });
-
-    it("calls retraction watch with DOI", async () => {
-        const call = (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mock.calls
-            .find(args => args[0]?.type === "RET_WATCH_FETCH")?.[0] as RetractionLookupRequest | undefined;
-        expect(call).to.not.be.undefined;
-        if (call) expect(call.doi).toEqual("10.1038/nature12373");
     });
 });

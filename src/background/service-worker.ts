@@ -1,14 +1,10 @@
 import {SessionCache} from "@shared/cache";
 import {lookupDOIs} from "@shared/flora-api";
+import {RET_MAP_KEY, storageSync} from "@shared/data-extract";
 import type {DoiString, ReplicationResult} from "@shared/types";
-import {
-    isRetractionLookup,
-    LookupResponse, RetractionLookupRequest, RetractionLookupResponse,
-    SheetFetchResponse
-} from "@shared/messages";
+import {LookupResponse, SheetFetchResponse} from "@shared/messages";
 import {isLookupRequest, isSheetFetchRequest} from "@shared/messages";
 import {isSetupComplete} from "@shared/settings";
-import {retractionWatchLookup} from "@shared/doi-augment";
 
 const cache = new SessionCache<ReplicationResult>("flora");
 
@@ -21,6 +17,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
         }
     }
 });
+
 
 /** In-flight dedup: prevents duplicate API calls for the same DOI */
 const inflight = new Map<DoiString, Promise<ReplicationResult | null>>();
@@ -72,21 +69,12 @@ chrome.runtime.onMessage.addListener(
             });
             return true;
         }
-        if (isRetractionLookup(message)) {
-            const doi = (message as RetractionLookupRequest).doi;
-            const key = doi + "_red";
-            chrome.storage.local.get(key, result => {
-                if (result && result.redacted)
-                    sendResponse(result);
-                else retractionWatchLookup(doi)
-                    .then(result => {
-                        if (result?.retracted) {
-                            chrome.storage.local.set({[key]: result}, () => {
-                            });
-                        }
-                        sendResponse(result)
-                    }).catch();
-            });
+        if (
+            typeof message === "object" &&
+            message !== null &&
+            (message as { type?: string }).type === "FLORA_RET_SYNC"
+        ) {
+            syncRetractionsInfo().then().catch();
             return true;
         }
 
@@ -187,5 +175,18 @@ async function handleSheetFetch(
             csv: null,
             error: err instanceof Error ? err.message : "Fetch failed",
         };
+    }
+}
+
+export async function syncRetractionsInfo() {
+    const minInterval = 1000 * 60 * 60 * 24 * 7; // weekly
+    const currentTime = Date.now();
+    const previous = await chrome.storage.local.get(["synctime"]) ?? 0;
+    const lastSync = previous.synctime || 0;
+    const nextUpdate = lastSync + minInterval;
+    const storageResult = await chrome.storage.local.get(RET_MAP_KEY);
+    if (Object.keys(storageResult).length === 0 || currentTime > nextUpdate) {
+        await syncRetractionsInfo();
+        await chrome.storage.local.set({synctime: currentTime});
     }
 }

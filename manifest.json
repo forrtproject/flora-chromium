@@ -17,7 +17,8 @@
     "https://api.crossref.org/*",
     "https://api.unpaywall.org/*",
     "https://docs.google.com/*",
-    "https://pubpeer.com/*"
+    "https://pubpeer.com/*",
+    "https://gitlab.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js"

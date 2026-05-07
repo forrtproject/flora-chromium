@@ -1,28 +1,38 @@
-import {RetractionLookupResponse} from "@shared/messages";
+import {RET_MAP_KEY} from "@shared/data-extract"
+import {normaliseDOI} from "@shared/doi-normalise";
+import retractionData from '../retractions.json';
+import {DoiString} from "@shared/types";
 
-const containerObservers = new WeakMap<HTMLElement, MutationObserver>();
 export const FLORA_RET_CHECK_KEY = "flora-ret-checked";
-export const badgeQuerySelector = "[" + FLORA_RET_CHECK_KEY + "]";
+
+export interface RetractionResponse {
+    originDoi: DoiString;
+    doi: string;
+}
 
 /**
  * Request retraction status. Due to CORS policies, the request
  * must execute in the background context.
- * @param doi
  */
-export async function retractionCheck(doi: string): Promise<RetractionLookupResponse | void> {
-    try {
-        const resp = await chrome.runtime.sendMessage({
-            type: "RET_WATCH_FETCH",
-            doi
+// @ts-ignore
+export async function retractionCheck(dois: DoiString[]): Promise<RetractionResponse[]> {
+    const storageResult = await chrome.storage.local.get([RET_MAP_KEY]) || {};
+    const retMap = storageResult[RET_MAP_KEY] || {};
+    if (!storageResult[RET_MAP_KEY])
+        chrome.runtime.sendMessage({type: "FLORA_RET_SYNC"}).then().catch();
+    const source = (Object.keys(retMap).length > 0) ? retMap : retractionData;
+    let result = []
+    for (const doi of dois) {
+        const retractionDOI = source[doi];
+        if (retractionDOI) result.push({
+            originDoi: doi,
+            doi: retractionDOI
         });
-        if (resp && resp.retracted) {
-            return resp
-        }
-    } catch {
     }
+    return result;
 }
 
-export function injectRetractionInfo(target: Element, info: RetractionLookupResponse): void {
+export function injectRetractionInfo(target: Element, info: RetractionResponse): void {
     const color = "#FF1744";
     const badgeSvg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="80" height="20" viewBox="0 0 80 20">

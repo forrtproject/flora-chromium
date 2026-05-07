@@ -3,11 +3,7 @@ import {augmentDOIs} from "@shared/doi-augment";
 import {injectRetractionInfo, retractionCheck} from "@shared/doi-retraction"
 import {validateDOI, validateDOIs} from "@shared/doi-validate";
 import type {DoiString, DoiSource} from "@shared/types";
-import type {
-    LookupRequest,
-    LookupResponse,
-    RetractionLookupResponse
-} from "@shared/messages";
+import type {LookupRequest, LookupResponse} from "@shared/messages";
 import {renderScholarBadge} from "./badge";
 import {debugLog} from "@shared/debug";
 
@@ -233,7 +229,8 @@ export async function processScholarResults(doc: Document): Promise<void> {
 
 const DOI_LABEL_CLASS = "flora-doi-label";
 
-function preInjectLabels(row: HTMLElement, doi: string, color: string, isAugmented = false): void {
+async function preInjectLabels(row: HTMLElement, doi: DoiString, color: string, isAugmented = false): Promise<void> {
+    injectDoiLabel(row, doi, color, isAugmented);
     let target = row.querySelector(".gs_ggs");
     if (!target) {
         target = document.createElement("div");
@@ -241,10 +238,8 @@ function preInjectLabels(row: HTMLElement, doi: string, color: string, isAugment
         const gsRi = row.querySelector(".gs_ri");
         row.insertBefore(target, gsRi);
     }
-    retractionCheck(doi).then(result => {
-        if (result) injectRetractionInfo(target, result)
-    }).catch();
-    injectDoiLabel(row, doi, color, isAugmented);
+    let result = await retractionCheck([doi]);
+    if (result && result[0] != undefined) injectRetractionInfo(target, result[0])
 }
 
 function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmented = false): void {

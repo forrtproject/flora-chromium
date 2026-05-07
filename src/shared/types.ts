@@ -99,7 +99,7 @@ export interface CachedEntry<T> {
 }
 
 /** How a DOI was classified on the page */
-export type DoiContext = "article" | "reference" | "other";
+export type DoiContext = "article" | "reference" | "other" | "retracted";
 
 /** What kind of page we're on */
 export type PageType = "article" | "listing" | "unknown";
@@ -113,4 +113,6 @@ export interface ClassifiedDois {
   referenceDois: DoiString[];
   /** All other DOIs found on the page */
   otherDois: DoiString[];
+  /** All DOIs marked retracted*/
+  retractedDois:DoiString[];
 }
