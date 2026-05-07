@@ -119,6 +119,12 @@ flora-chromium/
 6. On **Google Scholar**, DOI pills with copy-to-clipboard popovers and replication badges are injected into the right-side `.gs_ggs` container of each result row (created if absent).
 7. The content-general script detects **SPA navigations** (URL changes) and re-scans the page automatically.
 
+## Data sources & credits
+
+- **Replication / reproduction data** — [FORRT Replication Database](https://forrt.org/replication-database/).
+- **Title → DOI resolution** — [Crossref](https://www.crossref.org/) and [OpenAlex](https://openalex.org/).
+- **Retractions** — [Retraction Watch](https://retractionwatch.com/) / The Center for Scientific Integrity, made openly available in partnership with [Crossref](https://gitlab.com/crossref/retraction-watch-data) under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
 ## License
 
 This project is part of the [FORRT](https://forrt.org/) initiative.
