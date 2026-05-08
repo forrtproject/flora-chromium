@@ -5,6 +5,7 @@ const blockBtn = document.getElementById("block-btn")!;
 const blockLabel = document.getElementById("block-btn-label")!;
 const hideBtn = document.getElementById("hide-btn")!;
 const hideLabel = document.getElementById("hide-btn-label")!;
+const tourBtn = document.getElementById("tour-btn")!;
 const optionsBtn = document.getElementById("options-btn")!;
 const reportBtn = document.getElementById("report-btn")!;
 const statusEl = document.getElementById("popup-status")!;
@@ -133,6 +134,12 @@ reportBtn.addEventListener("click", () => {
   const body = encodeURIComponent(`**Domain:** ${currentDomain}\n\n**Description:**\n`);
   const url = `https://github.com/forrtproject/flora_chromium/issues/new?title=${title}&body=${body}&labels=domain-issue`;
   chrome.tabs.create({ url });
+  window.close();
+});
+
+// Open walkthrough
+tourBtn.addEventListener("click", () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL("dist/walkthrough.html") });
   window.close();
 });
 

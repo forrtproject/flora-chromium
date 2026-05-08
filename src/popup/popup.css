@@ -129,6 +129,10 @@ body {
   color: var(--success);
 }
 
+.popup-btn--tour {
+  color: var(--primary);
+}
+
 .popup-btn--options {
   color: var(--text-secondary);
 }
