@@ -1139,15 +1139,17 @@ export function renderPubPeerPanel(
         }
       }
 
-      const countPill = document.createElement("a");
-      countPill.href = ref.url;
-      countPill.target = "_blank";
-      countPill.rel = "noopener";
-      countPill.style.cssText =
-        "flex-shrink:0;font-size:10px;font-weight:600;color:#853953;" +
-        "background:#f9f0f4;border:1px solid #d4a5b8;padding:1px 7px;border-radius:10px;white-space:nowrap;" +
-        "text-decoration:none;cursor:pointer;";
-      countPill.textContent = `${ref.total_comments} ${ref.total_comments === 1 ? "comment" : "comments"}`;
+      const commentText = `${ref.total_comments} ${ref.total_comments === 1 ? "comment" : "comments"}`;
+      const pillW = Math.ceil(commentText.length * 6 + 14);
+      const pillH = 18;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}" style="flex-shrink:0;cursor:pointer;display:inline-block;vertical-align:middle;">
+        <a href="${ref.url}" target="_blank" rel="noopener">
+          <rect x="0.5" y="0.5" width="${pillW - 1}" height="${pillH - 1}" rx="8.5" fill="#f9f0f4" stroke="#d4a5b8" stroke-width="1"/>
+          <text x="${pillW / 2}" y="13" fill="#853953" font-size="10" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" text-anchor="middle">${commentText}</text>
+        </a>
+      </svg>`;
+      const countPill = tmp.firstElementChild as SVGElement;
       tagsRow.appendChild(countPill);
 
       li.appendChild(titleLink);
@@ -1161,7 +1163,7 @@ export function renderPubPeerPanel(
 
   // Single scrollable body between header and footer
   const scrollBody = document.createElement("div");
-  scrollBody.style.cssText = "flex:1;overflow-y:auto;";
+  scrollBody.style.cssText = "flex:1;overflow-y:auto; background: #f5f8fa;";
   scrollBody.appendChild(summary);
 
   // PubPeer comments section — only rendered when there is a primary PubPeer URL
@@ -1174,23 +1176,25 @@ export function renderPubPeerPanel(
     scrollBody.appendChild(commentsHeader);
 
     const iframeWrap = document.createElement("div");
-    iframeWrap.style.cssText = "height:500px;overflow:hidden;";
     const iframe = document.createElement("iframe");
     iframe.src = primary.url;
     iframe.title = "PubPeer comments";
     iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms");
-    iframe.style.cssText = "width:100%;height:100%;border:none;display:block;opacity:0;transition:opacity 0.15s;";
+    iframe.style.cssText = "width:100%;height:200px;border:none;display:block;opacity:0;transition:opacity 0.15s;";
 
     const revealIframe = (): void => { iframe.style.opacity = "1"; };
     const fallbackTimer = setTimeout(revealIframe, 3000);
-    const onCssReady = (e: MessageEvent): void => {
+    const onIframeMessage = (e: MessageEvent): void => {
       if (e.source !== iframe.contentWindow) return;
-      if ((e.data as { type?: string })?.type !== "FLORA_PUBPEER_CSS_READY") return;
-      clearTimeout(fallbackTimer);
-      window.removeEventListener("message", onCssReady);
-      revealIframe();
+      const data = e.data as { type?: string; height?: number };
+      if (data?.type === "FLORA_PUBPEER_CSS_READY") {
+        clearTimeout(fallbackTimer);
+        revealIframe();
+      } else if (data?.type === "FLORA_PUBPEER_HEIGHT" && typeof data.height === "number") {
+        iframe.style.height = `${data.height}px`;
+      }
     };
-    window.addEventListener("message", onCssReady);
+    window.addEventListener("message", onIframeMessage);
 
     iframeWrap.appendChild(iframe);
     scrollBody.appendChild(iframeWrap);
