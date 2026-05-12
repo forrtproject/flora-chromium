@@ -1176,11 +1176,12 @@ export function renderPubPeerPanel(
     scrollBody.appendChild(commentsHeader);
 
     const iframeWrap = document.createElement("div");
+    iframeWrap.style.cssText = "overflow:hidden;";
     const iframe = document.createElement("iframe");
     iframe.src = primary.url;
     iframe.title = "PubPeer comments";
     iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms");
-    iframe.style.cssText = "width:100%;height:200px;border:none;display:block;opacity:0;transition:opacity 0.15s;";
+    iframe.style.cssText = "width:100%;height:200px;border:none;display:block;opacity:0;transition:opacity 0.15s;overflow:hidden;";
 
     const revealIframe = (): void => { iframe.style.opacity = "1"; };
     const fallbackTimer = setTimeout(revealIframe, 3000);
