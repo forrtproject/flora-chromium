@@ -763,7 +763,8 @@ export function renderPubPeerPanel(
   referenceFeedbacks: PubPeerFeedback[],
   pageState: Map<DoiString, LookupState>,
   doiContext: Map<DoiString, DoiContext>,
-  refFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map()
+  refFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map(),
+  retractions: RetractionResponse[] = []
 ): void {
   const existingHost = document.getElementById(PUBPEER_PANEL_ID);
   const existingPanel = existingHost?.querySelector<HTMLElement>(".flora-sliding-panel");
@@ -799,7 +800,14 @@ export function renderPubPeerPanel(
 
   const hasReplicationData = articleReplications > 0 || articleReproductions > 0 || articleOriginals > 0;
 
-  if (withComments.length === 0 && !hasReplicationData) return;
+  // Retraction status — keyed by the DOI as it appears on the page (originDoi).
+  const retractionByDoi = new Map<DoiString, RetractionResponse>();
+  for (const r of retractions) retractionByDoi.set(r.originDoi, r);
+  const articleRetraction = articleDois
+    .map((doi) => retractionByDoi.get(doi))
+    .find((r): r is RetractionResponse => r !== undefined);
+
+  if (withComments.length === 0 && !hasReplicationData && !articleRetraction) return;
 
   const primary = withComments.length > 0
     ? withComments.reduce((best, f) => f.total_comments > best.total_comments ? f : best)
@@ -948,6 +956,25 @@ export function renderPubPeerPanel(
     articleTitleEl.appendChild(articleOaPlaceholder);
   }
   summary.appendChild(articleTitleEl);
+
+  // Retraction alert — shown when the article's DOI appears in Retraction Watch data
+  if (articleRetraction) {
+    const retractBanner = document.createElement("a");
+    retractBanner.href = `https://doi.org/${articleRetraction.doi}`;
+    retractBanner.target = "_blank";
+    retractBanner.rel = "noopener noreferrer";
+    retractBanner.title = "View the retraction notice";
+    retractBanner.style.cssText =
+      "display:flex;align-items:center;gap:8px;margin:0 16px 12px;padding:10px 12px;" +
+      "background:#fdecef;border:1px solid #f5a3b4;border-left:4px solid #FF1744;" +
+      "border-radius:8px;text-decoration:none;";
+    retractBanner.innerHTML =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="18" height="18" fill="#FF1744" style="flex-shrink:0;">` +
+      `<path d="M320 64C334.7 64 348.2 72.1 355.2 85L571.2 485C577.9 497.4 577.6 512.4 570.4 524.5C563.2 536.6 550.1 544 536 544L104 544C89.9 544 76.8 536.6 69.6 524.5C62.4 512.4 62.1 497.4 68.8 485L284.8 85C291.8 72.1 305.3 64 320 64zM320 416C302.3 416 288 430.3 288 448C288 465.7 302.3 480 320 480C337.7 480 352 465.7 352 448C352 430.3 337.7 416 320 416zM320 224C301.8 224 287.3 239.5 288.6 257.7L296 361.7C296.9 374.2 307.4 384 319.9 384C332.5 384 342.9 374.3 343.8 361.7L351.2 257.7C352.5 239.5 338.1 224 319.8 224z"/></svg>` +
+      `<span style="font-size:12px;font-weight:600;color:#a30d2d;line-height:1.4;">` +
+      `This article has been retracted. `;
+    summary.appendChild(retractBanner);
+  }
 
   // Replication/reproduction/original entry lists from FORRT API
   const renderEntrySection = (
@@ -1165,6 +1192,22 @@ export function renderPubPeerPanel(
             tagsRow.appendChild(makeTag("Is Replication", "#fef9c3", "#854d0e", "#fde047"));
           }
         }
+      }
+
+      // Retraction tag for references found in Retraction Watch data
+      const refRetraction = matchedDoi ? retractionByDoi.get(matchedDoi) : undefined;
+      if (refRetraction) {
+        const retractTag = document.createElement("a");
+        retractTag.href = `https://doi.org/${refRetraction.doi}`;
+        retractTag.target = "_blank";
+        retractTag.rel = "noopener noreferrer";
+        retractTag.title = "View the retraction notice";
+        retractTag.style.cssText =
+          "flex-shrink:0;font-size:10px;font-weight:600;color:#fff;" +
+          "background:#FF1744;border:1px solid #FF1744;padding:1px 7px;border-radius:10px;" +
+          "white-space:nowrap;text-decoration:none;cursor:pointer;";
+        retractTag.textContent = "Retracted";
+        tagsRow.appendChild(retractTag);
       }
 
       const commentText = `${ref.total_comments} ${ref.total_comments === 1 ? "comment" : "comments"}`;

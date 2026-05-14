@@ -137,7 +137,6 @@ async function pageRenderChangeHandler(): Promise<void> {
         // doiContext so it can't clobber the article/reference classification
         // (a DOI can be both the article and retracted).
         redacts = await retractionCheck(dois);
-        // TODO: now do something with redacts
     }
 
     // Filter out already-processed DOIs
@@ -307,7 +306,7 @@ async function checkPubPeer(): Promise<void> {
             }
         }
         lastRefFeedbackByDoi = refFeedbackByDoi;
-        renderPubPeerPanel(articleFeedbacks, referenceFeedbacks, pageState, doiContext, refFeedbackByDoi);
+        renderPubPeerPanel(articleFeedbacks, referenceFeedbacks, pageState, doiContext, refFeedbackByDoi, redacts);
     } catch {
         // PubPeer is supplementary — fail silently
     }
