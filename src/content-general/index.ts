@@ -133,8 +133,10 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     // retraction check logic
     if (hasDoiChange && dois.length > 0) {
+        // Retraction status is tracked via `redacts` — kept separate from
+        // doiContext so it can't clobber the article/reference classification
+        // (a DOI can be both the article and retracted).
         redacts = await retractionCheck(dois);
-        for (const {originDoi} of redacts) doiContext.set(originDoi, "retracted");
         // TODO: now do something with redacts
     }
 

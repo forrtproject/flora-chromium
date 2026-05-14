@@ -918,22 +918,34 @@ export function renderPubPeerPanel(
     : null;
 
   const articleTitleEl = document.createElement("div");
+  articleTitleEl.style.cssText = "display:flex;align-items:center;gap:8px;padding:12px 16px;";
+  // OA placeholder for the main article — filled in by the Unpaywall lookup below.
+  // Kept as a sibling of the title (not a child of titleLink) to avoid nested <a>.
+  let articleOaPlaceholder: HTMLElement | undefined;
   if (articleFloraUrl) {
     const titleLink = document.createElement("a");
     titleLink.href = articleFloraUrl;
     titleLink.target = "_blank";
     titleLink.rel = "noopener";
     titleLink.style.cssText =
-      "display:inline-flex;align-items:flex-start;gap:4px;color:#853953;font-weight:600;padding:12px 16px;" +
-      "font-size:18px;text-decoration:none;line-height:1.4;word-break:break-word;";
+      "display:inline-flex;align-items:flex-start;gap:4px;color:#853953;font-weight:600;" +
+      "font-size:18px;text-decoration:none;line-height:1.4;word-break:break-word;flex:1;min-width:0;";
     const titleSpan = document.createElement("span");
     titleSpan.style.cssText = "text-transform:capitalize;";
     titleSpan.textContent = articleTitleText;
     titleLink.appendChild(titleSpan);
     articleTitleEl.appendChild(titleLink);
   } else {
-    articleTitleEl.style.cssText = "color:#853953;font-weight:600;font-size:18px;padding:12px 16px;";
-    articleTitleEl.textContent = articleTitleText;
+    const titleSpan = document.createElement("span");
+    titleSpan.style.cssText =
+      "color:#853953;font-weight:600;font-size:18px;line-height:1.4;word-break:break-word;flex:1;min-width:0;";
+    titleSpan.textContent = articleTitleText;
+    articleTitleEl.appendChild(titleSpan);
+  }
+  if (articleDois.length > 0) {
+    articleOaPlaceholder = document.createElement("span");
+    articleOaPlaceholder.style.cssText = "flex-shrink:0;";
+    articleTitleEl.appendChild(articleOaPlaceholder);
   }
   summary.appendChild(articleTitleEl);
 
@@ -1026,6 +1038,12 @@ export function renderPubPeerPanel(
   renderEntrySection(allReproductionEntries, `Reproduction${allReproductionEntries.length !== 1 ? "s" : ""}`);
   renderEntrySection(allOriginalEntries, `Original Paper${allOriginalEntries.length !== 1 ? "s" : ""}`);
 
+  // Include the main article in the Unpaywall lookup. Skip if its DOI already
+  // belongs to a replication entry so that entry's placeholder isn't clobbered.
+  if (articleOaPlaceholder && articleDois.length > 0 && !oaPlaceholders.has(articleDois[0])) {
+    oaPlaceholders.set(articleDois[0], articleOaPlaceholder);
+  }
+
   void (async () => {
     if (oaPlaceholders.size === 0) return;
     const { email } = await getSettings();
@@ -1048,10 +1066,20 @@ export function renderPubPeerPanel(
         icon.target = "_blank";
         icon.rel = "noopener noreferrer";
         icon.title = "Free PDF available via Unpaywall";
+        // Both the article title and the reference/replication entries get a
+        // circular OA badge so the status reads as a deliberate element; the
+        // title's is larger to match its prominence.
+        const isArticleBadge = placeholder === articleOaPlaceholder;
+        const circleSize = isArticleBadge ? 30 : 20;
+        const svgSize = isArticleBadge ? 16 : 11;
         icon.style.cssText =
-          "flex-shrink:0;display:inline-flex;align-items:center;color:#853953;line-height:1;";
+          `flex-shrink:0;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;` +
+          `width:${circleSize}px;height:${circleSize}px;border-radius:50%;background:#f9f0f4;` +
+          `border:1px solid #d4a5b8;color:#853953;line-height:1;transition:background 0.15s;`;
+        icon.addEventListener("mouseenter", () => { icon.style.background = "#f1dde5"; });
+        icon.addEventListener("mouseleave", () => { icon.style.background = "#f9f0f4"; });
         icon.innerHTML =
-          `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" ` +
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none" ` +
           `stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">` +
           `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>` +
           `<path d="M7 11V7a5 5 0 0 1 9.9-1"/>` +
@@ -1144,9 +1172,9 @@ export function renderPubPeerPanel(
       const pillH = 18;
       const tmp = document.createElement("div");
       tmp.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}" style="flex-shrink:0;cursor:pointer;display:inline-block;vertical-align:middle;">
-        <a href="${ref.url}" target="_blank" rel="noopener">
+        <a href="${ref.url}" target="_blank" rel="noopener" style="text-decoration:none;">
           <rect x="0.5" y="0.5" width="${pillW - 1}" height="${pillH - 1}" rx="8.5" fill="#f9f0f4" stroke="#d4a5b8" stroke-width="1"/>
-          <text x="${pillW / 2}" y="13" fill="#853953" font-size="10" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" text-anchor="middle">${commentText}</text>
+          <text x="${pillW / 2}" y="13" fill="#853953" font-size="10" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" text-anchor="middle" text-decoration="none">${commentText}</text>
         </a>
       </svg>`;
       const countPill = tmp.firstElementChild as SVGElement;
@@ -1232,7 +1260,7 @@ export function renderPubPeerPanel(
     arrow.style.transform = "rotate(180deg)";
     tab.setAttribute("aria-label", "Close FLoRA panel");
     const style = document.createElement("style");
-    style.textContent = "#scite-popup{z-index:2147483646 !important;}";
+    style.textContent = "#scite-popup,#unpaywall{z-index:2147483646 !important;}";
     (document.head ?? document.documentElement).appendChild(style);
   };
 
@@ -1244,7 +1272,7 @@ export function renderPubPeerPanel(
     arrow.style.transform = "rotate(0deg)";
     tab.setAttribute("aria-label", "Open FLoRA panel");
     const style = document.createElement("style");
-    style.textContent = "#scite-popup{z-index:2147483647 !important;}";
+    style.textContent = "#scite-popup,#unpaywall{z-index:2147483647 !important;}";
     (document.head ?? document.documentElement).appendChild(style);
   };
 
