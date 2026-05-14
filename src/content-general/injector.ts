@@ -1270,6 +1270,28 @@ export function renderPubPeerPanel(
 
     iframeWrap.appendChild(iframe);
     scrollBody.appendChild(iframeWrap);
+  } else {
+    // No PubPeer thread for this article — show an empty state so the panel
+    // doesn't read as broken when only FORRT replication data is present.
+    const commentsHeader = document.createElement("p");
+    commentsHeader.style.cssText =
+      "padding:12px 16px;font-size:14px;color:#5f6368;line-height:1.6;" +
+      "flex-shrink:0;margin:0;font-weight:600;background:#f5f8fa;text-transform:uppercase;" +
+      "border-top:1px solid #e8e8e8;";
+    commentsHeader.textContent = "Comments";
+    scrollBody.appendChild(commentsHeader);
+
+    const emptyState = document.createElement("div");
+    emptyState.style.cssText =
+      "display:flex;flex-direction:column;align-items:center;gap:8px;" +
+      "padding:32px 24px;text-align:center;color:#9aa0a6;";
+    emptyState.innerHTML =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" ` +
+      `fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">` +
+      `<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>` +
+      `<span style="font-size:13px;font-weight:500;color:#5f6368;">No PubPeer comments yet</span>` +
+      `<span style="font-size:12px;line-height:1.5;">This article hasn't been discussed on PubPeer.</span>`;
+    scrollBody.appendChild(emptyState);
   }
 
   panel.appendChild(scrollBody);
