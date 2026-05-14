@@ -133,9 +133,10 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     // retraction check logic
     if (hasDoiChange && dois.length > 0) {
+        // Retraction status is tracked via `redacts` — kept separate from
+        // doiContext so it can't clobber the article/reference classification
+        // (a DOI can be both the article and retracted).
         redacts = await retractionCheck(dois);
-        for (const {originDoi} of redacts) doiContext.set(originDoi, "retracted");
-        // TODO: now do something with redacts
     }
 
     // Filter out already-processed DOIs
@@ -208,7 +209,6 @@ async function pageRenderChangeHandler(): Promise<void> {
             }));
 
         debugLog("Matched DOIs with replication data:", matched.length, matched.map(m => m.doi));
-
         if (matched.length > 0) {
             if (isSheets) {
                 if (!isSheetsModalSuppressed()) {
@@ -221,7 +221,8 @@ async function pageRenderChangeHandler(): Promise<void> {
             if (isSheets) {
                 removeSheetsModal();
             } else {
-                removeBanner();
+                void checkPubPeer();
+                // removeBanner();
             }
         }
 
@@ -305,7 +306,7 @@ async function checkPubPeer(): Promise<void> {
             }
         }
         lastRefFeedbackByDoi = refFeedbackByDoi;
-        renderPubPeerPanel(articleFeedbacks, referenceFeedbacks, pageState, doiContext, refFeedbackByDoi);
+        renderPubPeerPanel(articleFeedbacks, referenceFeedbacks, pageState, doiContext, refFeedbackByDoi, redacts);
     } catch {
         // PubPeer is supplementary — fail silently
     }
@@ -401,9 +402,41 @@ function startDomListener(callback: () => void) {
     if (window !== window.top) {
         if (location.hostname === "pubpeer.com" || location.hostname.endsWith(".pubpeer.com")) {
             const style = document.createElement("style");
-            style.textContent = "nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.sticky.affix, div.extension-installer.container, div.footer.fixed, div.page-component-up, a.forum-item-title, .ibox-title span { display: none !important; } div.vertical-timeline-block {margin:0 15px 0px 10px;} div.selected div {background-color: transparent!important;} div.wrapper {width: 500px!important;} .ibox-title div, .ibox-title strong, .ibox-title span, .ibox-title em, .ibox-content a{color:#853953!important;}  .all-user-footer div:nth-child(1){visibility:hidden;} .el-button{background-color:#853953!important; border-color:#853953!important;} .ibox-bordered:before{background-color:#853953!important;} #comment-editor .nav>li>a{color#fff!important;} .btn-link.manual-file-chooser-text{color:#853953!important;} #comment-editor.nav>li>a:nth-child(2){color:#fff!important;}}";
+            style.textContent = "body.top-navigation{overflow:hidden!important;} nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.sticky.affix, div.sticky.affix-top, div.extension-installer.container, div.footer.fixed, div.page-component-up, a.forum-item-title { display: none !important; } div.vertical-timeline-block {margin:0 15px 0px 10px;} div.selected div {background-color: transparent!important;} div.wrapper {width: 500px!important;} ul.nav.nav-tabs>li>a{color:#fff!important;} ul.nav.nav-tabs>li:nth-child(2).active>a{color:#853953!important;} ul.nav.nav-tabs>li:nth-child(1).active>a{color:#853953!important;} .ibox-title div, .ibox-title strong, .ibox-title span, .ibox-title em, .ibox-content a{color:#853953!important;}  .all-user-footer div:nth-child(1){visibility:hidden;} .el-button{background-color:#853953!important; border-color:#853953!important;} .ibox-bordered:before{background-color:#853953!important;} .btn-link.manual-file-chooser-text{color:#853953!important;}  .el-button.el-button--text{background:transparent!important;border-color:transparent!important;color:#853953!important;}}";
             (document.head ?? document.documentElement).appendChild(style);
             window.parent.postMessage({type: "FLORA_PUBPEER_CSS_READY"}, "*");
+
+            const stripCommentAccepted = (root: Node = document.body): void => {
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                const nodes: Text[] = [];
+                while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+                for (const node of nodes) {
+                    if (/comment accepted /i.test(node.nodeValue ?? "")) {
+                        node.nodeValue = (node.nodeValue ?? "").replace(/comment accepted /gi, "");
+                    }
+                }
+            };
+            const observer = new MutationObserver((mutations) => {
+                for (const m of mutations) {
+                    for (const n of m.addedNodes) stripCommentAccepted(n);
+                }
+            });
+            const startStripping = (): void => {
+                stripCommentAccepted();
+                observer.observe(document.body, {childList: true, subtree: true});
+            };
+            if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", startStripping);
+            } else {
+                startStripping();
+            }
+
+            const sendHeight = (): void => {
+                const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+                window.parent.postMessage({type: "FLORA_PUBPEER_HEIGHT", height: h}, "*");
+            };
+            window.addEventListener("load", sendHeight);
+            new ResizeObserver(sendHeight).observe(document.documentElement);
         }
         return;
     }
