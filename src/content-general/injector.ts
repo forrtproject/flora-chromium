@@ -1,6 +1,6 @@
 import type { DoiString, LookupState, ReplicationResult, ReplicationEntry, OriginalEntry, DoiContext } from "../shared/types";
 import type { PubPeerFeedback } from "../shared/pubpeer-api";
-import { normaliseDOI } from "../shared/doi-normalise";
+import { extractDoiOccurrences, type DoiOccurrence } from "../shared/doi-extractor";
 import { debugLog } from "../shared/debug";
 import { getSettings } from "../shared/settings";
 import styles from "./styles.css";
@@ -304,50 +304,51 @@ function adjustPageForBanner(): void {
 // Inline badges (still use shadow DOM for isolation)
 // ──────────────────────────────────────────────
 
+// Among occurrences of the same DOI, prefer the one with the most accurate
+// position for badge placement. Lower number = better.
+const OCCURRENCE_RANK: Record<DoiOccurrence["kind"], number> = {
+    "link-text": 0,
+    "link-doi-org": 1,
+    "text": 2,
+    "link-embedded": 3,
+};
+
 export function renderInlineBadges(
-    pageState: Map<DoiString, LookupState>
+    pageState: Map<DoiString, LookupState>,
+    occurrences?: DoiOccurrence[]
 ): void {
-    const allLinks = document.querySelectorAll<HTMLAnchorElement>("a[href]");
-    const badgedDois = new Set<DoiString>();
+    // Use occurrences captured at extraction time when the caller passes them
+    // in (no regex re-scan); otherwise compute them now from the live DOM.
+    const occs = occurrences ?? extractDoiOccurrences(document);
 
-    debugLog("renderInlineBadges: scanning", allLinks.length, "links, pageState has", pageState.size, "DOIs:",
-        [...pageState.entries()].map(([doi, s]) => `${doi}(${s.status})`));
-
-    for (const link of allLinks) {
-        if (link.nextElementSibling?.classList.contains(BADGE_CLASS)) continue;
-
-        // Only badge links whose visible text contains a DOI, or that point to doi.org
-        const linkText = link.innerText ? link.innerText : link.textContent;
-        const textMatch = linkText.match(/\b(10\.\d{4,}(?:\.\d+)*\/\S+)\b/);
-        const isDoiOrgLink = /^https?:\/\/(dx\.)?doi\.org\//i.test(link.href);
-        const hrefMatch = isDoiOrgLink
-            ? link.href.match(/\b(10\.\d{4,}(?:\.\d+)*\/\S+)\b/)
-            : null;
-        const rawDoi = textMatch?.[0] ?? hrefMatch?.[1];
-        if (!rawDoi) continue;
-
-        const doi = normaliseDOI(rawDoi);
-        if (!doi) continue;
-
-        // Only badge the first occurrence of each DOI
-        if (badgedDois.has(doi)) {
-            debugLog("renderInlineBadges: skipping duplicate", doi);
-            continue;
+    // Pick the best occurrence per DOI for placement.
+    const bestByDoi = new Map<DoiString, DoiOccurrence>();
+    for (const occ of occs) {
+        const cur = bestByDoi.get(occ.doi);
+        if (!cur || OCCURRENCE_RANK[occ.kind] < OCCURRENCE_RANK[cur.kind]) {
+            bestByDoi.set(occ.doi, occ);
         }
+    }
 
-        const state = pageState.get(doi);
+    debugLog("renderInlineBadges:", bestByDoi.size, "DOI(s) located;",
+        "pageState has", pageState.size, "DOI(s):",
+        [...pageState.entries()].map(([d, s]) => `${d}(${s.status})`));
+
+    for (const occ of bestByDoi.values()) {
+        const state = pageState.get(occ.doi);
         if (!state || state.status !== "matched") {
-            debugLog("renderInlineBadges: DOI not matched in pageState:", doi, "status:", state?.status ?? "not found");
+            debugLog("renderInlineBadges: DOI not matched in pageState:", occ.doi, "status:", state?.status ?? "not found");
             continue;
         }
-
-        if (!isVisible(link)) continue;
 
         const r = state.result;
         const stats = r.record.stats;
-
         const hasData = stats.n_replications_total > 0 || stats.n_reproductions_total > 0;
         if (!hasData) continue;
+
+        if (!isVisible(occ.anchor)) continue;
+        // Skip if this anchor already carries a badge (idempotent re-runs).
+        if (anchorAlreadyBadged(occ.anchor)) continue;
 
         const replLabel = stats.n_replications_total === 1 ? "replication" : "replications";
         const reproLabel = stats.n_reproductions_total === 1 ? "reproduction" : "reproductions";
@@ -372,10 +373,26 @@ export function renderInlineBadges(
     `;
         shadow.appendChild(badge);
 
-        link.insertAdjacentElement("afterend", badgeHost);
-        badgedDois.add(doi);
-        debugLog("renderInlineBadges: badged", doi, "link text:", link.textContent?.slice(0, 60));
+        placeBadge(occ.anchor, badgeHost);
+        debugLog("renderInlineBadges: badged", occ.doi, "as", occ.kind);
     }
+}
+
+/** Place a badge relative to its anchor: after the anchor for links, inside
+ *  for everything else (reference entries, paragraphs). */
+function placeBadge(anchor: HTMLElement, badge: HTMLElement): void {
+    if (anchor.tagName === "A") {
+        anchor.insertAdjacentElement("afterend", badge);
+    } else {
+        anchor.appendChild(badge);
+    }
+}
+
+function anchorAlreadyBadged(anchor: HTMLElement): boolean {
+    if (anchor.tagName === "A") {
+        return !!anchor.nextElementSibling?.classList.contains(BADGE_CLASS);
+    }
+    return !!anchor.lastElementChild?.classList.contains(BADGE_CLASS);
 }
 
 function isVisible(el: HTMLElement): boolean {
@@ -564,6 +581,10 @@ export function hideAllFloraUI(): void {
         el.style.display = "none";
     }
 
+    for (const el of document.querySelectorAll<HTMLElement>(".flora-doi-label")) {
+        el.style.display = "none";
+    }
+
   const setup = document.getElementById(SETUP_HOST_ID);
   if (setup) setup.style.display = "none";
 
@@ -579,6 +600,10 @@ export function showAllFloraUI(): void {
     if (modal) modal.style.display = "";
 
     for (const el of document.querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)) {
+        el.style.display = "";
+    }
+
+    for (const el of document.querySelectorAll<HTMLElement>(".flora-doi-label")) {
         el.style.display = "";
     }
 
@@ -760,7 +785,7 @@ function setupTabPositioning(tab: HTMLElement): void {
 
 export function renderPubPeerPanel(
   articleFeedbacks: PubPeerFeedback[],
-  referenceFeedbacks: PubPeerFeedback[],
+  references: { doi: DoiString; text: string }[],
   pageState: Map<DoiString, LookupState>,
   doiContext: Map<DoiString, DoiContext>,
   refFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map(),
@@ -1118,9 +1143,14 @@ export function renderPubPeerPanel(
     }
   })();
 
-  // References — names + per-reference PubPeer comment count + replication tags
-  const refFeedbacksWithComments = referenceFeedbacks.filter((f) => f.total_comments > 0);
-  if (refFeedbacksWithComments.length > 0) {
+  // References — every entry from the page's reference list gets a row.
+  // Driven directly off findReferenceEntries (passed in by the caller) rather
+  // than referenceDois from classifyPageDois, so unrelated DOIs picked up by
+  // sidebar/related-article elements that happen to match the reference
+  // regex don't appear as phantom rows. References with no PubPeer record
+  // show a muted "No PubPeer comments" tag instead of being dropped. The
+  // list is collapsible: first 5 visible, a toggle reveals the rest.
+  if (references.length > 0) {
     const refSection = document.createElement("div");
     refSection.style.cssText = "border-top:1px solid #e8e8e8;";
 
@@ -1128,74 +1158,74 @@ export function renderPubPeerPanel(
     refLabel.style.cssText =
       "font-size:14px;font-weight:600;color:#5f6368;text-transform:uppercase;" +
       "letter-spacing:0.5px;border-bottom:1px solid #e8e8e8;padding:10px 16px;";
-    refLabel.textContent = "References";
+    refLabel.textContent = `References (${references.length})`;
     refSection.appendChild(refLabel);
 
     const refList = document.createElement("ul");
     refList.style.cssText = "margin:0;list-style:none;padding:0;";
 
-    // Build URL→DOI reverse map from individual-lookup results for exact matching.
-    // PubPeer feedbacks carry no DOI, but a single-DOI lookup yields the same URL
-    // as the batch lookup, so URL is a stable key.
-    const feedbackUrlToDoi = new Map<string, DoiString>();
-    for (const [doi, feedback] of refFeedbackByDoi) {
-      feedbackUrlToDoi.set(feedback.url, doi);
-    }
+    const COLLAPSED_COUNT = 5;
+    const refItems: HTMLLIElement[] = [];
 
-    for (const ref of refFeedbacksWithComments) {
+    for (const ref of references) {
+      const doi = ref.doi;
+      const feedback = refFeedbackByDoi.get(doi);
       const li = document.createElement("li");
       li.style.cssText = "padding:10px 16px;border-bottom:1px solid #f0f0f0;";
 
+      // Prefer the full citation scraped from the page over PubPeer's
+      // title-only field — the reader expects to see authors/year/journal too.
+      const title = ref.text || feedback?.title || doi;
       const titleLink = document.createElement("a");
-      titleLink.href = ref.url;
+      titleLink.href = feedback?.url || `https://doi.org/${doi}`;
       titleLink.target = "_blank";
       titleLink.rel = "noopener";
+      titleLink.title = title;
+      // Clamp to 3 lines so a long/unparsed citation can't blow up the row.
       titleLink.style.cssText =
-        "display:block;font-size:12px;font-weight:500;color:#853953;" +
+        "display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;" +
+        "overflow:hidden;text-overflow:ellipsis;word-break:break-word;" +
+        "font-size:12px;font-weight:500;color:#853953;" +
         "text-decoration:none;line-height:1.4;margin-bottom:6px;";
-      titleLink.textContent = ref.title || "Unknown reference";
+      titleLink.textContent = title;
 
       const tagsRow = document.createElement("div");
       tagsRow.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:4px;";
 
-      const matchedDoi = feedbackUrlToDoi.get(ref.url);
-      if (matchedDoi) {
-        const s = pageState.get(matchedDoi);
-        if (s?.status === "matched") {
-          const { n_replications_total, n_reproductions_total, n_originals_total } = s.result.record.stats;
-          const floraUrl = `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(matchedDoi)}`;
-          const makeTag = (label: string, bg: string, fg: string, border: string): HTMLAnchorElement => {
-            const tag = document.createElement("a");
-            tag.href = floraUrl;
-            tag.target = "_blank";
-            tag.rel = "noopener noreferrer";
-            tag.style.cssText =
-              `flex-shrink:0;font-size:10px;font-weight:600;color:${fg};` +
-              `background:${bg};border:1px solid ${border};padding:1px 7px;border-radius:10px;` +
-              "white-space:nowrap;text-decoration:none;cursor:pointer;";
-            tag.textContent = label;
-            return tag;
-          };
-          if (n_replications_total > 0) {
-            tagsRow.appendChild(makeTag(
-              `${n_replications_total} Replication${n_replications_total === 1 ? "" : "s"}`,
-              "#e0f2fe", "#0369a1", "#7dd3fc"
-            ));
-          }
-          if (n_reproductions_total > 0) {
-            tagsRow.appendChild(makeTag(
-              `${n_reproductions_total} Reproduction${n_reproductions_total === 1 ? "" : "s"}`,
-              "#ede9fe", "#6d28d9", "#c4b5fd"
-            ));
-          }
-          if (n_originals_total > 0) {
-            tagsRow.appendChild(makeTag("Is Replication", "#fef9c3", "#854d0e", "#fde047"));
-          }
+      const s = pageState.get(doi);
+      if (s?.status === "matched") {
+        const { n_replications_total, n_reproductions_total, n_originals_total } = s.result.record.stats;
+        const floraUrl = `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(doi)}`;
+        const makeTag = (label: string, bg: string, fg: string, border: string): HTMLAnchorElement => {
+          const tag = document.createElement("a");
+          tag.href = floraUrl;
+          tag.target = "_blank";
+          tag.rel = "noopener noreferrer";
+          tag.style.cssText =
+            `flex-shrink:0;font-size:10px;font-weight:600;color:${fg};` +
+            `background:${bg};border:1px solid ${border};padding:1px 7px;border-radius:10px;` +
+            "white-space:nowrap;text-decoration:none;cursor:pointer;";
+          tag.textContent = label;
+          return tag;
+        };
+        if (n_replications_total > 0) {
+          tagsRow.appendChild(makeTag(
+            `${n_replications_total} Replication${n_replications_total === 1 ? "" : "s"}`,
+            "#e0f2fe", "#0369a1", "#7dd3fc"
+          ));
+        }
+        if (n_reproductions_total > 0) {
+          tagsRow.appendChild(makeTag(
+            `${n_reproductions_total} Reproduction${n_reproductions_total === 1 ? "" : "s"}`,
+            "#ede9fe", "#6d28d9", "#c4b5fd"
+          ));
+        }
+        if (n_originals_total > 0) {
+          tagsRow.appendChild(makeTag("Is Replication", "#fef9c3", "#854d0e", "#fde047"));
         }
       }
 
-      // Retraction tag for references found in Retraction Watch data
-      const refRetraction = matchedDoi ? retractionByDoi.get(matchedDoi) : undefined;
+      const refRetraction = retractionByDoi.get(doi);
       if (refRetraction) {
         const retractTag = document.createElement("a");
         retractTag.href = `https://doi.org/${refRetraction.doi}`;
@@ -1210,25 +1240,69 @@ export function renderPubPeerPanel(
         tagsRow.appendChild(retractTag);
       }
 
-      const commentText = `${ref.total_comments} ${ref.total_comments === 1 ? "comment" : "comments"}`;
-      const pillW = Math.ceil(commentText.length * 6 + 14);
-      const pillH = 18;
-      const tmp = document.createElement("div");
-      tmp.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}" style="flex-shrink:0;cursor:pointer;display:inline-block;vertical-align:middle;">
-        <a href="${ref.url}" target="_blank" rel="noopener" style="text-decoration:none;">
-          <rect x="0.5" y="0.5" width="${pillW - 1}" height="${pillH - 1}" rx="8.5" fill="#f9f0f4" stroke="#d4a5b8" stroke-width="1"/>
-          <text x="${pillW / 2}" y="13" fill="#853953" font-size="10" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" text-anchor="middle" text-decoration="none">${commentText}</text>
-        </a>
-      </svg>`;
-      const countPill = tmp.firstElementChild as SVGElement;
-      tagsRow.appendChild(countPill);
+      if (feedback && feedback.total_comments > 0) {
+        const commentText = `${feedback.total_comments} ${feedback.total_comments === 1 ? "comment" : "comments"}`;
+        const pillW = Math.ceil(commentText.length * 6 + 14);
+        const pillH = 18;
+        const tmp = document.createElement("div");
+        tmp.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}" style="flex-shrink:0;cursor:pointer;display:inline-block;vertical-align:middle;">
+          <a href="${feedback.url}" target="_blank" rel="noopener" style="text-decoration:none;">
+            <rect x="0.5" y="0.5" width="${pillW - 1}" height="${pillH - 1}" rx="8.5" fill="#f9f0f4" stroke="#d4a5b8" stroke-width="1"/>
+            <text x="${pillW / 2}" y="13" fill="#853953" font-size="10" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" text-anchor="middle" text-decoration="none">${commentText}</text>
+          </a>
+        </svg>`;
+        const countPill = tmp.firstElementChild as SVGElement;
+        tagsRow.appendChild(countPill);
+      } else {
+        const noCommentsTag = document.createElement("span");
+        noCommentsTag.style.cssText =
+          "flex-shrink:0;font-size:10px;font-weight:600;color:#9aa0a6;" +
+          "background:#f1f3f4;border:1px solid #e0e0e0;padding:1px 7px;border-radius:10px;" +
+          "white-space:nowrap;";
+        noCommentsTag.textContent = "No PubPeer comments";
+        tagsRow.appendChild(noCommentsTag);
+      }
 
       li.appendChild(titleLink);
       li.appendChild(tagsRow);
+      refItems.push(li);
       refList.appendChild(li);
     }
 
     refSection.appendChild(refList);
+
+    // Collapsible behaviour — hide entries beyond COLLAPSED_COUNT by default.
+    if (refItems.length > COLLAPSED_COUNT) {
+      const hidden = refItems.slice(COLLAPSED_COUNT);
+      for (const li of hidden) li.style.display = "none";
+
+      const toggleWrap = document.createElement("div");
+      toggleWrap.style.cssText = "padding:8px 16px;text-align:center;border-bottom:1px solid #f0f0f0;";
+
+      const toggle = document.createElement("button");
+      toggle.style.cssText =
+        "all:unset;cursor:pointer;font-size:12px;font-weight:600;color:#853953;" +
+        "padding:4px 10px;border-radius:6px;transition:background 0.15s;";
+      toggle.addEventListener("mouseenter", () => { toggle.style.background = "#f9f0f4"; });
+      toggle.addEventListener("mouseleave", () => { toggle.style.background = ""; });
+
+      let expanded = false;
+      const setLabel = (): void => {
+        toggle.textContent = expanded
+          ? "Show fewer references"
+          : `Show ${hidden.length} more reference${hidden.length === 1 ? "" : "s"}`;
+      };
+      setLabel();
+      toggle.addEventListener("click", () => {
+        expanded = !expanded;
+        for (const li of hidden) li.style.display = expanded ? "" : "none";
+        setLabel();
+      });
+
+      toggleWrap.appendChild(toggle);
+      refSection.appendChild(toggleWrap);
+    }
+
     summary.appendChild(refSection);
   }
 

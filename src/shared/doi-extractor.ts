@@ -88,6 +88,60 @@ function cleanDoiTrailing(raw: string): string {
 }
 
 /**
+ * Pull a DOI out of an anchor href. Tries (in order):
+ *  1. doi.org / dx.doi.org / doi: prefix → {@link normaliseDOI}
+ *  2. DOI passed in a query parameter (?doi=…, ?identifierName=doi&identifierValue=…)
+ *  3. DOI embedded anywhere in the (decoded) URL path, e.g. /doi/10.xxx/yyy
+ *
+ * Many reference-list links are publisher landing pages whose URL contains the
+ * DOI even though it's not a doi.org URL — this catches those.
+ */
+export function extractDoiFromHref(href: string): DoiString | null {
+  if (!href) return null;
+
+  // 1. Direct DOI URL
+  const direct = normaliseDOI(href);
+  if (direct) return direct;
+
+  // 2. DOI in a query parameter
+  try {
+    const url = new URL(href);
+    const params = url.searchParams;
+    for (const key of params.keys()) {
+      if (key.toLowerCase() === "doi") {
+        const fromParam = normaliseDOI(params.get(key) ?? "");
+        if (fromParam) return fromParam;
+      }
+    }
+    const idName = (params.get("identifierName") ?? params.get("identifier_name") ?? "").toLowerCase();
+    if (idName === "doi") {
+      const val = params.get("identifierValue") ?? params.get("identifier_value") ?? "";
+      const fromIdParam = normaliseDOI(val);
+      if (fromIdParam) return fromIdParam;
+    }
+  } catch {
+    // invalid URL — fall through to path-embedded match
+  }
+
+  // 3. DOI embedded anywhere in the URL (decoded)
+  try {
+    const decoded = decodeURIComponent(href);
+    const m = decoded.match(/\b(10\.\d{4,}(?:\.\d+)*\/[^\s&"'#?]+)/);
+    if (m) {
+      const cleaned = cleanDoiTrailing(m[1]);
+      if (isValidDoiSuffix(cleaned)) {
+        const fromPath = normaliseDOI(cleaned);
+        if (fromPath) return fromPath;
+      }
+    }
+  } catch {
+    // invalid percent-encoding — give up
+  }
+
+  return null;
+}
+
+/**
  * Extract DOIs from a document using a multi-layer approach:
  * 1. Page URL (catches DOIs in journal URLs like sagepub.com/doi/abs/10.xxx)
  * 2. <meta> tags (citation_doi, DC.identifier, etc.)
@@ -209,6 +263,116 @@ function extractFromDoiLinks(doc: Document, found: Set<DoiString>): void {
   }
 }
 
+/** Where a DOI was found on the page — drives where UI is anchored. */
+export type DoiOccurrenceKind =
+  | "link-text"      // DOI appears in the link's visible text
+  | "link-doi-org"   // <a href="https://doi.org/…">
+  | "link-embedded"  // DOI embedded in a non-doi.org URL (e.g. Crossref button)
+  | "text";          // DOI in plain prose text
+
+export interface DoiOccurrence {
+  doi: DoiString;
+  /** The element the DOI literally appears in (link or text-containing element). */
+  source: HTMLElement;
+  /**
+   * The element to anchor inline UI to. For DOIs inside a reference entry
+   * this is the entry itself (so a pill/badge doesn't end up next to a tiny
+   * "Crossref" button) — otherwise it's the source.
+   */
+  anchor: HTMLElement;
+  kind: DoiOccurrenceKind;
+}
+
+/**
+ * Unified position-aware DOI extraction. Returns every occurrence of every
+ * DOI on the page with a DOM location, so renderers can place pills/badges
+ * directly without re-scanning or regexing the DOM at render time.
+ *
+ * Picks the right anchor based on context:
+ * - DOIs inside a reference entry → anchored to the entry (covers "tiny
+ *   Crossref/PubMed button" links that embed a DOI in their URL).
+ * - DOIs elsewhere → anchored to the link or text-containing element.
+ */
+export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
+  const occurrences: DoiOccurrence[] = [];
+  if (!doc.body) return occurrences;
+
+  // Reference entries — used to lift the anchor up from a per-link "Crossref"
+  // button to the whole citation.
+  const entrySet = new Set<HTMLElement>(
+    findReferenceEntries(doc).map((e) => e.element)
+  );
+  const pickAnchor = (el: HTMLElement): HTMLElement => {
+    let cur: HTMLElement | null = el;
+    while (cur) {
+      if (entrySet.has(cur)) return cur;
+      cur = cur.parentElement;
+    }
+    return el;
+  };
+
+  // 1. Links — text match wins over href; embedded URLs are last resort.
+  for (const link of doc.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    const textDois = new Set<DoiString>();
+    const linkText = link.innerText || link.textContent || "";
+    const cleaned = decodeEncodedDois(linkText.replace(WORD_BREAK_CHARS, ""));
+    for (const match of cleaned.matchAll(DOI_TEXT_REGEX)) {
+      const raw = cleanDoiTrailing(match[1]);
+      if (!isValidDoiSuffix(raw)) continue;
+      const doi = normaliseDOI(raw);
+      if (doi) textDois.add(doi);
+    }
+    for (const doi of textDois) {
+      occurrences.push({ doi, source: link, anchor: pickAnchor(link), kind: "link-text" });
+    }
+
+    const direct = normaliseDOI(link.href);
+    if (direct && !textDois.has(direct)) {
+      occurrences.push({ doi: direct, source: link, anchor: pickAnchor(link), kind: "link-doi-org" });
+    } else if (!direct) {
+      const embedded = extractDoiFromHref(link.href);
+      if (embedded && !textDois.has(embedded)) {
+        occurrences.push({ doi: embedded, source: link, anchor: pickAnchor(link), kind: "link-embedded" });
+      }
+    }
+  }
+
+  // 2. Plain prose text — DOIs not inside any link.
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      const tag = parent.tagName;
+      if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT") {
+        return NodeFilter.FILTER_REJECT;
+      }
+      // Anchor descendants are covered by the link pass above.
+      if (parent.closest("a")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    const raw = (node as Text).data;
+    if (!raw || raw.length < 12) continue;
+    const parent = node.parentElement;
+    if (!parent) continue;
+    const cleaned = decodeEncodedDois(raw.replace(WORD_BREAK_CHARS, ""));
+    const seen = new Set<DoiString>();
+    for (const match of cleaned.matchAll(DOI_TEXT_REGEX)) {
+      const trimmed = cleanDoiTrailing(match[1]);
+      if (!isValidDoiSuffix(trimmed)) continue;
+      const doi = normaliseDOI(trimmed);
+      if (!doi || seen.has(doi)) continue;
+      seen.add(doi);
+      occurrences.push({ doi, source: parent, anchor: pickAnchor(parent), kind: "text" });
+    }
+  }
+
+  return occurrences;
+}
+
 function extractFromVisibleText(doc: Document, found: Set<DoiString>): void {
   const rawText = doc.body?.innerText || doc.body?.textContent || "";
   // Strip invisible word-break characters that sites insert for overflow-wrap/break-word
@@ -266,7 +430,7 @@ function isReferenceContainer(el: Element): boolean {
   return false;
 }
 
-function findReferenceContainers(doc: Document): Element[] {
+export function findReferenceContainers(doc: Document): Element[] {
   const matched: Element[] = [];
   for (const el of doc.querySelectorAll<Element>("[class],[id]")) {
     if (isReferenceContainer(el)) matched.push(el);
@@ -277,11 +441,143 @@ function findReferenceContainers(doc: Document): Element[] {
   );
 }
 
+/** A single reference-list entry, kept linked to its DOM element. */
+export interface ReferenceEntry {
+  /** The DOM element for this one reference (e.g. an <li>). */
+  element: HTMLElement;
+  /** DOI already present in the entry, or null when it needs augmentation. */
+  doi: DoiString | null;
+  /** Visible citation text — used as the augmentation query when doi is null. */
+  text: string;
+}
+
+/**
+ * Trailing labels that publishers append after the citation as inline link
+ * buttons (Crossref | PubMed | Web of Science | Google Scholar | …). When the
+ * page's reference list is serialised to innerText these end up glued to the
+ * citation, which both pollutes augmentation queries and uglifies the panel.
+ */
+const REFERENCE_BUTTON_LABEL_RE =
+  /[\s|·•,]+(?:Cross\s?Ref|PubMed(?:\s+Central)?|Web\s+of\s+Science|Google\s+Scholar|ISI|Medline|Scopus|CAS|View\s+(?:Article|in\s+Article|on\s+Publisher\s+Site)|Full[\s-]?Text|PDF|Free\s+Article|Open\s+Access|Find\s+in\s+Worldcat|ChemPort|Bing(?:\s+Scholar)?|OpenURL|DOI|Direct\s+Link|ADS|ProQuest|Show\s+Abstract|Read\s+(?:Article|Abstract))\b[\s.,;|·•]*$/i;
+
+function cleanReferenceText(text: string): string {
+  let cleaned = text.trim();
+  let prev: string;
+  do {
+    prev = cleaned;
+    cleaned = cleaned.replace(REFERENCE_BUTTON_LABEL_RE, "").trim();
+  } while (cleaned !== prev);
+  return cleaned;
+}
+
+/** Find the DOI already present in a single reference entry, if any. */
+function extractDoiFromEntry(entry: HTMLElement): DoiString | null {
+  // DOI links inside the entry — recognises doi.org URLs, ?doi= query params,
+  // and DOIs embedded in publisher landing-page URLs.
+  for (const link of entry.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    const doi = extractDoiFromHref(link.href);
+    if (doi) return doi;
+  }
+  // DOI written out in the visible citation text
+  const text = entry.innerText ?? entry.textContent ?? "";
+  const cleaned = decodeEncodedDois(text.replace(WORD_BREAK_CHARS, ""));
+  for (const match of cleaned.matchAll(DOI_TEXT_REGEX)) {
+    const raw = cleanDoiTrailing(match[1]);
+    if (!isValidDoiSuffix(raw)) continue;
+    const doi = normaliseDOI(raw);
+    if (doi) return doi;
+  }
+  return null;
+}
+
+/**
+ * Within `container`, find the largest group of `<tag>` elements that share a
+ * common parent. Reference lists almost always render as a sibling group of
+ * the same tag (<li>, <p>, or <div>); picking the biggest group is a reliable
+ * way to identify the entries even when the container has unrelated children
+ * like a heading or a "Citation" sub-block.
+ */
+function findLargestSiblingGroup(container: Element, tag: string): HTMLElement[] {
+  const byParent = new Map<Element, HTMLElement[]>();
+  for (const node of container.querySelectorAll<HTMLElement>(tag)) {
+    const parent = node.parentElement;
+    if (!parent) continue;
+    const group = byParent.get(parent) ?? [];
+    group.push(node);
+    byParent.set(parent, group);
+  }
+  let best: HTMLElement[] = [];
+  for (const group of byParent.values()) {
+    if (group.length > best.length) best = group;
+  }
+  return best;
+}
+
+/**
+ * Split the page's reference/bibliography section(s) into individual reference
+ * entries, each kept linked to its DOM element and to any DOI it already
+ * contains. Callers can render against `element` directly — no re-scanning or
+ * regex needed at render time.
+ *
+ * Detection cascades through the common journal markups:
+ * - <ol>/<ul> lists with <li> entries
+ * - sibling groups of <p> (typical for many journal templates)
+ * - sibling groups of <div> (some bibliography styles)
+ * - fallback: direct element children of the container
+ */
+export function findReferenceEntries(doc: Document): ReferenceEntry[] {
+  const elements: HTMLElement[] = [];
+
+  for (const container of findReferenceContainers(doc)) {
+    const lis = Array.from(container.querySelectorAll<HTMLElement>("li"))
+      .filter((li) => !li.querySelector("li"));
+    if (lis.length >= 2) {
+      elements.push(...lis);
+      continue;
+    }
+
+    const pGroup = findLargestSiblingGroup(container, "p");
+    if (pGroup.length >= 2) {
+      elements.push(...pGroup);
+      continue;
+    }
+
+    const divGroup = findLargestSiblingGroup(container, "div");
+    if (divGroup.length >= 2) {
+      elements.push(...divGroup);
+      continue;
+    }
+
+    // Fallback: descend through structural single-child wrappers, then treat
+    // each element child as one entry.
+    let scope: Element = container;
+    while (
+      scope.children.length === 1 &&
+      scope.firstElementChild &&
+      /^(div|section|article)$/i.test(scope.firstElementChild.tagName)
+    ) {
+      scope = scope.firstElementChild;
+    }
+    for (const child of scope.children) {
+      if (child instanceof HTMLElement && (child.textContent ?? "").trim().length > 0) {
+        elements.push(child);
+      }
+    }
+  }
+
+  return elements.map((element) => ({
+    element,
+    doi: extractDoiFromEntry(element),
+    text: cleanReferenceText(element.innerText ?? element.textContent ?? ""),
+  }));
+}
+
 function extractFromReferenceContainers(doc: Document, found: Set<DoiString>): void {
   for (const container of findReferenceContainers(doc)) {
-    // DOI links inside the container
+    // DOI links inside the container — handle publisher landing-page URLs
+    // (?doi=, /doi/10.xxx/yyy paths) in addition to plain doi.org links.
     for (const link of container.querySelectorAll<HTMLAnchorElement>("a[href]")) {
-      const doi = normaliseDOI(link.href);
+      const doi = extractDoiFromHref(link.href);
       if (doi) found.add(doi);
     }
     // Visible text inside the container
