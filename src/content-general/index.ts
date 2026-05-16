@@ -2,7 +2,9 @@ import {
     classifyPageDois,
     extractDOIs,
     extractDOIsFromText,
-    extractPrimaryDOI
+    extractDoiOccurrences,
+    extractPrimaryDOI,
+    findReferenceEntries
 } from "@shared/doi-extractor";
 import {augmentDOIs} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
@@ -27,11 +29,12 @@ import {
     type SheetsModalCallbacks,
     showAllFloraUI
 } from "./injector";
-import {lookupPubPeer, type PubPeerFeedback} from "@shared/pubpeer-api";
+import {lookupPubPeer, lookupPubPeerForDois, type PubPeerFeedback} from "@shared/pubpeer-api";
 import {debugLog} from "@shared/debug";
 import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 import {retractionCheck, RetractionResponse} from "@shared/doi-retraction"
+import {processReferenceDois} from "./references";
 
 const pageState = new Map<DoiString, LookupState>();
 let redacts: RetractionResponse[] = [];
@@ -42,7 +45,6 @@ let lastUrl = location.href;
 let augmentAttempted = false;
 let pubpeerChecked = false;
 let lastArticleFeedbacks: PubPeerFeedback[] = [];
-let lastReferenceFeedbacks: PubPeerFeedback[] = [];
 let lastRefFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map();
 
 /** Monotonic counter — incremented on each sheet tab switch to discard stale CSV responses. */
@@ -86,7 +88,6 @@ async function pageRenderChangeHandler(): Promise<void> {
         processedDois.clear();
         doiContext.clear();
         lastArticleFeedbacks = [];
-        lastReferenceFeedbacks = [];
         lastRefFeedbackByDoi = new Map();
         pageState.clear();
         augmentAttempted = false;
@@ -96,7 +97,16 @@ async function pageRenderChangeHandler(): Promise<void> {
             removePubPeerPanel();
         }
     }
+    // Resolve & inline-render DOIs for DOI-less reference-list entries.
+    // Fire-and-forget; idempotent via a per-entry processed marker.
+    void processReferenceDois();
+
     let dois = extractDOIs(document);
+    // Capture DOI occurrences (with source + anchor) at extraction time so
+    // renderInlineBadges can place badges directly on the right DOM element
+    // without re-scanning. The anchor lifts to the reference entry for DOIs
+    // inside a citation so badges don't land next to a tiny "Crossref" button.
+    const occurrences = extractDoiOccurrences(document);
 
     const hasDoiChange = processedDois.size !== dois.length ||
         !dois.every(doi => processedDois.has(doi));
@@ -228,7 +238,7 @@ async function pageRenderChangeHandler(): Promise<void> {
 
         // Inline badges (skip on Google Sheets — modal only)
         if (!isSheets) {
-            renderInlineBadges(pageState);
+            renderInlineBadges(pageState, occurrences);
         }
     } catch {
         renderErrorBanner("Failed to contact FLoRA service");
@@ -272,41 +282,30 @@ async function checkPubPeer(): Promise<void> {
     const primaryDoi = extractPrimaryDOI(document);
     if (!primaryDoi) return;
     try {
-        const referenceDois = [...doiContext.entries()]
-            .filter(([, ctx]) => ctx === "reference")
-            .map(([doi]) => doi);
-        const [articleFeedbacks, referenceFeedbacks] = await Promise.all([
+        // Source of truth for "what counts as a reference" = the page's actual
+        // reference-list entries. Using classifyPageDois().referenceDois here
+        // would pull in DOIs from related-articles sidebars or any element
+        // whose class/id matches the reference regex — phantom rows in the panel.
+        const seen = new Set<DoiString>();
+        const references: { doi: DoiString; text: string }[] = [];
+        for (const entry of findReferenceEntries(document)) {
+            if (!entry.doi || seen.has(entry.doi)) continue;
+            seen.add(entry.doi);
+            references.push({ doi: entry.doi, text: entry.text });
+        }
+        const referenceDois = references.map((r) => r.doi);
+
+        // Article: URL-based lookup. References: per-DOI lookups (cached and
+        // concurrency-limited) so every reference is reliably keyed by its DOI
+        // — the batch endpoint returns no DOI per feedback entry.
+        const [articleFeedbacks, refFeedbackByDoi] = await Promise.all([
             lookupPubPeer([primaryDoi], [location.href]),
-            referenceDois.length > 0 ? lookupPubPeer(referenceDois, []) : Promise.resolve([]),
+            lookupPubPeerForDois(referenceDois),
         ]);
         lastArticleFeedbacks = articleFeedbacks;
-        lastReferenceFeedbacks = referenceFeedbacks;
-
-        // For reference DOIs with FORRT replication data, do individual PubPeer lookups so
-        // we can build a reliable DOI→feedback map (the batch call returns no DOI per entry).
-        const replicationRefDois = referenceDois.filter((doi) => {
-            const s = pageState.get(doi);
-            return (
-                s?.status === "matched" &&
-                (s.result.record.stats.n_replications_total > 0 ||
-                    s.result.record.stats.n_reproductions_total > 0 ||
-                    s.result.record.stats.n_originals_total > 0)
-            );
-        });
-        const refFeedbackByDoi = new Map<DoiString, PubPeerFeedback>();
-        if (replicationRefDois.length > 0) {
-            const pairs = await Promise.all(
-                replicationRefDois.map(async (doi) => ({
-                    doi,
-                    feedback: (await lookupPubPeer([doi], []))[0] ?? null,
-                }))
-            );
-            for (const {doi, feedback} of pairs) {
-                if (feedback) refFeedbackByDoi.set(doi, feedback);
-            }
-        }
         lastRefFeedbackByDoi = refFeedbackByDoi;
-        renderPubPeerPanel(articleFeedbacks, referenceFeedbacks, pageState, doiContext, refFeedbackByDoi, redacts);
+
+        renderPubPeerPanel(articleFeedbacks, references, pageState, doiContext, refFeedbackByDoi, redacts);
     } catch {
         // PubPeer is supplementary — fail silently
     }

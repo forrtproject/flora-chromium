@@ -1,7 +1,7 @@
 /** Debug logger — gated by a flag in chrome.storage.local */
 
-let _enabled = false;
-let _initialized = false;
+let _enabled = true;
+let _initialized = true;
 
 function init(): void {
   if (_initialized) return;
