@@ -1365,6 +1365,21 @@ export function renderPubPeerPanel(
       `<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>` +
       `<span style="font-size:13px;font-weight:500;color:#5f6368;">No PubPeer comments yet</span>` +
       `<span style="font-size:12px;line-height:1.5;">This article hasn't been discussed on PubPeer.</span>`;
+
+    const startDiscussion = document.createElement("a");
+    startDiscussion.href = articleDois.length > 0
+      ? `https://pubpeer.com/search?q=${encodeURIComponent(articleDois[0])}`
+      : "https://pubpeer.com/";
+    startDiscussion.target = "_blank";
+    startDiscussion.rel = "noopener";
+    startDiscussion.textContent = "Start a discussion on PubPeer";
+    startDiscussion.style.cssText =
+      "all:unset;cursor:pointer;margin-top:8px;padding:6px 14px;font-size:12px;font-weight:500;" +
+      "color:#853953;border:1px solid #853953;border-radius:6px;transition:background 0.15s;";
+    startDiscussion.addEventListener("mouseenter", () => { startDiscussion.style.background = "#f9f0f4"; });
+    startDiscussion.addEventListener("mouseleave", () => { startDiscussion.style.background = ""; });
+    emptyState.appendChild(startDiscussion);
+
     scrollBody.appendChild(emptyState);
   }
 
