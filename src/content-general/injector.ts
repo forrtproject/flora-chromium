@@ -792,8 +792,11 @@ export function renderPubPeerPanel(
   retractions: RetractionResponse[] = []
 ): void {
   const existingHost = document.getElementById(PUBPEER_PANEL_ID);
-  const existingPanel = existingHost?.querySelector<HTMLElement>(".flora-sliding-panel");
-  const wasOpen = existingPanel?.style.transform === "translateX(0)";
+  // Track open state via a stateful marker on the host — comparing inline
+  // `transform` strings is fragile because browsers may normalise the value
+  // (e.g. `translateX(0)` → `translateX(0px)`). The marker is set in
+  // openPanel/closePanel below so reading it here is always reliable.
+  const wasOpen = existingHost?.dataset.floraPanelOpen === "1";
   cleanupTabPositioning();
   existingHost?.remove();
 
@@ -1409,6 +1412,7 @@ export function renderPubPeerPanel(
     // Clear animation fill so JS can freely control 'right'
     tab.style.animation = "none";
     isOpen = true;
+    host.dataset.floraPanelOpen = "1";
     panel.style.transform = "translateX(0)";
     tab.style.right = `${PANEL_WIDTH}px`;
     arrow.style.transform = "rotate(180deg)";
@@ -1421,6 +1425,7 @@ export function renderPubPeerPanel(
   const closePanel = (): void => {
     tab.style.animation = "none";
     isOpen = false;
+    host.dataset.floraPanelOpen = "0";
     panel.style.transform = "translateX(100%)";
     tab.style.right = "0";
     arrow.style.transform = "rotate(0deg)";
@@ -1445,7 +1450,20 @@ export function renderPubPeerPanel(
 
   setupTabPositioning(tab);
 
-  if (wasOpen) openPanel();
+  if (wasOpen) {
+    // The panel was already open before this re-render (e.g. references
+    // lazy-loaded and triggered a content refresh). Snap it straight to the
+    // open position without the 0.3s slide-in — otherwise the user perceives
+    // the panel as closing and reopening on every content update. Drop the
+    // transition for one frame, set the open state, then restore it so future
+    // user-driven open/close still animates.
+    const savedTransition = panel.style.transition;
+    panel.style.transition = "none";
+    openPanel();
+    // Force a reflow so the transition reset takes effect before re-enabling.
+    void panel.offsetHeight;
+    panel.style.transition = savedTransition;
+  }
 }
 
 export function removePubPeerPanel(): void {

@@ -43,7 +43,8 @@ const processedDois = new Set<DoiString>();
 const doiContext = new Map<DoiString, DoiContext>();
 let lastUrl = location.href;
 let augmentAttempted = false;
-let pubpeerChecked = false;
+let articleFeedbacksFetched = false;
+let lastReferenceDoiKey = "";
 let lastArticleFeedbacks: PubPeerFeedback[] = [];
 let lastRefFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map();
 
@@ -89,6 +90,8 @@ async function pageRenderChangeHandler(): Promise<void> {
         doiContext.clear();
         lastArticleFeedbacks = [];
         lastRefFeedbackByDoi = new Map();
+        articleFeedbacksFetched = false;
+        lastReferenceDoiKey = "";
         pageState.clear();
         augmentAttempted = false;
         if (isSheets) {
@@ -277,8 +280,7 @@ async function augmentFromTitle(): Promise<void> {
 }
 
 async function checkPubPeer(): Promise<void> {
-    if (pubpeerChecked || isSheets) return;
-    pubpeerChecked = true;
+    if (isSheets) return;
     const primaryDoi = extractPrimaryDOI(document);
     if (!primaryDoi) return;
     try {
@@ -295,15 +297,30 @@ async function checkPubPeer(): Promise<void> {
         }
         const referenceDois = references.map((r) => r.doi);
 
-        // Article: URL-based lookup. References: per-DOI lookups (cached and
-        // concurrency-limited) so every reference is reliably keyed by its DOI
-        // — the batch endpoint returns no DOI per feedback entry.
+        // Content-keyed gate: skip re-rendering when the article side is
+        // already fetched AND the set of reference DOIs is unchanged. This is
+        // what lets lazily-loaded references (e.g. Wiley's collapsible "Citing
+        // Literature" / references section) flow into the panel — the DOM
+        // observer fires checkPubPeer again, finds new DOIs, and re-renders.
+        const refKey = [...referenceDois].sort().join("|");
+        if (articleFeedbacksFetched && refKey === lastReferenceDoiKey) return;
+
+        // Article: URL-based lookup, fetched once per page. References:
+        // per-DOI lookups (cached and concurrency-limited) so every reference
+        // is reliably keyed by its DOI — the batch endpoint returns no DOI
+        // per feedback entry. The reference-side cache makes re-runs after
+        // lazy loads cheap (already-seen DOIs hit chrome.storage).
+        const articlePromise = articleFeedbacksFetched
+            ? Promise.resolve(lastArticleFeedbacks)
+            : lookupPubPeer([primaryDoi], [location.href]);
         const [articleFeedbacks, refFeedbackByDoi] = await Promise.all([
-            lookupPubPeer([primaryDoi], [location.href]),
+            articlePromise,
             lookupPubPeerForDois(referenceDois),
         ]);
+        articleFeedbacksFetched = true;
         lastArticleFeedbacks = articleFeedbacks;
         lastRefFeedbackByDoi = refFeedbackByDoi;
+        lastReferenceDoiKey = refKey;
 
         renderPubPeerPanel(articleFeedbacks, references, pageState, doiContext, refFeedbackByDoi, redacts);
     } catch {

@@ -2,7 +2,12 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { JSDOM } from "jsdom";
-import { extractDOIs, extractDOIsFromText } from "../../src/shared/doi-extractor";
+import {
+  extractDOIs,
+  extractDOIsFromText,
+  findReferenceContainers,
+  findReferenceEntries,
+} from "../../src/shared/doi-extractor";
 
 function loadFixture(name: string): Document {
   const html = readFileSync(
@@ -476,5 +481,162 @@ describe("extractDOIsFromText", () => {
   it("extracts DOI with Unicode characters in the suffix (spec example 3)", () => {
     const dois = extractDOIsFromText("10.26321/Á.GUTIÉRREZ.ZARZA.02.2018.03");
     expect(dois).toEqual(["10.26321/á.gutiérrez.zarza.02.2018.03"]);
+  });
+});
+
+// Reference-section detection covers two recurring failure modes seen on
+// Wiley:
+//   1. Singular tokens (`citation`, `reference`, `footnote`) are used as
+//      wrappers for non-list UI (e.g. the whole article body lives in
+//      `<div class="citation">`); matching them mis-classifies body content.
+//   2. The class `rlist` is Wiley's generic <ul> reset, used everywhere
+//      (skip-links, search nav, footer, recommended sidebar) — matching it
+//      pulls in dozens of non-references.
+// Plural / list-only tokens, the BEM `cited-by[__suffix]` family, and the
+// `cited-by` id stay matched.
+describe("findReferenceContainers", () => {
+  it("does not match Wiley's `<div class=\"citation\">` article wrapper (singular token)", () => {
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <div class="citation">
+          <p>Article body paragraph one with 10.1111/aaa.0001.</p>
+          <p>Article body paragraph two with 10.1111/bbb.0002.</p>
+        </div>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    expect(findReferenceContainers(doc)).toHaveLength(0);
+  });
+
+  it("does not match `rlist` alone (Wiley's generic <ul> reset class)", () => {
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <ul class="rlist"><li>Skip to content</li><li>Skip to info</li></ul>
+        <ul class="rlist tab__content"><li>Search</li><li>Browse</li></ul>
+        <ul class="rlist lot"><li>Recommended A</li><li>Recommended B</li></ul>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    expect(findReferenceContainers(doc)).toHaveLength(0);
+  });
+
+  it("matches `cited-by` id and class (Wiley's citing-literature section)", () => {
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <section id="cited-by" class="article-section cited-by">
+          <ul><li>Entry 1</li><li>Entry 2</li></ul>
+        </section>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const containers = findReferenceContainers(doc);
+    expect(containers).toHaveLength(1);
+    expect((containers[0] as HTMLElement).id).toBe("cited-by");
+  });
+
+  it("matches BEM `cited-by__list` suffix token", () => {
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <ul class="rlist cited-by__list">
+          <li>Entry 1</li><li>Entry 2</li>
+        </ul>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const containers = findReferenceContainers(doc);
+    expect(containers).toHaveLength(1);
+    expect((containers[0] as HTMLElement).tagName).toBe("UL");
+  });
+
+  it("still matches traditional `references` / `bibliography` containers", () => {
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <ol class="references"><li>Ref A</li><li>Ref B</li></ol>
+        <ul id="bibliography"><li>Bib A</li><li>Bib B</li></ul>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    expect(findReferenceContainers(doc)).toHaveLength(2);
+  });
+});
+
+describe("findReferenceEntries", () => {
+  it("prefers DOI written in entry text over a link href", () => {
+    // Wiley cited-by rows write the citing paper's DOI in plain text but
+    // their single link is a redirect URL containing the *host* article's
+    // DOI as a query param. Text-first extraction is what avoids resolving
+    // every row to the host paper.
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <section id="cited-by">
+          <ul>
+            <li class="citedByEntry">
+              <span>Author A, Title, Journal, 10.1111/aaa.0001, (2025).</span>
+              <a href="https://example.com/action?doi=10.9999/host.doi&doiOfLink=10.1111/aaa.0001">View</a>
+            </li>
+            <li class="citedByEntry">
+              <span>Author B, Title, Journal, 10.2222/bbb.0002, (2024).</span>
+              <a href="https://example.com/action?doi=10.9999/host.doi&doiOfLink=10.2222/bbb.0002">View</a>
+            </li>
+          </ul>
+        </section>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const entries = findReferenceEntries(doc);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].doi).toBe("10.1111/aaa.0001");
+    expect(entries[1].doi).toBe("10.2222/bbb.0002");
+  });
+
+  it("skips host-article DOI in link fallback so navigation stubs resolve to null", () => {
+    // Entry has no DOI in visible text and its only link is a Wiley
+    // redirect whose `doi=` query param is the host article — without the
+    // host-DOI guard, this would mis-resolve to the page's own DOI and
+    // surface a stray pill.
+    const html = `<!DOCTYPE html>
+      <html>
+        <head><meta name="citation_doi" content="10.9999/host.doi"></head>
+        <body>
+          <section id="cited-by">
+            <ul>
+              <li class="citedByEntry">
+                <span>Long enough non-citation header text for the length gate</span>
+                <a href="https://example.com/action?doi=10.9999/host.doi">More</a>
+              </li>
+              <li class="citedByEntry">
+                <span>Another non-citation stub long enough to pass min length</span>
+                <a href="https://example.com/action?doi=10.9999/host.doi">More</a>
+              </li>
+            </ul>
+          </section>
+        </body>
+      </html>`;
+    const doc = new JSDOM(html).window.document;
+    const entries = findReferenceEntries(doc);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].doi).toBeNull();
+    expect(entries[1].doi).toBeNull();
+  });
+
+  it("falls back to a non-host link DOI when entry text has no DOI", () => {
+    // This is the legitimate hidden-DOI case (Crossref-style button URL).
+    // Link fallback should fire when text yields nothing AND the link's DOI
+    // is not the host's.
+    const html = `<!DOCTYPE html>
+      <html>
+        <head><meta name="citation_doi" content="10.9999/host.doi"></head>
+        <body>
+          <ol class="references">
+            <li>
+              Smith J. Title. Journal. 2020.
+              <a href="https://www.crossref.org/openurl?doi=10.1234/found.via.button">Crossref</a>
+            </li>
+            <li>
+              Jones K. Another. 2021.
+              <a href="https://www.crossref.org/openurl?doi=10.5678/also.found">Crossref</a>
+            </li>
+          </ol>
+        </body>
+      </html>`;
+    const doc = new JSDOM(html).window.document;
+    const entries = findReferenceEntries(doc);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].doi).toBe("10.1234/found.via.button");
+    expect(entries[1].doi).toBe("10.5678/also.found");
   });
 });
