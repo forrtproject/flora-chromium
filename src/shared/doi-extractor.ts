@@ -416,8 +416,17 @@ export function extractDOIsFromText(text: string): DoiString[] {
   return [...found];
 }
 
-// Class/id tokens that indicate a reference or bibliography section
-const REFERENCE_SECTION_RE = /^(?:cited|cites?|citations?|bibliography|bibliograph(?:y|ies)|references?|reflist|ref-list|works-cited|footnotes?)$/i;
+// Class/id tokens that indicate a reference or bibliography section.
+// Plural/list-only forms — singular tokens like `citation`, `reference`, or
+// `footnote` are used by some publishers (notably Wiley's `class="citation"`
+// on the whole article wrapper) for non-list "how to cite" / single-ref UI,
+// which would otherwise mis-classify the entire article body as a reference
+// list. `works-cited` and `reflist`/`ref-list` are kept because the compound
+// form is unambiguous. `cited-by[__*]` covers Wiley's BEM-style citing-list
+// section (`<section class="cited-by">` / `id="cited-by"`); we deliberately
+// do not match Wiley's `rlist` class because it's a generic <ul> reset used
+// for skip-links, search nav, footer, related-journals, etc.
+const REFERENCE_SECTION_RE = /^(?:cites|citations|bibliography|bibliographies|references|reflist|ref-list|works-cited|footnotes|cited-by(?:__[\w-]+)?)$/i;
 
 function isReferenceContainer(el: Element): boolean {
   if (el.className) {
@@ -471,14 +480,12 @@ function cleanReferenceText(text: string): string {
 }
 
 /** Find the DOI already present in a single reference entry, if any. */
-function extractDoiFromEntry(entry: HTMLElement): DoiString | null {
-  // DOI links inside the entry — recognises doi.org URLs, ?doi= query params,
-  // and DOIs embedded in publisher landing-page URLs.
-  for (const link of entry.querySelectorAll<HTMLAnchorElement>("a[href]")) {
-    const doi = extractDoiFromHref(link.href);
-    if (doi) return doi;
-  }
-  // DOI written out in the visible citation text
+function extractDoiFromEntry(entry: HTMLElement, hostDoi: DoiString | null): DoiString | null {
+  // Visible citation text wins — that's the reliable signal of which paper
+  // the entry is *about*. Links inside the entry are often nav/action
+  // buttons ("View", "Cite", "Add to favorites") that point at the current
+  // article, not the cited/citing paper — using them first caused every
+  // Wiley cited-by row to resolve to the host article's own DOI.
   const text = entry.innerText ?? entry.textContent ?? "";
   const cleaned = decodeEncodedDois(text.replace(WORD_BREAK_CHARS, ""));
   for (const match of cleaned.matchAll(DOI_TEXT_REGEX)) {
@@ -486,6 +493,15 @@ function extractDoiFromEntry(entry: HTMLElement): DoiString | null {
     if (!isValidDoiSuffix(raw)) continue;
     const doi = normaliseDOI(raw);
     if (doi) return doi;
+  }
+  // Fall back to link hrefs only when no DOI is written out — covers entries
+  // where the DOI is tucked into a "Crossref"/"PubMed" button URL. Skip
+  // links resolving to the host article's own DOI (Wiley sprinkles "View"
+  // jumplinks pointing at the current article inside the cited-by section),
+  // otherwise those non-citation stubs render a stray pill on the header.
+  for (const link of entry.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    const doi = extractDoiFromHref(link.href);
+    if (doi && doi !== hostDoi) return doi;
   }
   return null;
 }
@@ -565,9 +581,10 @@ export function findReferenceEntries(doc: Document): ReferenceEntry[] {
     }
   }
 
+  const hostDoi = extractPrimaryDOI(doc);
   return elements.map((element) => ({
     element,
-    doi: extractDoiFromEntry(element),
+    doi: extractDoiFromEntry(element, hostDoi),
     text: cleanReferenceText(element.innerText ?? element.textContent ?? ""),
   }));
 }

@@ -10,6 +10,12 @@ export interface PubPeerFeedback {
   url: string;
 }
 
+export class PubPeerRateLimitError extends Error {
+  constructor(public retryAfterMs: number) {
+    super(`PubPeer rate limited (retry after ${retryAfterMs}ms)`);
+  }
+}
+
 export async function lookupPubPeer(
   dois: string[],
   urls: string[]
@@ -27,6 +33,10 @@ export async function lookupPubPeer(
       }),
     }
   );
+  if (response.status === 429) {
+    const retryAfter = parseInt(response.headers.get("Retry-After") ?? "0", 10);
+    throw new PubPeerRateLimitError((retryAfter > 0 ? retryAfter : 60) * 1000);
+  }
   if (!response.ok) {
     throw new Error(`PubPeer API error: ${response.status}`);
   }
@@ -37,8 +47,18 @@ export async function lookupPubPeer(
 const CACHE_PREFIX = "flora_pubpeer:";
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24h — comment counts change over time
 // How many per-DOI PubPeer requests to keep in flight at once. Reference lists
-// can be long; this keeps page load from issuing dozens of parallel requests.
-const DOI_LOOKUP_CONCURRENCY = 6;
+// can be long (Wiley cited-by sections hit 100+); a low ceiling avoids
+// tripping PubPeer's per-IP rate limit on first page load.
+const DOI_LOOKUP_CONCURRENCY = 2;
+// Hard cap on per-page reference lookups. Anything past this is left for the
+// next page visit (already-cached DOIs from prior visits still resolve). 60 is
+// chosen so a typical bibliography fits while pathological cited-by lists
+// (100s of entries) don't burst-DDoS PubPeer.
+const MAX_REFERENCE_LOOKUPS = 60;
+
+// Module-level back-off — when PubPeer returns 429, suppress further requests
+// until this timestamp passes so we don't keep retrying every DOM tick.
+let rateLimitedUntil = 0;
 
 interface CachedFeedback {
   feedback: PubPeerFeedback | null;
@@ -63,10 +83,18 @@ export async function lookupPubPeerByDoi(doi: string): Promise<PubPeerFeedback |
     // storage unavailable — fall through to network
   }
 
+  // Honour module-level back-off after a 429 — avoids piling on requests we
+  // know will fail and prolong the rate limit.
+  if (Date.now() < rateLimitedUntil) return null;
+
   let feedback: PubPeerFeedback | null;
   try {
     feedback = (await lookupPubPeer([doi], []))[0] ?? null;
-  } catch {
+  } catch (err) {
+    if (err instanceof PubPeerRateLimitError) {
+      rateLimitedUntil = Date.now() + err.retryAfterMs;
+      debugLog(`PubPeer: rate limited; backing off ${err.retryAfterMs}ms`);
+    }
     return null; // network/API error — don't cache a failure
   }
 
@@ -90,10 +118,27 @@ export async function lookupPubPeerForDois<T extends string>(
   const result = new Map<T, PubPeerFeedback>();
   if (dois.length === 0) return result;
 
+  // Cap network lookups. Already-cached DOIs are served by lookupPubPeerByDoi
+  // (cheap), so split the list: serve cached entries for everything, but only
+  // issue network requests for up to MAX_REFERENCE_LOOKUPS uncached DOIs.
+  let networkBudget = MAX_REFERENCE_LOOKUPS;
   let index = 0;
   const worker = async (): Promise<void> => {
     while (index < dois.length) {
       const doi = dois[index++];
+      const key = CACHE_PREFIX + doi;
+      let isCached = false;
+      try {
+        const cached = await chrome.storage.local.get(key);
+        const entry = cached[key] as CachedFeedback | undefined;
+        isCached = !!(entry && Date.now() - entry.timestamp < CACHE_TTL);
+      } catch {
+        // storage unavailable — treat as uncached
+      }
+      if (!isCached) {
+        if (networkBudget <= 0) continue;
+        networkBudget--;
+      }
       const feedback = await lookupPubPeerByDoi(doi);
       if (feedback) result.set(doi, feedback);
     }

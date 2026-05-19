@@ -1,11 +1,10 @@
 // Reference-list DOI resolution for article pages.
 //
-// Surfaces a DOI pill on a reference whenever the DOI is *not visible to the
-// reader* — either because the page exposes no DOI for it at all (resolved via
-// Crossref/OpenAlex) or because the DOI is tucked into a non-doi.org button
-// link URL (e.g. tiny "Crossref"/"PubMed" buttons) where the reader can't see
-// it. References whose DOI is plainly written or on a doi.org link are left
-// alone.
+// Surfaces a DOI pill on every reference that has a DOI, so the reader gets
+// a consistent click-to-open/copy action on each citation. The pill colour
+// signals provenance: pink = DOI found directly on the page (in text or a
+// link href), gray dotted = DOI resolved via Crossref/OpenAlex augmentation
+// for entries that exposed no DOI of their own.
 
 import {findReferenceEntries, type ReferenceEntry} from "@shared/doi-extractor";
 import {augmentDOIs} from "@shared/doi-augment";
@@ -25,6 +24,11 @@ const CONFIDENT_COLOR = "#853953";
 const MAX_REFERENCE_AUGMENTATIONS = 30;
 // Skip entries too short to be a real citation (avoids junk augmentation queries).
 const MIN_CITATION_LENGTH = 16;
+// Real citations always have a publication year. Without one, the entry is
+// almost certainly a navigation stub (pagination, source-tab label, "Show more")
+// inside a reference container — sending those to Crossref/OpenAlex would
+// hallucinate a DOI and surface a stray pill on the section header.
+const YEAR_RE = /\b(?:18|19|20)\d{2}\b/;
 
 type PendingEntry =
   | { entry: ReferenceEntry; mode: "augment"; doi: null }
@@ -48,11 +52,16 @@ export async function processReferenceDois(): Promise<void> {
         if (entry.text.length < MIN_CITATION_LENGTH) continue;
 
         if (entry.doi === null) {
+            // Gate augmentation on year presence — avoids spending Crossref
+            // queries on navigation stubs that pass the length check.
+            if (!YEAR_RE.test(entry.text)) continue;
             pending.push({entry, mode: "augment", doi: null});
-        } else if (!isDoiVisibleToReader(entry, entry.doi)) {
+        } else {
+            // Pill on every entry with a DOI, regardless of whether the DOI
+            // string is written out in the citation — the pill gives a
+            // consistent copy/open affordance the reader can rely on.
             pending.push({entry, mode: "hidden", doi: entry.doi});
         }
-        // else: DOI is plainly visible — no pill needed
     }
     if (pending.length === 0) return;
 
@@ -130,14 +139,3 @@ export async function processReferenceDois(): Promise<void> {
     debugLog(`References: rendered ${confirmed.length} inline DOI pill(s)`);
 }
 
-/**
- * Decide whether a reference's DOI is already visible to the reader.
- *
- * "Visible" means the DOI string appears as a substring of the rendered
- * citation text (which includes every link's inner text). A doi.org URL with
- * a label like "Crossref" or "PubMed" does NOT count as visible — the reader
- * sees the label, not the DOI — and is exactly the case the pill surfaces.
- */
-function isDoiVisibleToReader(entry: ReferenceEntry, doi: DoiString): boolean {
-    return entry.text.toLowerCase().includes(doi);
-}
