@@ -843,10 +843,17 @@ export function renderPubPeerPanel(
     .map((doi) => retractionByDoi.get(doi))
     .find((r): r is RetractionResponse => r !== undefined);
 
-  // `references` is pre-filtered by the caller to flagged entries only
-  // (PubPeer comments / retraction / replication), so a non-empty list is
-  // itself a reason to show the panel.
-  if (withComments.length === 0 && !hasReplicationData && !articleRetraction && references.length === 0) return;
+  // The panel always renders on a recognised article page (checkPubPeer only
+  // calls this when a primary DOI exists). When nothing is flagged it still
+  // shows the article title and the "No PubPeer comments" empty state, so the
+  // reader can see FLoRA ran and found nothing rather than seeing no UI at all.
+  debugLog(
+    "renderPubPeerPanel:",
+    `articleComments=${withComments.length}`,
+    `replicationData=${hasReplicationData}`,
+    `articleRetracted=${!!articleRetraction}`,
+    `flaggedRefs=${references.length}`
+  );
 
   const primary = withComments.length > 0
     ? withComments.reduce((best, f) => f.total_comments > best.total_comments ? f : best)
@@ -1358,7 +1365,8 @@ export function renderPubPeerPanel(
     scrollBody.appendChild(iframeWrap);
   } else {
     // No PubPeer thread for this article — show an empty state so the panel
-    // doesn't read as broken when only FORRT replication data is present.
+    // doesn't read as broken when there's only FORRT replication data, or
+    // nothing flagged at all.
     const commentsHeader = document.createElement("p");
     commentsHeader.style.cssText =
       "padding:12px 16px;font-size:14px;color:#5f6368;line-height:1.6;" +
@@ -1456,6 +1464,7 @@ export function renderPubPeerPanel(
   host.appendChild(tab);
   host.appendChild(panel);
   document.body.appendChild(host);
+  debugLog(`renderPubPeerPanel: panel rendered (${references.length} reference row(s), reopened=${wasOpen})`);
 
   setupTabPositioning(tab);
 

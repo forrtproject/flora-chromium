@@ -22,8 +22,13 @@ const TEXT_SUFFIX_CHARS = `[^\\s,/\\]'"#?&\\\\]`;
 const TEXT_EXTRA_SLASH = `(?:\\/(?![a-zA-Z-]+(?:[/\\s,#?&<>{}\\[\\]]|$))${TEXT_SUFFIX_CHARS}+)*`;
 export const DOI_TEXT_REGEX = new RegExp(`(10\\.\\d{4,}(?:\\.\\d+)*\\/${TEXT_SUFFIX_CHARS}+${TEXT_EXTRA_SLASH})`, "g");
 
-// Characters inserted by browsers/sites for word-break purposes that can split DOIs
-const WORD_BREAK_CHARS = /[\u200B\u200C\u200D\u00AD\uFEFF\u2060]/g;
+// Zero-width characters sites insert *inside* DOIs for line-breaking \u2014 stripped
+// so a wrapped DOI rejoins into one token. U+FEFF is deliberately NOT included:
+// publishers (e.g. JAMA) use it as a *separator* between a DOI and the
+// following link text ("PubMed", "Crossref", \u2026) with no real whitespace.
+// Stripping it glues them ("\u20269491-zPubMedGoogle"); leaving it in lets the DOI
+// regex stop cleanly at it, since JavaScript's \s already matches U+FEFF.
+const WORD_BREAK_CHARS = /[\u200B\u200C\u200D\u00AD\u2060]/g;
 
 // Encoded DOI pattern: 10.NNNN%2F... (percent-encoded slash)
 const ENCODED_DOI_REGEX = /(10\.\d{4,}(?:\.\d+)*%2[fF][^\s,/\]}>'"<#?&\\]+)/g;

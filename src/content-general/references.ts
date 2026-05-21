@@ -145,14 +145,24 @@ export async function processReferenceDois(): Promise<void> {
         return;
     }
 
-    // Confirm the DOIs actually resolve before rendering.
+    // Augmented DOIs come from a Crossref/OpenAlex *fuzzy title match*, so
+    // confirm they actually resolve before rendering. Hidden DOIs were read
+    // straight off the page's own doi.org links / citation text — they're
+    // inherently trustworthy, and validating 80+ of them in parallel just
+    // gets the whole batch rate-limited by doi.org. So only augmented DOIs go
+    // through validation; hidden DOIs are kept as-is.
+    const augmentResolved = resolved.filter((r) => r.mode === "augment");
     let validated = new Map<DoiString, boolean>();
-    try {
-        validated = await validateDOIs(resolved.map((r) => r.doi));
-    } catch {
-        // validation unavailable — trust resolution
+    if (augmentResolved.length > 0) {
+        try {
+            validated = await validateDOIs(augmentResolved.map((r) => r.doi));
+        } catch {
+            // validation unavailable — trust resolution
+        }
     }
-    const confirmed = resolved.filter((r) => validated.get(r.doi) !== false);
+    const confirmed = resolved.filter(
+        (r) => r.mode === "hidden" || validated.get(r.doi) !== false
+    );
     if (confirmed.length === 0) {
         debugLog("References: resolved DOIs all failed doi.org validation");
         return;

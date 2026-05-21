@@ -1,5 +1,6 @@
 import {RET_MAP_KEY} from "@shared/data-extract"
 import {normaliseDOI} from "@shared/doi-normalise";
+import {extractDoiFromHref} from "@shared/doi-extractor";
 import retractionData from '../retractions.json';
 import {DoiString} from "@shared/types";
 import { debugLog } from "./debug";
@@ -82,7 +83,7 @@ export function injectRetractionInfo(target: Element, info: RetractionResponse):
     target.setAttribute(FLORA_RET_CHECK_KEY, '1');
 
     const wrapper = document.createElement("div");
-    wrapper.style.cssText = `position: relative; display: inline-block; margin-top: 4px;`;
+    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle;`;
 
     const W = 106, H = 22, iconSize = 16;
     const tmp = document.createElement("div");
@@ -98,15 +99,36 @@ export function injectRetractionInfo(target: Element, info: RetractionResponse):
     const pill = tmp.firstElementChild as SVGElement;
 
     wrapper.appendChild(pill);
-    // Anchors are sometimes <a>: appending the wrapper (which contains its
-    // own <a href="…retraction notice">) inside another <a> creates invalid
-    // nested anchors that browsers split, hijacking the click. Place after
-    // the link instead. For block targets (reference entries, .gs_ggs in
-    // Scholar, paragraphs) append at the end.
+    placeRetractionPill(target, info.originDoi, wrapper);
+}
+
+/**
+ * Place the "Retracted" pill inline, mirroring the DOI pill's placement.
+ *
+ * - Anchor target: insert right after it. The wrapper carries its own
+ *   <a href="…retraction notice">, so nesting it inside another <a> would
+ *   create invalid nested anchors that browsers split.
+ * - Block target (a reference entry): insert right after the link that
+ *   carries this DOI so the pill sits inline with the citation; fall back to
+ *   the entry's last link, then to appending at the entry end.
+ */
+function placeRetractionPill(target: Element, doi: DoiString, pill: HTMLElement): void {
     if (target.tagName === "A" && target.parentElement) {
-        target.insertAdjacentElement("afterend", wrapper);
+        target.insertAdjacentElement("afterend", pill);
+        return;
+    }
+    const links = target.querySelectorAll<HTMLAnchorElement>("a[href]");
+    for (const link of links) {
+        if (extractDoiFromHref(link.href) === doi) {
+            link.insertAdjacentElement("afterend", pill);
+            return;
+        }
+    }
+    const lastLink = links[links.length - 1];
+    if (lastLink) {
+        lastLink.insertAdjacentElement("afterend", pill);
     } else {
-        target.appendChild(wrapper);
+        target.appendChild(pill);
     }
 }
 
