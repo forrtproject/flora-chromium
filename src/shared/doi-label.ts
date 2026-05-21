@@ -17,9 +17,9 @@ export const DOI_LABEL_CLASS = "flora-doi-label";
  *                     label instead of the "DOI ✓" check.
  */
 export function createDoiPill(doi: string, color: string, isAugmented = false): HTMLElement {
-    const wrapper = document.createElement("div");
+    const wrapper = document.createElement("span");
     wrapper.className = DOI_LABEL_CLASS;
-    wrapper.style.cssText = `position: relative; display: inline-block; margin-top: 4px;`;
+    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle; margin: 0 0 0 6px;`;
 
     const pill = document.createElement("span");
     pill.style.cssText = `
@@ -62,17 +62,20 @@ export function createDoiPill(doi: string, color: string, isAugmented = false): 
     }
 
     const popover = document.createElement("div");
+    // position:fixed (not absolute) so the popover is positioned against the
+    // viewport — an ancestor with overflow:hidden (common on article content
+    // columns) would otherwise clip it. Coordinates are set in show().
     popover.style.cssText = `
     display: none;
-    position: absolute;
-    top: calc(100% + 8px);
+    position: fixed;
+    top: 0;
     left: 0;
     background: #ffffff;
     border: 1px solid ${color}40;
     border-radius: 999px;
     box-shadow: 0 1px 2px rgba(27,31,36,0.08), 0 4px 16px rgba(66,74,83,0.10);
     padding: 3px 12px;
-    z-index: 10000;
+    z-index: 2147483647;
     white-space: nowrap;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     font-size: 12px;
@@ -204,14 +207,11 @@ export function createDoiPill(doi: string, color: string, isAugmented = false): 
             clearTimeout(hideTimeout);
             hideTimeout = null;
         }
-        // Reset position to measure natural size
-        popover.style.top = "0";
-        popover.style.bottom = "auto";
-        popover.style.left = "0";
-        popover.style.right = "auto";
+        // Reveal first so the popover has measurable dimensions.
         popover.style.display = "flex";
 
         const gap = 8;
+        const margin = 4;
         const pillRect = pill.getBoundingClientRect();
         const popRect = popover.getBoundingClientRect();
         const vw = window.innerWidth;
@@ -222,52 +222,34 @@ export function createDoiPill(doi: string, color: string, isAugmented = false): 
         const spaceBelow = vh - pillRect.bottom - gap;
         const spaceAbove = pillRect.top - gap;
 
-        // Prefer opening to the right, then left, then below, then above
-        if (spaceRight >= popRect.width) {
-            popover.style.left = `calc(100% + ${gap}px)`;
-            popover.style.right = "auto";
-            popover.style.top = "0";
-            popover.style.bottom = "auto";
-        } else if (spaceLeft >= popRect.width) {
-            popover.style.left = "auto";
-            popover.style.right = `calc(100% + ${gap}px)`;
-            popover.style.top = "0";
-            popover.style.bottom = "auto";
-        } else if (spaceBelow >= popRect.height) {
-            popover.style.top = `calc(100% + ${gap}px)`;
-            popover.style.bottom = "auto";
-            popover.style.left = "0";
-            popover.style.right = "auto";
-        } else if (spaceAbove >= popRect.height) {
-            popover.style.top = "auto";
-            popover.style.bottom = `calc(100% + ${gap}px)`;
-            popover.style.left = "0";
-            popover.style.right = "auto";
-        } else {
-            // Nothing fits perfectly — pick the direction with the most space
+        // Prefer opening to the right, then left, then below, then above —
+        // falling back to whichever side has the most room.
+        let left = 0;
+        let top = 0;
+        const placeRight = () => { left = pillRect.right + gap; top = pillRect.top; };
+        const placeLeft = () => { left = pillRect.left - gap - popRect.width; top = pillRect.top; };
+        const placeBelow = () => { left = pillRect.left; top = pillRect.bottom + gap; };
+        const placeAbove = () => { left = pillRect.left; top = pillRect.top - gap - popRect.height; };
+
+        if (spaceRight >= popRect.width) placeRight();
+        else if (spaceLeft >= popRect.width) placeLeft();
+        else if (spaceBelow >= popRect.height) placeBelow();
+        else if (spaceAbove >= popRect.height) placeAbove();
+        else {
             const best = Math.max(spaceRight, spaceLeft, spaceBelow, spaceAbove);
-            if (best === spaceRight || best === spaceLeft) {
-                popover.style.top = "0";
-                popover.style.bottom = "auto";
-                if (best === spaceRight) {
-                    popover.style.left = `calc(100% + ${gap}px)`;
-                    popover.style.right = "auto";
-                } else {
-                    popover.style.left = "auto";
-                    popover.style.right = `calc(100% + ${gap}px)`;
-                }
-            } else {
-                popover.style.left = "0";
-                popover.style.right = "auto";
-                if (best === spaceBelow) {
-                    popover.style.top = `calc(100% + ${gap}px)`;
-                    popover.style.bottom = "auto";
-                } else {
-                    popover.style.top = "auto";
-                    popover.style.bottom = `calc(100% + ${gap}px)`;
-                }
-            }
+            if (best === spaceRight) placeRight();
+            else if (best === spaceLeft) placeLeft();
+            else if (best === spaceBelow) placeBelow();
+            else placeAbove();
         }
+
+        // Clamp into the viewport so the popover is never cut off.
+        left = Math.max(margin, Math.min(left, vw - popRect.width - margin));
+        top = Math.max(margin, Math.min(top, vh - popRect.height - margin));
+        popover.style.left = `${left}px`;
+        popover.style.top = `${top}px`;
+        popover.style.right = "auto";
+        popover.style.bottom = "auto";
     };
     const hide = () => {
         hideTimeout = setTimeout(() => {

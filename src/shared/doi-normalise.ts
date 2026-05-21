@@ -11,8 +11,13 @@ const DOI_PREFIXES = [
 /**
  * Normalise a raw DOI string by stripping known prefixes and lowercasing.
  * Returns null if the input is not a valid DOI.
+ *
+ * Accepts `unknown` rather than `string` because callers feed values out of
+ * JSON.parse (Crossref/OpenAlex/JSON-LD/cached storage) where the runtime
+ * value can be a number, array, null, etc. even when typed as string.
  */
-export function normaliseDOI(raw: string): DoiString | null {
+export function normaliseDOI(raw: unknown): DoiString | null {
+  if (typeof raw !== "string") return null;
   let doi = raw.trim();
 
   // Decode percent-encoded DOIs (e.g. 10.1088%2F0960-1317%2F16%2F3%2F007)

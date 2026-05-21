@@ -273,6 +273,57 @@ export async function augmentDOIs(
 }
 
 
+const TITLE_CACHE_PREFIX = "flora_title:";
+
+/**
+ * Resolve a paper's canonical title from its DOI. Tries Crossref first, then
+ * OpenAlex. Cached in chrome.storage.local since a published title never
+ * changes. Returns null when neither service has the DOI.
+ */
+export async function fetchTitleByDoi(doi: string): Promise<string | null> {
+    const cacheKey = TITLE_CACHE_PREFIX + doi;
+    try {
+        const cached = await chrome.storage.local.get(cacheKey);
+        const entry = cached[cacheKey] as { title: string | null } | undefined;
+        if (entry) return entry.title;
+    } catch {
+        // storage unavailable — fall through to network
+    }
+
+    let title: string | null = null;
+
+    try {
+        const email = await getUserEmail();
+        const mailto = email ? `?mailto=${encodeURIComponent(email)}` : "";
+        const response = await fetch(`${CROSSREF_BASE}/${doi}${mailto}`);
+        if (response.ok) {
+            const data = (await response.json()) as { message?: { title?: string[] } };
+            title = data.message?.title?.[0] ?? null;
+        }
+    } catch {
+        // Crossref failed — fall through to OpenAlex
+    }
+
+    if (!title) {
+        try {
+            const response = await fetch(`${OPENALEX_BASE}/doi:${doi}?select=title`);
+            if (response.ok) {
+                const data = (await response.json()) as { title?: string };
+                title = data.title ?? null;
+            }
+        } catch {
+            // give up — caller falls back to the DOI string
+        }
+    }
+
+    try {
+        await chrome.storage.local.set({ [cacheKey]: { title } });
+    } catch {
+        // ignore cache write failures
+    }
+    return title;
+}
+
 /**
  * Check for retraction status on Retraction Watch, via Crossref.
  * @param doi - the DOI of interest

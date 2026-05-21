@@ -3,12 +3,19 @@
 export interface FloraSettings {
   /** Contact email for Crossref/OpenAlex polite pool (required). */
   email: string;
+  /**
+   * When true, a DOI pill is shown on every reference (including ones that
+   * already carry a DOI). When false (default), only references with no
+   * visible DOI of their own get a pill.
+   */
+  showDoiPillsOnAllReferences: boolean;
 }
 
 const STORAGE_KEY = "flora_settings";
 
 const DEFAULTS: FloraSettings = {
   email: "",
+  showDoiPillsOnAllReferences: false,
 };
 
 /** Read current settings (returns defaults for any missing keys). */
