@@ -144,6 +144,30 @@
             <p id="status-msg" class="status status-block" hidden></p>
           </div>
 
+          <!-- ═══ DOI PILLS ═══ -->
+          <div class="detail-card" style="margin-top: 1.25rem">
+            <div class="dh">
+              <div class="dh-label">Reference DOIs</div>
+              <h2 class="dh-title">DOI Pill Display</h2>
+              <div class="dh-authors">
+                By default FLoRA shows a DOI pill only on references whose DOI
+                isn't visible on the page. Enable this to show a pill on every
+                reference instead.
+              </div>
+            </div>
+
+            <label class="toggle-row">
+              <span class="toggle-row-text"
+                >Show a DOI pill on every reference, not just ones without a
+                visible DOI</span
+              >
+              <span class="toggle-switch">
+                <input type="checkbox" id="all-refs-toggle" />
+                <span class="toggle-track"></span>
+              </span>
+            </label>
+          </div>
+
           <!-- ═══ BLOCKED DOMAINS ═══ -->
           <div class="detail-card" style="margin-top: 1.25rem">
             <div class="dh">

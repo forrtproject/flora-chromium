@@ -17,9 +17,9 @@ export const DOI_LABEL_CLASS = "flora-doi-label";
  *                     label instead of the "DOI ✓" check.
  */
 export function createDoiPill(doi: string, color: string, isAugmented = false): HTMLElement {
-    const wrapper = document.createElement("div");
+    const wrapper = document.createElement("span");
     wrapper.className = DOI_LABEL_CLASS;
-    wrapper.style.cssText = `position: relative; display: inline-block; margin-top: 4px;`;
+    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle; margin: 0 0 0 6px;`;
 
     const pill = document.createElement("span");
     pill.style.cssText = `

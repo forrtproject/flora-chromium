@@ -337,7 +337,15 @@ export function renderInlineBadges(
     for (const occ of bestByDoi.values()) {
         const state = pageState.get(occ.doi);
         if (!state || state.status !== "matched") {
-            debugLog("renderInlineBadges: DOI not matched in pageState:", occ.doi, "status:", state?.status ?? "not found");
+            const status = state?.status ?? "not found";
+            // "no-match" is expected — it means FORRT simply has no replication
+            // record for this DOI, not that extraction or lookup failed.
+            debugLog(
+                `renderInlineBadges: no badge for ${occ.doi} —`,
+                status === "no-match"
+                    ? "FORRT has no replication record for this DOI (expected)"
+                    : `status: ${status}`
+            );
             continue;
         }
 
@@ -785,7 +793,7 @@ function setupTabPositioning(tab: HTMLElement): void {
 
 export function renderPubPeerPanel(
   articleFeedbacks: PubPeerFeedback[],
-  references: { doi: DoiString; text: string }[],
+  references: { doi: DoiString; title: string }[],
   pageState: Map<DoiString, LookupState>,
   doiContext: Map<DoiString, DoiContext>,
   refFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map(),
@@ -835,7 +843,10 @@ export function renderPubPeerPanel(
     .map((doi) => retractionByDoi.get(doi))
     .find((r): r is RetractionResponse => r !== undefined);
 
-  if (withComments.length === 0 && !hasReplicationData && !articleRetraction) return;
+  // `references` is pre-filtered by the caller to flagged entries only
+  // (PubPeer comments / retraction / replication), so a non-empty list is
+  // itself a reason to show the panel.
+  if (withComments.length === 0 && !hasReplicationData && !articleRetraction && references.length === 0) return;
 
   const primary = withComments.length > 0
     ? withComments.reduce((best, f) => f.total_comments > best.total_comments ? f : best)
@@ -1146,13 +1157,12 @@ export function renderPubPeerPanel(
     }
   })();
 
-  // References — every entry from the page's reference list gets a row.
-  // Driven directly off findReferenceEntries (passed in by the caller) rather
-  // than referenceDois from classifyPageDois, so unrelated DOIs picked up by
-  // sidebar/related-article elements that happen to match the reference
-  // regex don't appear as phantom rows. References with no PubPeer record
-  // show a muted "No PubPeer comments" tag instead of being dropped. The
-  // list is collapsible: first 5 visible, a toggle reveals the rest.
+  // References — only the entries worth attention: the caller pre-filters to
+  // references with PubPeer comments, a retraction, or FORRT replication data,
+  // each carrying a canonical title. A flagged reference that happens to lack
+  // PubPeer comments (retraction- or replication-only) still shows a muted
+  // "No PubPeer comments" tag. The list is collapsible: first 5 visible, a
+  // toggle reveals the rest.
   if (references.length > 0) {
     const refSection = document.createElement("div");
     refSection.style.cssText = "border-top:1px solid #e8e8e8;";
@@ -1176,9 +1186,8 @@ export function renderPubPeerPanel(
       const li = document.createElement("li");
       li.style.cssText = "padding:10px 16px;border-bottom:1px solid #f0f0f0;";
 
-      // Prefer the full citation scraped from the page over PubPeer's
-      // title-only field — the reader expects to see authors/year/journal too.
-      const title = ref.text || feedback?.title || doi;
+      // Canonical title resolved by the caller (PubPeer / Crossref / OpenAlex).
+      const title = ref.title || feedback?.title || doi;
       const titleLink = document.createElement("a");
       titleLink.href = feedback?.url || `https://doi.org/${doi}`;
       titleLink.target = "_blank";

@@ -61,7 +61,13 @@ export async function validateDOIs(
 
   debugLog(`DOI validation: ${uncached.length} uncached DOI(s) to check`);
 
-  // Validate uncached DOIs in parallel
+  // Validate uncached DOIs in parallel. A DOI is recorded `false` only when
+  // doi.org *definitively* reports it absent (HTTP 404, or responseCode ≠ 1).
+  // Transient failures — network errors, rate limits, 5xx — leave the DOI out
+  // of the result map entirely so callers treat it as "unknown" and don't drop
+  // a possibly-valid DOI. (Marking it invalid here permanently strands the
+  // reference: processReferenceDois sets its processed-marker before this
+  // check, so a falsely-invalid DOI never gets a second chance at a pill.)
   await Promise.allSettled(
     uncached.map(async (doi) => {
       try {
@@ -72,8 +78,12 @@ export async function validateDOIs(
         const encodedHandle = doi.split("/").map(encodeURIComponent).join("/");
         const response = await fetch(`${HANDLE_API}${encodedHandle}`);
         if (!response.ok) {
-          results.set(doi, false);
-          cacheResult(doi, false);
+          // 404 = the Handle System has no record of this DOI → invalid.
+          // Any other non-OK status (429, 5xx) is transient — leave unknown.
+          if (response.status === 404) {
+            results.set(doi, false);
+            cacheResult(doi, false);
+          }
           return;
         }
         const data = (await response.json()) as { responseCode?: number };
@@ -83,8 +93,7 @@ export async function validateDOIs(
         cacheResult(doi, valid);
         debugLog(`DOI validation: ${doi} → ${valid ? "valid" : "invalid"}`);
       } catch {
-        // Network error — don't cache, assume invalid for this run
-        results.set(doi, false);
+        // Network error — leave unknown (absent from map); don't cache.
       }
     })
   );

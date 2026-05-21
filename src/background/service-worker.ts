@@ -183,7 +183,7 @@ export async function syncRetractionsInfo() {
     const nextUpdate = lastSync + minInterval;
     const storageResult = await chrome.storage.local.get(RET_MAP_KEY);
     if (Object.keys(storageResult).length === 0 || currentTime > nextUpdate) {
-        await syncRetractionsInfo();
+        await storageSync();
         await chrome.storage.local.set({synctime: currentTime});
     }
 }

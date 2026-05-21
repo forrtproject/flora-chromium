@@ -6,7 +6,7 @@ import {
     extractPrimaryDOI,
     findReferenceEntries
 } from "@shared/doi-extractor";
-import {augmentDOIs} from "@shared/doi-augment";
+import {augmentDOIs, fetchTitleByDoi} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
 import {debounce} from "@shared/debounce";
 import type {DoiContext, DoiString, LookupState} from "@shared/types";
@@ -33,7 +33,7 @@ import {lookupPubPeer, lookupPubPeerForDois, type PubPeerFeedback} from "@shared
 import {debugLog} from "@shared/debug";
 import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
-import {retractionCheck, RetractionResponse} from "@shared/doi-retraction"
+import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
 import {processReferenceDois} from "./references";
 
 const pageState = new Map<DoiString, LookupState>();
@@ -94,6 +94,7 @@ async function pageRenderChangeHandler(): Promise<void> {
         lastReferenceDoiKey = "";
         pageState.clear();
         augmentAttempted = false;
+        resetRetractionPills();
         if (isSheets) {
             removeSheetsModal();
         } else {
@@ -150,6 +151,28 @@ async function pageRenderChangeHandler(): Promise<void> {
         // doiContext so it can't clobber the article/reference classification
         // (a DOI can be both the article and retracted).
         redacts = await retractionCheck(dois);
+    }
+
+    // Exclude occurrences whose anchor sits inside FLoRA-injected UI elements
+    // (the PubPeer panel, retracts modal, banner). Without this guard the
+    // mutation observer re-fires after each UI injection, extractDoiOccurrences
+    // picks up DOI links inside the panel, and we'd stamp retraction pills onto
+    // our own panel's reference rows.
+    const FLORA_UI_IDS = ["flora-pubpeer-panel", "flora-retracts-modal", "flora-banner-host", "flora-setup-prompt", "flora-sheets-modal"];
+    const pageOccurrences = occurrences.filter(
+        (occ) => !FLORA_UI_IDS.some((id) => occ.anchor.closest(`#${id}`) !== null)
+    );
+
+    // Render inline "Retracted" pills at every occurrence of a retracted DOI
+    // on the page (reference entries, body links, prose mentions). Uses the
+    // anchors captured by extractDoiOccurrences so the renderer never has to
+    // re-scan the DOM; idempotent via FLORA_RET_CHECK_KEY on each anchor.
+    if (redacts.length > 0) {
+        const retractionByDoi = new Map(redacts.map((r) => [r.originDoi, r] as const));
+        for (const occ of pageOccurrences) {
+            const retraction = retractionByDoi.get(occ.doi);
+            if (retraction) injectRetractionInfo(occ.anchor, retraction);
+        }
     }
 
     // Filter out already-processed DOIs
@@ -241,7 +264,7 @@ async function pageRenderChangeHandler(): Promise<void> {
 
         // Inline badges (skip on Google Sheets — modal only)
         if (!isSheets) {
-            renderInlineBadges(pageState, occurrences);
+            renderInlineBadges(pageState, pageOccurrences);
         }
     } catch {
         renderErrorBanner("Failed to contact FLoRA service");
@@ -289,13 +312,12 @@ async function checkPubPeer(): Promise<void> {
         // would pull in DOIs from related-articles sidebars or any element
         // whose class/id matches the reference regex — phantom rows in the panel.
         const seen = new Set<DoiString>();
-        const references: { doi: DoiString; text: string }[] = [];
+        const referenceDois: DoiString[] = [];
         for (const entry of findReferenceEntries(document)) {
             if (!entry.doi || seen.has(entry.doi)) continue;
             seen.add(entry.doi);
-            references.push({ doi: entry.doi, text: entry.text });
+            referenceDois.push(entry.doi);
         }
-        const referenceDois = references.map((r) => r.doi);
 
         // Content-keyed gate: skip re-rendering when the article side is
         // already fetched AND the set of reference DOIs is unchanged. This is
@@ -305,11 +327,9 @@ async function checkPubPeer(): Promise<void> {
         const refKey = [...referenceDois].sort().join("|");
         if (articleFeedbacksFetched && refKey === lastReferenceDoiKey) return;
 
-        // Article: URL-based lookup, fetched once per page. References:
-        // per-DOI lookups (cached and concurrency-limited) so every reference
-        // is reliably keyed by its DOI — the batch endpoint returns no DOI
-        // per feedback entry. The reference-side cache makes re-runs after
-        // lazy loads cheap (already-seen DOIs hit chrome.storage).
+        // Article: URL-based lookup, fetched once per page. References: one
+        // batched lookup keyed by DOI (PubPeer's v3 endpoint returns `id` =
+        // the DOI), cached in chrome.storage so lazy-load re-runs are cheap.
         const articlePromise = articleFeedbacksFetched
             ? Promise.resolve(lastArticleFeedbacks)
             : lookupPubPeer([primaryDoi], [location.href]);
@@ -322,7 +342,35 @@ async function checkPubPeer(): Promise<void> {
         lastRefFeedbackByDoi = refFeedbackByDoi;
         lastReferenceDoiKey = refKey;
 
-        renderPubPeerPanel(articleFeedbacks, references, pageState, doiContext, refFeedbackByDoi, redacts);
+        // The panel only lists references worth a reader's attention: those
+        // with PubPeer comments, a retraction, or FORRT replication data.
+        // Titles are taken from PubPeer when it has the paper, otherwise
+        // resolved from Crossref/OpenAlex — never from page-scraped citation
+        // text, which varies too much between publishers to render cleanly.
+        const retractedDois = new Set(redacts.map((r) => r.originDoi));
+        const hasReplication = (doi: DoiString): boolean => {
+            const s = pageState.get(doi);
+            if (s?.status !== "matched") return false;
+            const {n_replications_total, n_reproductions_total, n_originals_total} =
+                s.result.record.stats;
+            return n_replications_total > 0 || n_reproductions_total > 0 || n_originals_total > 0;
+        };
+        // A PubPeer record can exist with zero comments — only count it as a
+        // reason to surface the reference when it actually has comments.
+        const flagged = referenceDois.filter((doi) => {
+            const fb = refFeedbackByDoi.get(doi);
+            return (fb !== undefined && fb.total_comments > 0)
+                || retractedDois.has(doi)
+                || hasReplication(doi);
+        });
+        const panelRefs = await Promise.all(flagged.map(async (doi) => {
+            const title = refFeedbackByDoi.get(doi)?.title
+                ?? (await fetchTitleByDoi(doi))
+                ?? doi;
+            return {doi, title};
+        }));
+
+        renderPubPeerPanel(articleFeedbacks, panelRefs, pageState, doiContext, refFeedbackByDoi, redacts);
     } catch {
         // PubPeer is supplementary — fail silently
     }

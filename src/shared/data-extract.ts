@@ -13,7 +13,7 @@ export async function getRetractionMap() {
         const retractionData = {};
         for (let i = 1; i < rows.length; i++) {
             const columns = rows[i].split(csvRegex);
-            let originalDOI = columns[originalIndex]?.replace(/^"|"$/g, '').trim();
+            let originalDOI = columns[originalIndex]?.replace(/^"|"$/g, '').trim().toLowerCase();
             let retractionDOI = columns[retractionIndex]?.replace(/^"|"$/g, '').trim();
             if (originalDOI && retractionDOI) {
                 // @ts-ignore
