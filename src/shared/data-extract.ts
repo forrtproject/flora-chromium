@@ -1,37 +1,43 @@
 export const RET_MAP_KEY = "RetractionLookupLocal"
-const SOURCE_URL = 'https://gitlab.com/crossref/retraction-watch-data/-/raw/main/retraction_watch.csv?ref_type=heads'
 
-export async function getRetractionMap() {
+/**
+ * Prebuilt retraction data, refreshed daily by the GitHub Action
+ * (`.github/workflows/update.yml` -> `retractions-updater.ts`) which parses and
+ * filters the Retraction Watch CSV. The extension never parses the CSV itself;
+ * it pulls this committed JSON and caches it in `chrome.storage`.
+ */
+const PREBUILT_JSON_URL =
+    'https://raw.githubusercontent.com/forrtproject/flora-chromium/main/src/retractions.json'
+
+/**
+ * Maps from an original paper's DOI to the DOI of the notice about it.
+ * Built by filtering Retraction Watch on `RetractionNature` (see
+ * `retractions-updater.ts`): only papers whose latest status event is a
+ * retraction or an expression of concern are kept. Corrections and reinstated
+ * papers are dropped entirely.
+ */
+export interface RetractionMaps {
+    /** originalPaperDOI -> retraction notice DOI */
+    retractions: Record<string, string>;
+    /** originalPaperDOI -> expression-of-concern notice DOI */
+    concerns: Record<string, string>;
+}
+
+export async function fetchRetractionMap(): Promise<RetractionMaps | undefined> {
     try {
-        const response = await fetch(SOURCE_URL);
-        const csvText = await response.text();
-        const rows = csvText.split(/\r?\n/).filter(row => row.trim());
-        const csvRegex = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
-        const headers = rows[0].split(csvRegex);
-        const originalIndex = headers.indexOf('OriginalPaperDOI');
-        const retractionIndex = headers.indexOf('RetractionDOI');
-        const retractionData = {};
-        for (let i = 1; i < rows.length; i++) {
-            const columns = rows[i].split(csvRegex);
-            let originalDOI = columns[originalIndex]?.replace(/^"|"$/g, '').trim();
-            let retractionDOI = columns[retractionIndex]?.replace(/^"|"$/g, '').trim();
-            if (originalDOI && retractionDOI) {
-                // @ts-ignore
-                retractionData[originalDOI] = retractionDOI;
-            }
-        }
-        return retractionData;
+        const response = await fetch(PREBUILT_JSON_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (data && typeof data === 'object' && data.retractions && data.concerns)
+            return data as RetractionMaps;
+        console.error("Unexpected retraction data shape from", PREBUILT_JSON_URL);
     } catch (error) {
-        console.error("Error fetching or processing CSV:", error);
+        console.error("Error fetching retraction data:", error);
     }
 }
 
 export async function storageSync() {
-    let map = await getRetractionMap();
-    console.log('map', map)
+    const map = await fetchRetractionMap();
     if (!map) return;
     await chrome.storage.local.set({[RET_MAP_KEY]: map});
 }
-
-
-

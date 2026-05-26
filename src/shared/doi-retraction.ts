@@ -1,4 +1,4 @@
-import {RET_MAP_KEY} from "@shared/data-extract"
+import {RET_MAP_KEY, RetractionMaps} from "@shared/data-extract"
 import {normaliseDOI} from "@shared/doi-normalise";
 import retractionData from '../retractions.json';
 import {DoiString} from "@shared/types";
@@ -17,13 +17,19 @@ export interface RetractionResponse {
 // @ts-ignore
 export async function retractionCheck(dois: DoiString[]): Promise<RetractionResponse[]> {
     const storageResult = await chrome.storage.local.get([RET_MAP_KEY]) || {};
-    const retMap = storageResult[RET_MAP_KEY] || {};
-    if (!storageResult[RET_MAP_KEY])
+    const cached = storageResult[RET_MAP_KEY] as RetractionMaps | undefined;
+    if (!cached)
         chrome.runtime.sendMessage({type: "FLORA_RET_SYNC"}).then().catch();
-    const source = (Object.keys(retMap).length > 0) ? retMap : retractionData;
+    // Prefer the runtime-refreshed map, fall back to the bundled data.
+    const source: RetractionMaps =
+        (cached && Object.keys(cached.retractions || {}).length > 0)
+            ? cached
+            : (retractionData as RetractionMaps);
+    // Only retractions surface a badge for now; expressions of concern are
+    // tracked in source.concerns but not yet displayed.
     let result = []
     for (const doi of dois) {
-        const retractionDOI = source[doi];
+        const retractionDOI = source.retractions[doi];
         if (retractionDOI) result.push({
             originDoi: doi,
             doi: retractionDOI
