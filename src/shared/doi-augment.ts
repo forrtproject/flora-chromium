@@ -2,11 +2,17 @@ import type {DoiString} from "./types";
 import {normaliseDOI} from "./doi-normalise";
 import {getSettings} from "./settings";
 import {RetractionLookupResponse} from "./messages"
+import {BlobCache} from "./blob-cache";
 
 const OPENALEX_BASE = "https://api.openalex.org/works";
 const CROSSREF_BASE = "https://api.crossref.org/works";
-const CACHE_PREFIX = "flora_doi:";
 const MATCH_THRESHOLD_TSR = 88; // token_set_ratio threshold (0–100)
+
+const DOI_AUGMENT_CACHE = new BlobCache<CachedDoiResult>({
+    storageKey: "flora_doi_blob",
+    ttlMs: 30 * 24 * 60 * 60 * 1000, // 30 days
+    legacyPrefixes: ["flora_doi:"],
+});
 
 /** Cached email — refreshed once per page/worker lifecycle. */
 let _cachedEmail: string | null = null;
@@ -196,24 +202,18 @@ export async function augmentDOIs(
     const results = new Map<string, DoiString | null>();
     if (titles.length === 0) return results;
 
-    // Check cache first
+    // Check cache first — single-blob lookup keyed by normalized title.
     const uncached: string[] = [];
-    const cacheKeys = titles.map((t) => CACHE_PREFIX + normalizeTitle(t));
-
-    try {
-        const cached = await chrome.storage.local.get(cacheKeys);
-        for (const title of titles) {
-            const key = CACHE_PREFIX + normalizeTitle(title);
-            const entry = cached[key] as CachedDoiResult | undefined;
-            if (entry) {
-                const doi = entry.found && entry.doi ? normaliseDOI(entry.doi) : null;
-                results.set(title, doi);
-            } else {
-                uncached.push(title);
-            }
+    const keyByTitle = new Map(titles.map((t) => [t, normalizeTitle(t)] as const));
+    const cached = await DOI_AUGMENT_CACHE.getMany([...keyByTitle.values()]);
+    for (const title of titles) {
+        const entry = cached.get(keyByTitle.get(title)!);
+        if (entry) {
+            const doi = entry.found && entry.doi ? normaliseDOI(entry.doi) : null;
+            results.set(title, doi);
+        } else {
+            uncached.push(title);
         }
-    } catch {
-        uncached.push(...titles);
     }
 
     if (uncached.length === 0) return results;
@@ -253,11 +253,9 @@ export async function augmentDOIs(
         const doi = best?.doi ?? null;
         results.set(title, doi);
 
-        // Cache result
-        const cacheKey = CACHE_PREFIX + normalizeTitle(title);
+        // Cache result — write into the shared blob.
         const cacheEntry: CachedDoiResult = {found: doi !== null, doi};
-        chrome.storage.local.set({[cacheKey]: cacheEntry}).catch(() => {
-        });
+        void DOI_AUGMENT_CACHE.set(normalizeTitle(title), cacheEntry);
     });
 
     await Promise.allSettled(lookupPromises);
@@ -273,7 +271,11 @@ export async function augmentDOIs(
 }
 
 
-const TITLE_CACHE_PREFIX = "flora_title:";
+const TITLE_CACHE = new BlobCache<{ title: string | null }>({
+    storageKey: "flora_title_blob",
+    ttlMs: 90 * 24 * 60 * 60 * 1000, // 90 days — published titles are stable.
+    legacyPrefixes: ["flora_title:"],
+});
 
 /**
  * Resolve a paper's canonical title from its DOI. Tries Crossref first, then
@@ -281,14 +283,8 @@ const TITLE_CACHE_PREFIX = "flora_title:";
  * changes. Returns null when neither service has the DOI.
  */
 export async function fetchTitleByDoi(doi: string): Promise<string | null> {
-    const cacheKey = TITLE_CACHE_PREFIX + doi;
-    try {
-        const cached = await chrome.storage.local.get(cacheKey);
-        const entry = cached[cacheKey] as { title: string | null } | undefined;
-        if (entry) return entry.title;
-    } catch {
-        // storage unavailable — fall through to network
-    }
+    const cached = await TITLE_CACHE.get(doi);
+    if (cached) return cached.title;
 
     let title: string | null = null;
 
@@ -316,12 +312,14 @@ export async function fetchTitleByDoi(doi: string): Promise<string | null> {
         }
     }
 
-    try {
-        await chrome.storage.local.set({ [cacheKey]: { title } });
-    } catch {
-        // ignore cache write failures
-    }
+    void TITLE_CACHE.set(doi, {title});
     return title;
+}
+
+/** Test-only: drop in-memory cache state so each case starts fresh. */
+export function _resetAugmentCachesForTesting(): void {
+    DOI_AUGMENT_CACHE.resetForTesting();
+    TITLE_CACHE.resetForTesting();
 }
 
 /**

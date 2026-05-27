@@ -1,5 +1,6 @@
 import type { DoiString } from "./types";
 import { debugLog } from "./debug";
+import { BlobCache } from "./blob-cache";
 
 /**
  * Validate DOIs by checking the doi.org Handle System API.
@@ -8,13 +9,13 @@ import { debugLog } from "./debug";
  */
 
 const HANDLE_API = "https://doi.org/api/handles/";
-const CACHE_PREFIX = "flora_doival:";
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-interface CachedValidation {
-  valid: boolean;
-  timestamp: number;
-}
+const VALIDATION_CACHE = new BlobCache<{ valid: boolean }>({
+  storageKey: "flora_doival_blob",
+  ttlMs: CACHE_TTL,
+  legacyPrefixes: ["flora_doival:"],
+});
 
 /**
  * Check whether a single DOI resolves via doi.org.
@@ -36,22 +37,16 @@ export async function validateDOIs(
   const results = new Map<DoiString, boolean>();
   if (dois.length === 0) return results;
 
-  // Check cache first
+  // Check cache first — single-blob lookup keyed by DOI.
   const uncached: DoiString[] = [];
-  const cacheKeys = dois.map((d) => CACHE_PREFIX + d);
-
-  try {
-    const cached = await chrome.storage.local.get(cacheKeys);
-    for (const doi of dois) {
-      const entry = cached[CACHE_PREFIX + doi] as CachedValidation | undefined;
-      if (entry && Date.now() - entry.timestamp < CACHE_TTL) {
-        results.set(doi, entry.valid);
-      } else {
-        uncached.push(doi);
-      }
+  const cached = await VALIDATION_CACHE.getMany(dois);
+  for (const doi of dois) {
+    const entry = cached.get(doi);
+    if (entry) {
+      results.set(doi, entry.valid);
+    } else {
+      uncached.push(doi);
     }
-  } catch {
-    uncached.push(...dois);
   }
 
   if (uncached.length === 0) {
@@ -101,7 +96,10 @@ export async function validateDOIs(
 }
 
 function cacheResult(doi: DoiString, valid: boolean): void {
-  const key = CACHE_PREFIX + doi;
-  const entry: CachedValidation = { valid, timestamp: Date.now() };
-  chrome.storage.local.set({ [key]: entry }).catch(() => {});
+  void VALIDATION_CACHE.set(doi, { valid });
+}
+
+/** Test-only: drop in-memory cache state so each case starts fresh. */
+export function _resetValidationCacheForTesting(): void {
+  VALIDATION_CACHE.resetForTesting();
 }

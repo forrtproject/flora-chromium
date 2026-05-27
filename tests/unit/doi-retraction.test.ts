@@ -94,6 +94,36 @@ describe("retractionCheck", () => {
     expect(result).toEqual([]);
   });
 
+  it("matches mixed-case source keys against lowercased DOI input", async () => {
+    // Retraction Watch publishes DOIs in their original publisher case
+    // (SICI/NEJM/ASCE identifiers carry uppercase letters), but normaliseDOI
+    // lowercases every DOI before lookup. retractionCheck must close the gap.
+    (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      [RET_MAP_KEY]: {
+        retractions: { "10.1016/S0140-6736(20)32656-8": "10.1016/S0140-6736(22)02370-4" },
+        concerns: { "10.1056/NEJMicm2518379": "10.1056/NEJMicm9999999" },
+      },
+    });
+
+    const retracted = await retractionCheck([doi("10.1016/S0140-6736(20)32656-8")]);
+    expect(retracted).toEqual([
+      {
+        originDoi: "10.1016/s0140-6736(20)32656-8",
+        doi: "10.1016/S0140-6736(22)02370-4",
+        kind: "retraction",
+      },
+    ]);
+
+    const concerned = await retractionCheck([doi("10.1056/NEJMicm2518379")]);
+    expect(concerned).toEqual([
+      {
+        originDoi: "10.1056/nejmicm2518379",
+        doi: "10.1056/NEJMicm9999999",
+        kind: "concern",
+      },
+    ]);
+  });
+
   it("processes a mixed batch, tagging each entry by its source map", async () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       [RET_MAP_KEY]: {

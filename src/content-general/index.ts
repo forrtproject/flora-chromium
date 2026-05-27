@@ -290,12 +290,39 @@ async function pageRenderChangeHandler(): Promise<void> {
 }
 
 /**
+ * Heuristic: does the page declare itself as a scholarly article?
+ * We require at least one publisher-emitted citation/DC/PRISM meta tag —
+ * the same signals Zotero, Unpaywall, etc. rely on. Without this gate the
+ * fallback ships every page's <h1>/title to Crossref+OpenAlex, polluting
+ * the cache with junk like "dashboard" or "tu dortmund anmeldung".
+ */
+function isScholarlyArticlePage(): boolean {
+    return document.querySelector(
+        'meta[name="citation_title"],'
+        + 'meta[name="citation_doi"],'
+        + 'meta[name="citation_author"],'
+        + 'meta[name="citation_journal_title"],'
+        + 'meta[name="citation_publisher"],'
+        + 'meta[name="prism.doi"],'
+        + 'meta[name="prism.publicationName"],'
+        + 'meta[name="dc.identifier" i],'
+        + 'meta[name="dc.title" i],'
+        + 'meta[name="DC.Identifier" i]'
+    ) !== null;
+}
+
+/**
  * Silently try to resolve a DOI from the page title via Crossref/OpenAlex.
  * Runs in the background with no UI.
  */
 async function augmentFromTitle(): Promise<void> {
     if (augmentAttempted) return;
     augmentAttempted = true;
+
+    if (!isScholarlyArticlePage()) {
+        debugLog("Title augmentation: skipped — page is not a scholarly article");
+        return;
+    }
 
     const titleEl = document.querySelector<HTMLHeadingElement>("h1");
     const pageTitle = titleEl?.textContent?.trim() || document.title?.trim();

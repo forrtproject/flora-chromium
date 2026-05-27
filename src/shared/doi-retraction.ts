@@ -101,6 +101,26 @@ export interface RetractionResponse {
 }
 
 /**
+ * Retraction Watch publishes DOIs in their original publisher case (SICI-style
+ * Elsevier identifiers, NEJM, ASCE, etc. carry uppercase letters), but every
+ * DOI we look up has been through normaliseDOI() which lowercases it. Without
+ * normalising the source keys too, ~12.7k of the ~58.6k bundled retractions
+ * would never match.
+ */
+function lowercaseKeys(obj: Record<string, string> | undefined): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (!obj) return out;
+    for (const k in obj) out[k.toLowerCase()] = obj[k];
+    return out;
+}
+
+// Bundled data is imported at module load and never changes — normalise once.
+const NORMALISED_BUNDLED: RetractionMaps = {
+    retractions: lowercaseKeys((retractionData as RetractionMaps).retractions),
+    concerns: lowercaseKeys((retractionData as RetractionMaps).concerns),
+};
+
+/**
  * Request retraction status. Due to CORS policies, the request
  * must execute in the background context.
  */
@@ -117,9 +137,14 @@ export async function retractionCheck(dois: DoiString[]): Promise<RetractionResp
         Object.keys(cached.retractions || {}).length > 0 ||
         Object.keys(cached.concerns || {}).length > 0
     );
+    // Cached storage comes back as a fresh object every call (chrome.storage
+    // re-parses JSON), so we normalise on the spot rather than caching.
     const source: RetractionMaps = hasCachedData
-        ? (cached as RetractionMaps)
-        : (retractionData as RetractionMaps);
+        ? {
+            retractions: lowercaseKeys(cached!.retractions),
+            concerns: lowercaseKeys(cached!.concerns),
+        }
+        : NORMALISED_BUNDLED;
     const result: RetractionResponse[] = [];
     for (const doi of dois) {
         const retractionDOI = source.retractions[doi];
