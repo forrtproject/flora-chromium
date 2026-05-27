@@ -83,6 +83,9 @@ export function injectRetractionInfo(target: Element, info: RetractionResponse):
     target.setAttribute(FLORA_RET_CHECK_KEY, '1');
 
     const wrapper = document.createElement("div");
+    // Class lets other code (and test-fixture tooling) identify FLoRA-injected
+    // UI, mirroring `flora-doi-label` on the DOI pill.
+    wrapper.className = "flora-retracted-pill";
     wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle;`;
 
     const W = 106, H = 22, iconSize = 16;
