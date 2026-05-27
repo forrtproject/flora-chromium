@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, beforeAll, afterAll, afterEach } 
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
-import { validateDOI, validateDOIs } from "../../src/shared/doi-validate";
+import { validateDOI, validateDOIs, _resetValidationCacheForTesting } from "../../src/shared/doi-validate";
 import type { DoiString } from "../../src/shared/types";
 
 const server = setupServer();
@@ -28,6 +28,7 @@ describe("validateDOI", () => {
   beforeEach(() => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    _resetValidationCacheForTesting();
   });
 
   it("returns true for a valid DOI (responseCode 1)", async () => {
@@ -85,9 +86,11 @@ describe("validateDOI", () => {
 
     expect(chrome.storage.local.set).toHaveBeenCalledWith(
       expect.objectContaining({
-        "flora_doival:10.1038/nature12373": expect.objectContaining({
-          valid: true,
-          timestamp: expect.any(Number),
+        flora_doival_blob: expect.objectContaining({
+          "10.1038/nature12373": expect.objectContaining({
+            v: { valid: true },
+            t: expect.any(Number),
+          }),
         }),
       })
     );
@@ -104,8 +107,10 @@ describe("validateDOI", () => {
 
     expect(chrome.storage.local.set).toHaveBeenCalledWith(
       expect.objectContaining({
-        "flora_doival:10.1038/doesnotexist": expect.objectContaining({
-          valid: false,
+        flora_doival_blob: expect.objectContaining({
+          "10.1038/doesnotexist": expect.objectContaining({
+            v: { valid: false },
+          }),
         }),
       })
     );
@@ -113,7 +118,9 @@ describe("validateDOI", () => {
 
   it("uses cached result on second call", async () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
-      "flora_doival:10.1038/cached": { valid: true, timestamp: Date.now() },
+      flora_doival_blob: {
+        "10.1038/cached": { v: { valid: true }, t: Date.now() },
+      },
     });
 
     const result = await validateDOI(doi("10.1038/cached"));
@@ -123,7 +130,9 @@ describe("validateDOI", () => {
   it("ignores expired cache entries", async () => {
     const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
-      "flora_doival:10.1038/expired": { valid: false, timestamp: eightDaysAgo },
+      flora_doival_blob: {
+        "10.1038/expired": { v: { valid: false }, t: eightDaysAgo },
+      },
     });
 
     server.use(
@@ -141,6 +150,7 @@ describe("validateDOIs", () => {
   beforeEach(() => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    _resetValidationCacheForTesting();
   });
 
   it("returns empty map for empty input", async () => {
@@ -187,7 +197,9 @@ describe("validateDOIs", () => {
 
   it("mixes cached and uncached DOIs", async () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
-      "flora_doival:10.1038/cached": { valid: true, timestamp: Date.now() },
+      flora_doival_blob: {
+        "10.1038/cached": { v: { valid: true }, t: Date.now() },
+      },
     });
 
     server.use(
