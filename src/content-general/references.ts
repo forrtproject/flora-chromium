@@ -29,6 +29,38 @@ import type {DoiString} from "@shared/types";
  * right after the entry's last link so it sits inline with that row. Falls
  * back to the entry end only when the entry has no links at all.
  */
+function findSmallestTextContainer(root: HTMLElement, needle: string): HTMLElement | null {
+    let best: HTMLElement | null = null;
+    let bestLen = Infinity;
+    for (const el of root.querySelectorAll<HTMLElement>("*")) {
+        const t = el.innerText ?? el.textContent ?? "";
+        if (!t.includes(needle)) continue;
+        if (t.length < bestLen) {
+            best = el;
+            bestLen = t.length;
+        }
+    }
+    return best;
+}
+
+// Descendant with ≥50% but <100% of the entry's text — the citation body,
+// excluding trailing action-link rows ("Article | Google Scholar").
+function findCitationBody(entry: HTMLElement): HTMLElement | null {
+    const entryText = (entry.innerText ?? entry.textContent ?? "").trim();
+    if (entryText.length < 40) return null;
+    const floor = Math.floor(entryText.length * 0.5);
+    let best: HTMLElement | null = null;
+    let bestLen = 0;
+    for (const el of entry.querySelectorAll<HTMLElement>("*")) {
+        const t = (el.innerText ?? el.textContent ?? "").trim();
+        if (t.length >= floor && t.length < entryText.length && t.length > bestLen) {
+            best = el;
+            bestLen = t.length;
+        }
+    }
+    return best;
+}
+
 function placeReferencePill(
     entry: HTMLElement,
     doi: DoiString,
@@ -41,6 +73,17 @@ function placeReferencePill(
                 link.insertAdjacentElement("afterend", pill);
                 return;
             }
+        }
+        const textHost = findSmallestTextContainer(entry, doi);
+        if (textHost) {
+            textHost.appendChild(pill);
+            return;
+        }
+    } else {
+        const body = findCitationBody(entry);
+        if (body) {
+            body.appendChild(pill);
+            return;
         }
     }
     const links = entry.querySelectorAll<HTMLAnchorElement>("a[href]");
