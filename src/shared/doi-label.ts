@@ -4,6 +4,27 @@
 
 export const DOI_LABEL_CLASS = "flora-doi-label";
 
+// One-time stylesheet: gives every Flora inline pill (DOI label, notice pill)
+// a 6px left margin only when it has a previous sibling. First pill in its
+// container hugs the left edge; subsequent pills get inter-pill air.
+let inlinePillStyleInjected = false;
+function ensureInlinePillStyle(): void {
+    if (inlinePillStyleInjected) return;
+    inlinePillStyleInjected = true;
+    const style = document.createElement("style");
+    style.textContent = `
+        .${FLORA_NOTICE_PILL_CLASS}:not(:first-child) {
+            margin-left: 6px;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// Shared class for the inline notice pill (retraction or expression of concern).
+// Exported so doi-retraction.ts can tag its wrapper and pick up the shared
+// :not(:first-child) margin rule above.
+export const FLORA_NOTICE_PILL_CLASS = "flora-notice-pill";
+
 /**
  * Build a DOI pill element (pill + hover popover with copy button).
  *
@@ -17,9 +38,10 @@ export const DOI_LABEL_CLASS = "flora-doi-label";
  *                     label instead of the "DOI ✓" check.
  */
 export function createDoiPill(doi: string, color: string, isAugmented = false): HTMLElement {
+    ensureInlinePillStyle();
     const wrapper = document.createElement("span");
     wrapper.className = DOI_LABEL_CLASS;
-    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle; margin: 0 0 0 6px;`;
+    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle;`;
 
     const pill = document.createElement("span");
     pill.style.cssText = `

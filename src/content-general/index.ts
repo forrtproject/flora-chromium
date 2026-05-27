@@ -3,8 +3,7 @@ import {
     extractDOIs,
     extractDOIsFromText,
     extractDoiOccurrences,
-    extractPrimaryDOI,
-    findReferenceEntries
+    extractPrimaryDOI
 } from "@shared/doi-extractor";
 import {augmentDOIs, fetchTitleByDoi} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
@@ -34,7 +33,7 @@ import {debugLog} from "@shared/debug";
 import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
-import {processReferenceDois} from "./references";
+import {resolveReferenceDois, renderResolvedReferences, type ResolvedReference} from "./references";
 
 const pageState = new Map<DoiString, LookupState>();
 let redacts: RetractionResponse[] = [];
@@ -47,6 +46,11 @@ let articleFeedbacksFetched = false;
 let lastReferenceDoiKey = "";
 let lastArticleFeedbacks: PubPeerFeedback[] = [];
 let lastRefFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map();
+// In-flight reference resolution for the current page render pass. Held at
+// module scope so a single pageRenderChangeHandler invocation can kick off
+// resolution early (in parallel with FORRT lookup) and have the post-FORRT
+// rendering path await the same promise rather than re-running resolution.
+let resolvedRefsPromise: Promise<ResolvedReference[]> | null = null;
 
 /** Monotonic counter — incremented on each sheet tab switch to discard stale CSV responses. */
 let sheetFetchGen = 0;
@@ -92,6 +96,7 @@ async function pageRenderChangeHandler(): Promise<void> {
         lastRefFeedbackByDoi = new Map();
         articleFeedbacksFetched = false;
         lastReferenceDoiKey = "";
+        resolvedRefsPromise = null;
         pageState.clear();
         augmentAttempted = false;
         resetRetractionPills();
@@ -101,9 +106,16 @@ async function pageRenderChangeHandler(): Promise<void> {
             removePubPeerPanel();
         }
     }
-    // Resolve & inline-render DOIs for DOI-less reference-list entries.
-    // Fire-and-forget; idempotent via a per-entry processed marker.
-    void processReferenceDois();
+    // Resolve DOIs for DOI-less reference-list entries (and, when the user
+    // has opted in, surface hidden ones too). Runs in parallel with the
+    // FORRT lookup below — when it settles, the result feeds the unified
+    // retraction check and the single PubPeer batch in checkPubPeer().
+    resolvedRefsPromise = resolveReferenceDois();
+    // Fire the PubPeer/panel render when reference resolution completes — the
+    // panel no longer waits for the FORRT response to surface PubPeer + notice
+    // data. checkPubPeer is idempotent via the content-keyed gate so the later
+    // FORRT-triggered call (lines below) is a no-op when refs haven't changed.
+    void resolvedRefsPromise.then(() => { void checkPubPeer(); });
 
     let dois = extractDOIs(document);
     // Capture DOI occurrences (with source + anchor) at extraction time so
@@ -145,14 +157,6 @@ async function pageRenderChangeHandler(): Promise<void> {
         }
     }
 
-    // retraction check logic
-    if (hasDoiChange && dois.length > 0) {
-        // Retraction status is tracked via `redacts` — kept separate from
-        // doiContext so it can't clobber the article/reference classification
-        // (a DOI can be both the article and retracted).
-        redacts = await retractionCheck(dois);
-    }
-
     // Exclude occurrences whose anchor sits inside FLoRA-injected UI elements
     // (the PubPeer panel, retracts modal, banner). Without this guard the
     // mutation observer re-fires after each UI injection, extractDoiOccurrences
@@ -163,16 +167,30 @@ async function pageRenderChangeHandler(): Promise<void> {
         (occ) => !FLORA_UI_IDS.some((id) => occ.anchor.closest(`#${id}`) !== null)
     );
 
-    // Render inline "Retracted" pills at every occurrence of a retracted DOI
-    // on the page (reference entries, body links, prose mentions). Uses the
-    // anchors captured by extractDoiOccurrences so the renderer never has to
-    // re-scan the DOM; idempotent via FLORA_RET_CHECK_KEY on each anchor.
-    if (redacts.length > 0) {
+    // Single retraction check covering occurrences AND resolved references
+    // (extracted + augmented). One storage round-trip, one source of truth.
+    // Held in `redacts` (module-level) so checkPubPeer can pass it to the
+    // panel renderer alongside its own PubPeer data.
+    if (hasDoiChange && dois.length > 0) {
+        const resolvedRefs = resolvedRefsPromise ? await resolvedRefsPromise : [];
+        const allNoticeDois = Array.from(new Set([
+            ...dois,
+            ...resolvedRefs.map((r) => r.doi),
+        ]));
+        redacts = await retractionCheck(allNoticeDois);
+
+        // Inline pills: occurrence-driven for DOIs visible on the page.
         const retractionByDoi = new Map(redacts.map((r) => [r.originDoi, r] as const));
         for (const occ of pageOccurrences) {
-            const retraction = retractionByDoi.get(occ.doi);
-            if (retraction) injectRetractionInfo(occ.anchor, retraction);
+            const notice = retractionByDoi.get(occ.doi);
+            if (notice) injectRetractionInfo(occ.anchor, notice);
         }
+
+        // Inline pills: render against augmented reference entries which have
+        // no on-page anchor for the occurrence loop to find. (Hidden DOIs are
+        // covered by the occurrence pass above; injectRetractionInfo is
+        // idempotent so a second call on the same entry no-ops.)
+        renderResolvedReferences(resolvedRefs, retractionByDoi);
     }
 
     // Filter out already-processed DOIs
@@ -279,9 +297,8 @@ async function augmentFromTitle(): Promise<void> {
     if (augmentAttempted) return;
     augmentAttempted = true;
 
-    const pageTitle =
-        document.querySelector<HTMLHeadingElement>("h1")?.textContent?.trim() ||
-        document.title?.trim();
+    const titleEl = document.querySelector<HTMLHeadingElement>("h1");
+    const pageTitle = titleEl?.textContent?.trim() || document.title?.trim();
 
     if (!pageTitle) return;
 
@@ -296,6 +313,18 @@ async function augmentFromTitle(): Promise<void> {
                 dois: [resolvedDoi]
             };
             await chrome.runtime.sendMessage(request);
+
+            // The augmented DOI never makes it into `dois`, so the occurrence-
+            // driven retraction pass would miss it. Check here and render the
+            // pill beside the article title when flagged.
+            if (titleEl) {
+                try {
+                    const notices = await retractionCheck([resolvedDoi]);
+                    if (notices.length > 0) {
+                        injectRetractionInfo(titleEl, notices[0], { afterend: true });
+                    }
+                } catch { /* supplementary */ }
+            }
         }
     } catch {
         // Augmentation failed silently
@@ -307,29 +336,30 @@ async function checkPubPeer(): Promise<void> {
     const primaryDoi = extractPrimaryDOI(document);
     if (!primaryDoi) return;
     try {
-        // Source of truth for "what counts as a reference" = the page's actual
-        // reference-list entries. Using classifyPageDois().referenceDois here
-        // would pull in DOIs from related-articles sidebars or any element
-        // whose class/id matches the reference regex — phantom rows in the panel.
+        const resolvedRefs = resolvedRefsPromise ? await resolvedRefsPromise : [];
+
+        // Reference DOI set comes from the unified resolved list — both DOIs
+        // visible on the page AND those we had to augment via Crossref/OpenAlex.
+        // De-duped because a hidden DOI and its augmented twin could coincide
+        // in pathological cases (e.g. mixed publisher templates).
         const seen = new Set<DoiString>();
         const referenceDois: DoiString[] = [];
-        for (const entry of findReferenceEntries(document)) {
-            if (!entry.doi || seen.has(entry.doi)) continue;
-            seen.add(entry.doi);
-            referenceDois.push(entry.doi);
+        for (const r of resolvedRefs) {
+            if (seen.has(r.doi)) continue;
+            seen.add(r.doi);
+            referenceDois.push(r.doi);
         }
 
-        // Content-keyed gate: skip re-rendering when the article side is
-        // already fetched AND the set of reference DOIs is unchanged. This is
-        // what lets lazily-loaded references (e.g. Wiley's collapsible "Citing
-        // Literature" / references section) flow into the panel — the DOM
-        // observer fires checkPubPeer again, finds new DOIs, and re-renders.
+        // Content-keyed gate: skip re-running when the article side is
+        // already fetched AND the resolved reference DOI set is unchanged.
+        // Lazy-loaded references (e.g. Wiley's "Citing Literature") trigger a
+        // re-resolution + re-batch by changing the key.
         const refKey = [...referenceDois].sort().join("|");
         if (articleFeedbacksFetched && refKey === lastReferenceDoiKey) return;
 
         // Article: URL-based lookup, fetched once per page. References: one
         // batched lookup keyed by DOI (PubPeer's v3 endpoint returns `id` =
-        // the DOI), cached in chrome.storage so lazy-load re-runs are cheap.
+        // the DOI), cached in chrome.storage so re-runs are cheap.
         const articlePromise = articleFeedbacksFetched
             ? Promise.resolve(lastArticleFeedbacks)
             : lookupPubPeer([primaryDoi], [location.href]);
@@ -343,11 +373,10 @@ async function checkPubPeer(): Promise<void> {
         lastReferenceDoiKey = refKey;
 
         // The panel only lists references worth a reader's attention: those
-        // with PubPeer comments, a retraction, or FORRT replication data.
-        // Titles are taken from PubPeer when it has the paper, otherwise
-        // resolved from Crossref/OpenAlex — never from page-scraped citation
-        // text, which varies too much between publishers to render cleanly.
-        const retractedDois = new Set(redacts.map((r) => r.originDoi));
+        // with PubPeer comments, a notice (retraction or concern), or FORRT
+        // replication data. Titles come from PubPeer when available, else
+        // Crossref/OpenAlex — never page-scraped citation text.
+        const noticeDois = new Set(redacts.map((r) => r.originDoi));
         const hasReplication = (doi: DoiString): boolean => {
             const s = pageState.get(doi);
             if (s?.status !== "matched") return false;
@@ -355,12 +384,10 @@ async function checkPubPeer(): Promise<void> {
                 s.result.record.stats;
             return n_replications_total > 0 || n_reproductions_total > 0 || n_originals_total > 0;
         };
-        // A PubPeer record can exist with zero comments — only count it as a
-        // reason to surface the reference when it actually has comments.
         const flagged = referenceDois.filter((doi) => {
             const fb = refFeedbackByDoi.get(doi);
             return (fb !== undefined && fb.total_comments > 0)
-                || retractedDois.has(doi)
+                || noticeDois.has(doi)
                 || hasReplication(doi);
         });
         const panelRefs = await Promise.all(flagged.map(async (doi) => {

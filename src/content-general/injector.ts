@@ -4,7 +4,7 @@ import { extractDoiOccurrences, type DoiOccurrence } from "../shared/doi-extract
 import { debugLog } from "../shared/debug";
 import { getSettings } from "../shared/settings";
 import styles from "./styles.css";
-import {RetractionResponse} from "@shared/doi-retraction";
+import {RetractionResponse, noticePresentation} from "@shared/doi-retraction";
 
 const BANNER_HOST_ID = "flora-banner-host";
 const BADGE_CLASS = "flora-inline-badge";
@@ -836,10 +836,12 @@ export function renderPubPeerPanel(
 
   const hasReplicationData = articleReplications > 0 || articleReproductions > 0 || articleOriginals > 0;
 
-  // Retraction status — keyed by the DOI as it appears on the page (originDoi).
+  // Notice status — keyed by the DOI as it appears on the page (originDoi).
+  // A "notice" is either a retraction or an expression of concern; the kind
+  // discriminator drives the banner palette and copy via noticePresentation().
   const retractionByDoi = new Map<DoiString, RetractionResponse>();
   for (const r of retractions) retractionByDoi.set(r.originDoi, r);
-  const articleRetraction = articleDois
+  const articleNotice = articleDois
     .map((doi) => retractionByDoi.get(doi))
     .find((r): r is RetractionResponse => r !== undefined);
 
@@ -851,7 +853,7 @@ export function renderPubPeerPanel(
     "renderPubPeerPanel:",
     `articleComments=${withComments.length}`,
     `replicationData=${hasReplicationData}`,
-    `articleRetracted=${!!articleRetraction}`,
+    `articleNotice=${articleNotice?.kind ?? "none"}`,
     `flaggedRefs=${references.length}`
   );
 
@@ -1003,23 +1005,28 @@ export function renderPubPeerPanel(
   }
   summary.appendChild(articleTitleEl);
 
-  // Retraction alert — shown when the article's DOI appears in Retraction Watch data
-  if (articleRetraction) {
-    const retractBanner = document.createElement("a");
-    retractBanner.href = `https://doi.org/${articleRetraction.doi}`;
-    retractBanner.target = "_blank";
-    retractBanner.rel = "noopener noreferrer";
-    retractBanner.title = "View the retraction notice";
-    retractBanner.style.cssText =
+  // Notice alert — shown when the article's DOI carries a retraction or an
+  // expression of concern. Styling and copy come from noticePresentation.
+  if (articleNotice) {
+    const np = noticePresentation(articleNotice.kind);
+    const titleText = articleNotice.kind === "concern"
+      ? "View the expression-of-concern notice"
+      : "View the retraction notice";
+    const noticeBanner = document.createElement("a");
+    noticeBanner.href = `https://doi.org/${articleNotice.doi}`;
+    noticeBanner.target = "_blank";
+    noticeBanner.rel = "noopener noreferrer";
+    noticeBanner.title = titleText;
+    noticeBanner.style.cssText =
       "display:flex;align-items:center;gap:8px;margin:0 16px 12px;padding:10px 12px;" +
-      "background:#fdecef;border:1px solid #f5a3b4;border-left:4px solid #FF1744;" +
+      `background:${np.bannerBackground};border:1px solid ${np.bannerBorder};border-left:4px solid ${np.bannerLeftAccent};` +
       "border-radius:8px;text-decoration:none;";
-    retractBanner.innerHTML =
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="18" height="18" fill="#FF1744" style="flex-shrink:0;">` +
+    noticeBanner.innerHTML =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="18" height="18" fill="${np.bannerIconColor}" style="flex-shrink:0;">` +
       `<path d="M320 64C334.7 64 348.2 72.1 355.2 85L571.2 485C577.9 497.4 577.6 512.4 570.4 524.5C563.2 536.6 550.1 544 536 544L104 544C89.9 544 76.8 536.6 69.6 524.5C62.4 512.4 62.1 497.4 68.8 485L284.8 85C291.8 72.1 305.3 64 320 64zM320 416C302.3 416 288 430.3 288 448C288 465.7 302.3 480 320 480C337.7 480 352 465.7 352 448C352 430.3 337.7 416 320 416zM320 224C301.8 224 287.3 239.5 288.6 257.7L296 361.7C296.9 374.2 307.4 384 319.9 384C332.5 384 342.9 374.3 343.8 361.7L351.2 257.7C352.5 239.5 338.1 224 319.8 224z"/></svg>` +
-      `<span style="font-size:12px;font-weight:600;color:#a30d2d;line-height:1.4;">` +
-      `This article has been retracted. `;
-    summary.appendChild(retractBanner);
+      `<span style="font-size:12px;font-weight:600;color:${np.bannerText};line-height:1.4;">` +
+      `${np.bannerCopy} `;
+    summary.appendChild(noticeBanner);
   }
 
   // Replication/reproduction/original entry lists from FORRT API

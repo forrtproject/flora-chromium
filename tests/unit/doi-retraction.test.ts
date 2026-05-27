@@ -27,7 +27,38 @@ describe("retractionCheck", () => {
 
     const result = await retractionCheck([doi("10.1234/paper")]);
     expect(result).toEqual([
-      { originDoi: "10.1234/paper", doi: "10.1234/notice" },
+      { originDoi: "10.1234/paper", doi: "10.1234/notice", kind: "retraction" },
+    ]);
+  });
+
+  it("returns expressions of concern tagged as 'concern'", async () => {
+    (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      [RET_MAP_KEY]: {
+        retractions: {},
+        concerns: { "10.5678/eoc-paper": "10.5678/eoc-notice" },
+      },
+    });
+
+    const result = await retractionCheck([doi("10.5678/eoc-paper")]);
+    expect(result).toEqual([
+      { originDoi: "10.5678/eoc-paper", doi: "10.5678/eoc-notice", kind: "concern" },
+    ]);
+  });
+
+  it("prefers retraction over concern when a DOI is present in both maps", async () => {
+    // Defensive: the updater's "latest event wins" rule means this shouldn't
+    // happen in production data, but the lookup loop is a one-line invariant
+    // worth pinning down.
+    (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      [RET_MAP_KEY]: {
+        retractions: { "10.1234/dual": "10.1234/dual-retraction" },
+        concerns:    { "10.1234/dual": "10.1234/dual-concern" },
+      },
+    });
+
+    const result = await retractionCheck([doi("10.1234/dual")]);
+    expect(result).toEqual([
+      { originDoi: "10.1234/dual", doi: "10.1234/dual-retraction", kind: "retraction" },
     ]);
   });
 
@@ -35,7 +66,7 @@ describe("retractionCheck", () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
     const result = await retractionCheck([doi(BUNDLED_RETRACTED_DOI)]);
     expect(result).toEqual([
-      { originDoi: BUNDLED_RETRACTED_DOI, doi: BUNDLED_RETRACTION_NOTICE },
+      { originDoi: BUNDLED_RETRACTED_DOI, doi: BUNDLED_RETRACTION_NOTICE, kind: "retraction" },
     ]);
   });
 
@@ -48,22 +79,10 @@ describe("retractionCheck", () => {
     const result = await retractionCheck([doi(BUNDLED_RETRACTED_DOI)]);
     expect(result).toHaveLength(1);
     expect(result[0].originDoi).toBe(BUNDLED_RETRACTED_DOI);
+    expect(result[0].kind).toBe("retraction");
   });
 
-  it("does not surface expressions of concern", async () => {
-    // Concerns are tracked in the data but deliberately not badged yet.
-    (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
-      [RET_MAP_KEY]: {
-        retractions: { "10.1234/paper": "10.1234/notice" },
-        concerns: { "10.5678/eoc-paper": "10.5678/eoc-notice" },
-      },
-    });
-
-    const result = await retractionCheck([doi("10.5678/eoc-paper")]);
-    expect(result).toEqual([]);
-  });
-
-  it("returns nothing for a DOI that is not in the map", async () => {
+  it("returns nothing for a DOI that is in neither map", async () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       [RET_MAP_KEY]: {
         retractions: { "10.1234/keep": "10.1234/retraction" },
@@ -75,14 +94,16 @@ describe("retractionCheck", () => {
     expect(result).toEqual([]);
   });
 
-  it("processes a batch, returning entries only for retracted DOIs", async () => {
+  it("processes a mixed batch, tagging each entry by its source map", async () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       [RET_MAP_KEY]: {
         retractions: {
           "10.1234/a": "10.1234/a-notice",
           "10.1234/c": "10.1234/c-notice",
         },
-        concerns: {},
+        concerns: {
+          "10.1234/d": "10.1234/d-notice",
+        },
       },
     });
 
@@ -90,10 +111,12 @@ describe("retractionCheck", () => {
       doi("10.1234/a"),
       doi("10.1234/b"),
       doi("10.1234/c"),
+      doi("10.1234/d"),
     ]);
     expect(result).toEqual([
-      { originDoi: "10.1234/a", doi: "10.1234/a-notice" },
-      { originDoi: "10.1234/c", doi: "10.1234/c-notice" },
+      { originDoi: "10.1234/a", doi: "10.1234/a-notice", kind: "retraction" },
+      { originDoi: "10.1234/c", doi: "10.1234/c-notice", kind: "retraction" },
+      { originDoi: "10.1234/d", doi: "10.1234/d-notice", kind: "concern" },
     ]);
   });
 });
