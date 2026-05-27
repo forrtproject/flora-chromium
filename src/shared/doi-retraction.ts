@@ -153,6 +153,13 @@ export interface InjectRetractionOptions {
      * sub-list like Scholar's `.gs_or_ggsm` "All versions" menu.
      */
     append?: boolean;
+    /**
+     * Insert the pill as the next sibling of `target` rather than appending
+     * inside it. Use when `target` is a title-like element (Scholar's
+     * `.gs_rt`, an article page's `<h1>`) so the pill sits beside the title
+     * rather than nested inside its text styles.
+     */
+    afterend?: boolean;
 }
 
 export function injectRetractionInfo(
@@ -191,6 +198,8 @@ export function injectRetractionInfo(
     wrapper.appendChild(pill);
     if (options.append) {
         target.appendChild(wrapper);
+    } else if (options.afterend) {
+        target.insertAdjacentElement("afterend", wrapper);
     } else {
         placeRetractionPill(target, info.originDoi, wrapper);
     }

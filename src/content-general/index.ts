@@ -297,9 +297,8 @@ async function augmentFromTitle(): Promise<void> {
     if (augmentAttempted) return;
     augmentAttempted = true;
 
-    const pageTitle =
-        document.querySelector<HTMLHeadingElement>("h1")?.textContent?.trim() ||
-        document.title?.trim();
+    const titleEl = document.querySelector<HTMLHeadingElement>("h1");
+    const pageTitle = titleEl?.textContent?.trim() || document.title?.trim();
 
     if (!pageTitle) return;
 
@@ -314,6 +313,18 @@ async function augmentFromTitle(): Promise<void> {
                 dois: [resolvedDoi]
             };
             await chrome.runtime.sendMessage(request);
+
+            // The augmented DOI never makes it into `dois`, so the occurrence-
+            // driven retraction pass would miss it. Check here and render the
+            // pill beside the article title when flagged.
+            if (titleEl) {
+                try {
+                    const notices = await retractionCheck([resolvedDoi]);
+                    if (notices.length > 0) {
+                        injectRetractionInfo(titleEl, notices[0], { afterend: true });
+                    }
+                } catch { /* supplementary */ }
+            }
         }
     } catch {
         // Augmentation failed silently
