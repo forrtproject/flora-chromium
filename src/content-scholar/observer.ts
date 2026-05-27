@@ -238,7 +238,11 @@ async function preInjectLabels(row: HTMLElement, doi: DoiString, color: string, 
         row.insertBefore(target, gsRi);
     }
     let result = await retractionCheck([doi]);
-    if (result && result[0] != undefined) injectRetractionInfo(target, result[0])
+    // Append directly inside the FLoRA pill area (.gs_ggs gs_fl) — the default
+    // smart placement would otherwise drop the pill into Scholar's nested
+    // .gs_or_ggsm "All versions" submenu, since that contains the publisher
+    // links the smart-placement heuristic matches against.
+    if (result && result[0] != undefined) injectRetractionInfo(target, result[0], { append: true })
 }
 
 function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmented = false): void {
