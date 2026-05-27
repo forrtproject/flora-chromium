@@ -60,25 +60,50 @@
                 data on every article you read.
               </div>
 
-              <div class="dh-apa">
-                <div class="dh-apa-label">Why an Email?</div>
-                <div class="dh-apa-text">
-                  FLoRA queries the
-                  <a
-                    href="https://api.crossref.org"
-                    target="_blank"
-                    rel="noopener"
-                    >Crossref</a
+              <div class="dh-callout" role="note">
+                <div class="dh-callout-icon" aria-hidden="true">
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
                   >
-                  and
-                  <a
-                    href="https://api.openalex.org"
-                    target="_blank"
-                    rel="noopener"
-                    >OpenAlex</a
-                  >
-                  APIs to resolve article DOIs. Both services request a contact
-                  email for their polite-access pool &mdash; faster rate limits
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                    <polyline points="22,6 12,13 2,6" />
+                  </svg>
+                </div>
+                <div class="dh-callout-body">
+                  <div class="dh-callout-title">Why we ask for your email</div>
+                  <p class="dh-callout-text">
+                    FLoRA queries the
+                    <a
+                      href="https://api.crossref.org"
+                      target="_blank"
+                      rel="noopener"
+                      >Crossref</a
+                    >
+                    and
+                    <a
+                      href="https://api.openalex.org"
+                      target="_blank"
+                      rel="noopener"
+                      >OpenAlex</a
+                    >
+                    APIs to resolve article DOIs. Both services ask for a
+                    contact email so they can place your requests in their
+                    <strong>polite-access pool</strong> &mdash; meaning faster
+                    rate limits and more reliable lookups while you browse.
+                  </p>
+                  <p class="dh-callout-text dh-callout-text--muted">
+                    Your email is used <strong>only</strong> as a
+                    <code>mailto</code> parameter sent to Crossref &amp;
+                    OpenAlex. It is never stored on a FLoRA server, shared, or
+                    used for anything else.
+                  </p>
                 </div>
               </div>
             </div>
@@ -116,14 +141,31 @@
               </div>
             </form>
 
-            <!-- Info section -->
-            <div class="info-section">
-              <p class="hint">
-                Your email is only sent as a <code>mailto</code> query parameter
-                to Crossref &amp; OpenAlex for polite API access.
-              </p>
-              <p id="status-msg" class="status" hidden></p>
+            <p id="status-msg" class="status status-block" hidden></p>
+          </div>
+
+          <!-- ═══ DOI PILLS ═══ -->
+          <div class="detail-card" style="margin-top: 1.25rem">
+            <div class="dh">
+              <div class="dh-label">Reference DOIs</div>
+              <h2 class="dh-title">DOI Pill Display</h2>
+              <div class="dh-authors">
+                By default FLoRA shows a DOI pill only on references whose DOI
+                isn't visible on the page. Enable this to show a pill on every
+                reference instead.
+              </div>
             </div>
+
+            <label class="toggle-row">
+              <span class="toggle-row-text"
+                >Show a DOI pill on every reference, not just ones without a
+                visible DOI</span
+              >
+              <span class="toggle-switch">
+                <input type="checkbox" id="all-refs-toggle" />
+                <span class="toggle-track"></span>
+              </span>
+            </label>
           </div>
 
           <!-- ═══ BLOCKED DOMAINS ═══ -->

@@ -35,6 +35,18 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
+// ── DOI pill display ────────────────────────────────────────────────
+
+const allRefsToggle = document.getElementById("all-refs-toggle") as HTMLInputElement;
+
+getSettings().then(({ showDoiPillsOnAllReferences }) => {
+  allRefsToggle.checked = showDoiPillsOnAllReferences;
+});
+
+allRefsToggle.addEventListener("change", () => {
+  void saveSettings({ showDoiPillsOnAllReferences: allRefsToggle.checked });
+});
+
 // ── Domain blocklist ────────────────────────────────────────────────
 
 const domainInput = document.getElementById("domain-input") as HTMLInputElement;

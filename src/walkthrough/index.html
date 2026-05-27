@@ -1,0 +1,1380 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FLoRA — How it Works</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Domine:wght@400;700&family=Source+Sans+3:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="walkthrough.css" />
+  </head>
+  <body>
+    <!-- ═══ TOPBAR ═══ -->
+    <nav class="topbar">
+      <div class="topbar-left">
+        <a class="topbar-brand" href="#">
+          <div class="topbar-icon">
+            <img
+              src="forrt-logo.svg"
+              alt="F"
+              style="width: 20px; height: 20px"
+            />
+          </div>
+          <div class="topbar-name">
+            <strong>FLoRA</strong>
+            <span>Replication Hub</span>
+          </div>
+        </a>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-link" id="skip-btn">Skip to Settings</button>
+      </div>
+    </nav>
+
+    <!-- ═══ PROGRESS BAR ═══ -->
+    <div class="wt-progress">
+      <div class="wt-progress-fill" id="progress-fill"></div>
+    </div>
+
+    <!-- ═══ MAIN ═══ -->
+    <main class="wt-main">
+      <div class="wt-container">
+        <!-- ═══ CARD ═══ -->
+        <div class="wt-card">
+          <!-- ─────────────────────────────────
+               STEP 0 — Scholar: Confirmed DOI
+               ───────────────────────────────── -->
+          <div class="wt-step is-active" id="step-0">
+            <div class="wt-step-inner">
+              <div class="wt-info">
+                <div class="wt-context">
+                  <span class="wt-context-tag tag-scholar">
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                    >
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.35-4.35" />
+                    </svg>
+                    Google Scholar
+                  </span>
+                  <span class="wt-step-num">1 of 5</span>
+                </div>
+                <h2 class="wt-title">Confirmed DOI</h2>
+                <p class="wt-desc">
+                  FLoRA scans each Google Scholar result for DOIs. When it finds
+                  one in a <code>doi.org</code> URL — or confirms it through the
+                  doi.org resolver — it marks the paper as
+                  <strong>confirmed</strong>.
+                </p>
+                <div class="wt-callouts">
+                  <div class="wt-callout callout-confirmed">
+                    <div class="wt-callout-icon icon-confirmed">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 16 16"
+                        fill="white"
+                      >
+                        <path
+                          d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"
+                        />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">Purple pill with ✓</div>
+                      <div class="wt-callout-text">
+                        High-confidence match. Hover to see the full DOI and
+                        copy it to clipboard.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="wt-callout callout-confirmed">
+                    <div class="wt-callout-icon icon-flora">F</div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">
+                        FLoRA replication badge
+                      </div>
+                      <div class="wt-callout-text">
+                        Appears when replication or reproduction studies exist.
+                        Click to open the full report on the FORRT Replication
+                        Atlas.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Demo: Scholar result with pills on the RIGHT -->
+              <div class="step-demo" id="demo-0">
+                <button class="replay-btn">
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 .49-4" />
+                  </svg>
+                  Replay
+                </button>
+                <div class="mock-browser">
+                  <div class="mock-browser-bar">
+                    <div class="mock-browser-dots">
+                      <span></span><span></span><span></span>
+                    </div>
+                    <div class="mock-url">
+                      scholar.google.com/scholar?q=power+posing
+                    </div>
+                  </div>
+                  <div class="mock-scholar-body">
+                    <div class="mock-scholar-result">
+                      <!-- Content on the LEFT (gs_ri) -->
+                      <div class="mock-gs-ri">
+                        <div class="mock-paper-title">
+                          Power Posing: Brief Nonverbal Displays Affect
+                          Neuroendocrine Levels
+                        </div>
+                        <div class="mock-paper-authors">
+                          AJD Cuddy, SC Schulman, N Yap &mdash; 2010 &mdash;
+                          science.org
+                        </div>
+                        <div class="mock-paper-snippet">
+                          We examined whether brief, expansive postures could
+                          change a person's testosterone and cortisol levels as
+                          well as their risk tolerance...
+                        </div>
+                        <div class="mock-paper-meta">
+                          <a>Cited by 2,415</a> &middot;
+                          <a>Related articles</a> &middot;
+                          <a>All 14 versions</a>
+                        </div>
+                      </div>
+                      <!-- Pills on the RIGHT (gs_ggs area) -->
+                      <div class="mock-gs-ggs">
+                        <div class="mock-pill-wrapper anim-pill">
+                          <span class="mock-doi-pill confirmed">
+                            DOI
+                            <svg
+                              width="11"
+                              height="11"
+                              viewBox="0 0 16 16"
+                              fill="white"
+                            >
+                              <path
+                                d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"
+                              />
+                            </svg>
+                          </span>
+                          <div class="mock-pill-popover">
+                            <span class="mock-popover-label"
+                              >Confirmed via doi.org</span
+                            >
+                            <span class="mock-popover-doi"
+                              >10.1126/science.1185714</span
+                            >
+                          </div>
+                        </div>
+                        <div class="mock-flora-scholar-badge anim-badge">
+                          <span class="badge-label-m">FLoRA</span>
+                          <span>3 replications</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- /step-0 -->
+
+          <!-- ─────────────────────────────────
+               STEP 1 — Scholar: Unconfirmed DOI
+               ───────────────────────────────── -->
+          <div class="wt-step" id="step-1">
+            <div class="wt-step-inner">
+              <div class="wt-info">
+                <div class="wt-context">
+                  <span class="wt-context-tag tag-scholar">
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                    >
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.35-4.35" />
+                    </svg>
+                    Google Scholar
+                  </span>
+                  <span class="wt-step-num">2 of 5</span>
+                </div>
+                <h2 class="wt-title">Unconfirmed DOI</h2>
+                <p class="wt-desc">
+                  When no <code>doi.org</code> URL is present, FLoRA resolves
+                  the paper's DOI via Crossref and OpenAlex title search. These
+                  are marked <strong>unconfirmed</strong> with a dotted
+                  underline.
+                </p>
+                <div class="wt-callouts">
+                  <div class="wt-callout callout-unconfirmed">
+                    <div class="wt-callout-icon icon-unconfirmed">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">
+                        Gray pill with dotted "DOI"
+                      </div>
+                      <div class="wt-callout-text">
+                        The dotted underline signals a title-matched DOI rather
+                        than one found in a doi.org URL. Hover to view and copy
+                        it.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="wt-callout callout-neutral">
+                    <div class="wt-callout-icon icon-neutral">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">Still used for lookups</div>
+                      <div class="wt-callout-text">
+                        Unconfirmed DOIs are still queried against the FLoRA
+                        database. The gray color is a confidence signal, not an
+                        exclusion.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="step-demo" id="demo-1">
+                <button class="replay-btn">
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 .49-4" />
+                  </svg>
+                  Replay
+                </button>
+                <div class="mock-browser">
+                  <div class="mock-browser-bar">
+                    <div class="mock-browser-dots">
+                      <span></span><span></span><span></span>
+                    </div>
+                    <div class="mock-url">
+                      scholar.google.com/scholar?q=ego+depletion
+                    </div>
+                  </div>
+                  <div class="mock-scholar-body">
+                    <div class="mock-scholar-result">
+                      <!-- Content on the LEFT -->
+                      <div class="mock-gs-ri">
+                        <div class="mock-paper-title">
+                          Ego Depletion: Is the Active Self a Limited Resource?
+                        </div>
+                        <div class="mock-paper-authors">
+                          RF Baumeister, E Bratslavsky, M Muraven &mdash; 1998
+                          &mdash; psycnet.apa.org
+                        </div>
+                        <div class="mock-paper-snippet">
+                          A resource model of the self's executive function was
+                          tested in four studies measuring controlled,
+                          volitional behavior after prior exertion of
+                          self-control...
+                        </div>
+                        <div class="mock-paper-meta">
+                          <a>Cited by 8,312</a> &middot;
+                          <a>Related articles</a> &middot; <a>All 9 versions</a>
+                        </div>
+                      </div>
+                      <!-- Pills on the RIGHT -->
+                      <div class="mock-gs-ggs">
+                        <div class="mock-pill-wrapper anim-pill">
+                          <span class="mock-doi-pill unconfirmed">
+                            <span class="pill-text-dotted">DOI</span>
+                          </span>
+                          <div class="mock-pill-popover">
+                            <span class="mock-popover-label"
+                              >Resolved via title search</span
+                            >
+                            <span class="mock-popover-doi"
+                              >10.1037/0022-3514.74.5.1252</span
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- /step-1 -->
+
+          <!-- ─────────────────────────────────
+               STEP 2 — Google Sheets
+               ───────────────────────────────── -->
+          <div class="wt-step" id="step-2">
+            <div class="wt-step-inner">
+              <div class="wt-info">
+                <div class="wt-context">
+                  <span class="wt-context-tag tag-sheets">
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                    >
+                      <rect x="3" y="3" width="7" height="7" />
+                      <rect x="14" y="3" width="7" height="7" />
+                      <rect x="14" y="14" width="7" height="7" />
+                      <rect x="3" y="14" width="7" height="7" />
+                    </svg>
+                    Google Sheets
+                  </span>
+                  <span class="wt-step-num">3 of 5</span>
+                </div>
+                <h2 class="wt-title">Spreadsheet Detection</h2>
+                <p class="wt-desc">
+                  When you open a Google Sheet, FLoRA scans the
+                  <strong>entire spreadsheet</strong> — including rows outside
+                  the visible area — and surfaces a summary card if any detected
+                  papers have replication data.
+                </p>
+                <div class="wt-callouts">
+                  <div class="wt-callout callout-confirmed">
+                    <div class="wt-callout-icon icon-sheets">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <path
+                          d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                        />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">Replication Data modal</div>
+                      <div class="wt-callout-text">
+                        Shows total replication and reproduction count for all
+                        recognized papers. Dismiss or snooze per tab.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="wt-callout callout-neutral">
+                    <div class="wt-callout-icon icon-neutral">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <polyline points="23 4 23 10 17 10" />
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">Tab-aware</div>
+                      <div class="wt-callout-text">
+                        Switching sheet tabs triggers a fresh scan. Each tab
+                        tracks its own dismissal state independently.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="step-demo" id="demo-2">
+                <button class="replay-btn">
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 .49-4" />
+                  </svg>
+                  Replay
+                </button>
+                <div class="mock-browser">
+                  <div class="mock-browser-bar">
+                    <div class="mock-browser-dots">
+                      <span></span><span></span><span></span>
+                    </div>
+                    <div class="mock-url">docs.google.com/spreadsheets/d/…</div>
+                  </div>
+                  <div class="mock-sheets-toolbar">
+                    <span>File</span><span>Edit</span><span>View</span
+                    ><span>Insert</span><span>Format</span>
+                  </div>
+                  <div class="mock-sheets-body">
+                    <table class="mock-sheets-grid">
+                      <thead>
+                        <tr>
+                          <th class="mock-row-num"></th>
+                          <th>Paper Title</th>
+                          <th>DOI</th>
+                          <th>Year</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td class="mock-row-num">1</td>
+                          <td>Power Posing (Cuddy et al.)</td>
+                          <td class="doi-cell">10.1126/science.1185714</td>
+                          <td>2010</td>
+                        </tr>
+                        <tr>
+                          <td class="mock-row-num">2</td>
+                          <td>Ego Depletion (Baumeister et al.)</td>
+                          <td class="doi-cell">10.1037/0022-3514.74.5.1252</td>
+                          <td>1998</td>
+                        </tr>
+                        <tr>
+                          <td class="mock-row-num">3</td>
+                          <td>Implicit Bias (Greenwald et al.)</td>
+                          <td class="doi-cell">10.1037/0022-3514.74.6.1464</td>
+                          <td>1998</td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <!-- FLoRA Sheets modal — styled to match real injector.ts output -->
+                    <div
+                      class="anim-modal"
+                      style="
+                        position: absolute;
+                        top: 10px;
+                        right: 10px;
+                        width: 280px;
+                        background: #fff;
+                        border-radius: 12px;
+                        box-shadow:
+                          0 8px 28px rgba(0, 0, 0, 0.18),
+                          0 2px 8px rgba(0, 0, 0, 0.08);
+                        font-family:
+                          -apple-system, BlinkMacSystemFont,
+                          &quot;Segoe UI&quot;, sans-serif;
+                        overflow: hidden;
+                      "
+                    >
+                      <div
+                        style="
+                          background: linear-gradient(135deg, #853953, #612d53);
+                          padding: 14px 16px;
+                          display: flex;
+                          align-items: center;
+                          gap: 10px;
+                        "
+                      >
+                        <span
+                          style="
+                            background: rgba(255, 255, 255, 0.2);
+                            color: #fff;
+                            font-weight: 700;
+                            font-size: 13px;
+                            padding: 4px 10px;
+                            border-radius: 6px;
+                            letter-spacing: 0.3px;
+                          "
+                          >FLoRA</span
+                        >
+                        <span
+                          style="
+                            color: #fff;
+                            font-size: 13px;
+                            font-weight: 500;
+                            flex: 1;
+                          "
+                          >Replication Data Found</span
+                        >
+                        <span
+                          style="
+                            cursor: pointer;
+                            color: rgba(255, 255, 255, 0.7);
+                            font-size: 20px;
+                            line-height: 1;
+                          "
+                          >×</span
+                        >
+                      </div>
+                      <div style="padding: 14px 16px 4px">
+                        <div
+                          style="
+                            font-size: 13px;
+                            color: #3c4043;
+                            margin-bottom: 12px;
+                            line-height: 1.5;
+                          "
+                        >
+                          Found data for
+                          <strong style="color: #202124">3 DOIs</strong> in this
+                          spreadsheet.
+                        </div>
+                        <div
+                          style="display: flex; gap: 10px; margin-bottom: 4px"
+                        >
+                          <div
+                            style="
+                              flex: 1;
+                              background: #f9f0f4;
+                              border: 1px solid #d4a5b8;
+                              border-radius: 8px;
+                              padding: 10px;
+                              text-align: center;
+                            "
+                          >
+                            <div
+                              style="
+                                font-size: 22px;
+                                font-weight: 600;
+                                color: #853953;
+                                line-height: 1;
+                              "
+                            >
+                              7
+                            </div>
+                            <div
+                              style="
+                                font-size: 11px;
+                                color: #612d53;
+                                margin-top: 4px;
+                                font-weight: 500;
+                              "
+                            >
+                              Replications
+                            </div>
+                          </div>
+                          <div
+                            style="
+                              flex: 1;
+                              background: #f9f0f4;
+                              border: 1px solid #d4a5b8;
+                              border-radius: 8px;
+                              padding: 10px;
+                              text-align: center;
+                            "
+                          >
+                            <div
+                              style="
+                                font-size: 22px;
+                                font-weight: 600;
+                                color: #853953;
+                                line-height: 1;
+                              "
+                            >
+                              3
+                            </div>
+                            <div
+                              style="
+                                font-size: 11px;
+                                color: #612d53;
+                                margin-top: 4px;
+                                font-weight: 500;
+                              "
+                            >
+                              Reproductions
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        style="
+                          padding: 8px 16px 12px;
+                          display: flex;
+                          align-items: center;
+                          gap: 8px;
+                        "
+                      >
+                        <span
+                          style="
+                            cursor: pointer;
+                            padding: 6px 8px;
+                            color: #5f6368;
+                            display: flex;
+                            align-items: center;
+                            margin-right: auto;
+                          "
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                          >
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                          </svg>
+                        </span>
+                        <span
+                          style="
+                            cursor: pointer;
+                            padding: 6px 14px;
+                            font-size: 13px;
+                            font-weight: 500;
+                            color: #5f6368;
+                          "
+                          >Dismiss</span
+                        >
+                        <span
+                          style="
+                            cursor: pointer;
+                            padding: 6px 14px;
+                            font-size: 13px;
+                            font-weight: 500;
+                            color: #fff;
+                            background: linear-gradient(
+                              135deg,
+                              #853953,
+                              #612d53
+                            );
+                            border-radius: 6px;
+                          "
+                          >View details</span
+                        >
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- /step-2 -->
+
+          <!-- ─────────────────────────────────
+               STEP 3 — Replication Badges
+               ───────────────────────────────── -->
+          <div class="wt-step" id="step-3">
+            <div class="wt-step-inner wider">
+              <div class="wt-info">
+                <div class="wt-context">
+                  <span class="wt-context-tag tag-pages">
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                    >
+                      <path
+                        d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                      />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                    Journal &amp; Article Pages
+                  </span>
+                  <span class="wt-step-num">4 of 5</span>
+                </div>
+                <h2 class="wt-title">Replication Badges</h2>
+                <p class="wt-desc">
+                  On journal pages, FLoRA injects inline badges next to DOI
+                  links and adds a draggable <strong>FLoRA tab</strong> to the
+                  right edge of the page. Click it to open the full Meta Report
+                  panel.
+                </p>
+                <div class="wt-callouts">
+                  <div class="wt-callout callout-confirmed">
+                    <div class="wt-callout-icon icon-flora">F</div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">Inline badge</div>
+                      <div class="wt-callout-text">
+                        Appears next to every DOI link on the page. Click to
+                        view the replication report on the FORRT Atlas.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="wt-callout callout-confirmed">
+                    <div class="wt-callout-icon icon-confirmed">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <path d="M9 9h6M9 12h6M9 15h4" />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">FLoRA tab</div>
+                      <div class="wt-callout-text">
+                        A draggable tab appears on the right edge. Click to open
+                        the Meta Report panel with full replication details.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Demo: article full-width + FLoRA tab floating on right edge with drag animation -->
+              <div class="step-demo" id="demo-3">
+                <button class="replay-btn">
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 .49-4" />
+                  </svg>
+                  Replay
+                </button>
+                <div class="mock-browser">
+                  <div class="mock-browser-bar">
+                    <div class="mock-browser-dots">
+                      <span></span><span></span><span></span>
+                    </div>
+                    <div class="mock-url">
+                      journals.sagepub.com/doi/10.1177/0956797612441216
+                    </div>
+                  </div>
+                  <!-- Article content takes full width -->
+                  <div class="mock-pages-single">
+                    <div class="mock-article-body">
+                      <div class="mock-journal-name">Psychological Science</div>
+                      <h3 class="mock-article-title">
+                        Preparatory Power Posing Affects Nonverbal Presence and
+                        Job Interview Performance
+                      </h3>
+                      <div class="mock-article-authors">
+                        Amy J. D. Cuddy, Caroline A. Wilmuth, Dana R. Carney
+                      </div>
+                      <div class="mock-article-meta">
+                        <span>Published October 2012</span>
+                        <span>&middot;</span>
+                        <span>
+                          DOI:
+                          <a class="mock-doi-link">10.1177/0956797612441216</a>
+                          <a class="mock-inline-badge anim-badge">
+                            <span class="badge-label-m">FLoRA</span>
+                            <span>3 replications</span>
+                          </a>
+                        </span>
+                      </div>
+                      <div class="mock-article-abstract">
+                        <span class="mock-abstract-label">Abstract</span>
+                        Before high-stakes social evaluations, people often
+                        engage in preparatory activities. We proposed that a
+                        person's nonverbal behavior immediately before such an
+                        evaluation affects performance outcomes in key
+                        domains...
+                      </div>
+                    </div>
+                  </div>
+                  <!-- FLoRA tab — fixed to right edge, NOT in the flex layout.
+                       Animates: bounce entry → pulse glow × 3 → drag up → drag down → settle -->
+                  <div class="mock-flora-tab-floating">
+                    <div class="mock-flora-tab">
+                      <div class="mock-flora-tab-grip">
+                        <span></span><span></span><span></span> <span></span
+                        ><span></span><span></span>
+                      </div>
+                      <span class="mock-flora-tab-label">FLoRA</span>
+                      <span class="mock-flora-tab-arrow">&#8249;</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- /step-3 -->
+
+          <!-- ─────────────────────────────────
+               STEP 4 — Meta Report Panel
+               ───────────────────────────────── -->
+          <div class="wt-step" id="step-4">
+            <div class="wt-step-inner wider">
+              <div class="wt-info">
+                <div class="wt-context">
+                  <span class="wt-context-tag tag-pages">
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                    >
+                      <path
+                        d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                      />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                    Journal &amp; Article Pages
+                  </span>
+                  <span class="wt-step-num">5 of 5</span>
+                </div>
+                <h2 class="wt-title">Meta Report Panel</h2>
+                <p class="wt-desc">
+                  Click the FLoRA tab to open the Meta Report panel. It lists
+                  every known replication and reproduction study, color-coded by
+                  outcome, plus references with PubPeer comment counts.
+                </p>
+                <div class="wt-callouts">
+                  <div class="wt-callout callout-confirmed">
+                    <div class="wt-callout-icon icon-confirmed">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 16 16"
+                        fill="white"
+                      >
+                        <path
+                          d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"
+                        />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">Outcome badges</div>
+                      <div class="wt-callout-text">
+                        Each replication entry shows "success", "failed", or
+                        "mixed" — color-coded for quick scanning.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="wt-callout callout-neutral">
+                    <div class="wt-callout-icon icon-neutral">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <path
+                          d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                        />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">PubPeer comment counts</div>
+                      <div class="wt-callout-text">
+                        References in the paper that have PubPeer comments are
+                        listed below the replications. Click to open the thread.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Demo: article header + full open panel -->
+              <div class="step-demo" id="demo-4">
+                <button class="replay-btn">
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 .49-4" />
+                  </svg>
+                  Replay
+                </button>
+                <div class="mock-browser">
+                  <div class="mock-browser-bar">
+                    <div class="mock-browser-dots">
+                      <span></span><span></span><span></span>
+                    </div>
+                    <div class="mock-url">
+                      journals.sagepub.com/doi/10.1177/0956797612441216
+                    </div>
+                  </div>
+                  <div class="mock-pages-body">
+                    <!-- Article content (compact) -->
+                    <div
+                      class="mock-article-body"
+                      style="border-right: 0px !important"
+                    >
+                      <div class="mock-journal-name">Psychological Science</div>
+                      <h3 class="mock-article-title">
+                        Preparatory Power Posing Affects Nonverbal Presence and
+                        Job Interview Performance
+                      </h3>
+                      <div class="mock-article-authors">
+                        Amy J. D. Cuddy, Caroline A. Wilmuth, Dana R. Carney
+                      </div>
+                      <div class="mock-article-meta">
+                        <span>Published October 2012</span>
+                        <span>&middot;</span>
+                        <span>
+                          DOI:
+                          <a class="mock-doi-link">10.1177/0956797612441216</a>
+                          <a class="mock-inline-badge">
+                            <span class="badge-label-m">FLoRA</span>
+                            <span>3 replications</span>
+                          </a>
+                        </span>
+                      </div>
+                      <div class="mock-article-abstract">
+                        <span class="mock-abstract-label">Abstract</span>
+                        Before high-stakes social evaluations, people often
+                        engage in preparatory activities. We proposed that a
+                        person's nonverbal behavior immediately before such an
+                        evaluation affects performance outcomes...
+                      </div>
+                    </div>
+
+                    <!-- FLoRA panel OPEN — slides in from right -->
+                    <div class="mock-panel-container anim-tab">
+                      <!-- Tab button — arrow pointing left = panel is open -->
+                      <div class="mock-flora-tab">
+                        <div class="mock-flora-tab-grip">
+                          <span></span><span></span><span></span> <span></span
+                          ><span></span><span></span>
+                        </div>
+                        <span class="mock-flora-tab-label">FLoRA</span>
+                        <span class="mock-flora-tab-arrow">&#8249;</span>
+                      </div>
+                      <!-- Open panel content -->
+                      <div class="mock-flora-panel">
+                        <!-- Header matching real panel code -->
+                        <div
+                          style="
+                            background: linear-gradient(
+                              135deg,
+                              #853953,
+                              #612d53
+                            );
+                            padding: 12px 14px;
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            flex-shrink: 0;
+                          "
+                        >
+                          <span
+                            style="
+                              color: #fff;
+                              font-weight: 700;
+                              font-size: 12px;
+                              background: rgba(255, 255, 255, 0.2);
+                              padding: 2px 7px;
+                              border-radius: 4px;
+                            "
+                            >FLoRA</span
+                          >
+                          <span
+                            style="
+                              color: #fff;
+                              font-size: 13px;
+                              font-weight: 500;
+                              flex: 1;
+                            "
+                            >Meta Report</span
+                          >
+                          <span
+                            style="
+                              color: rgba(255, 255, 255, 0.8);
+                              font-size: 18px;
+                              line-height: 1;
+                              cursor: pointer;
+                            "
+                            >×</span
+                          >
+                        </div>
+                        <!-- Article title -->
+                        <div
+                          style="
+                            border-bottom: 1px solid #e8e8e8;
+                            background: #f5f8fa;
+                            padding: 10px 14px;
+                          "
+                        >
+                          <a
+                            style="
+                              color: #853953;
+                              font-weight: 600;
+                              font-size: 13px;
+                              text-decoration: none;
+                              line-height: 1.4;
+                              display: block;
+                            "
+                            >Preparatory Power Posing Affects Nonverbal
+                            Presence...</a
+                          >
+                        </div>
+                        <!-- Replications section -->
+                        <div
+                          style="
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #5f6368;
+                            text-transform: uppercase;
+                            padding: 8px 14px;
+                            letter-spacing: 0.5px;
+                            border-bottom: 1px solid #e8e8e8;
+                          "
+                        >
+                          Replications
+                        </div>
+                        <!-- Entry 1 -->
+                        <div
+                          style="
+                            padding: 8px 14px;
+                            border-bottom: 1px solid #f0f0f0;
+                          "
+                        >
+                          <div
+                            style="
+                              display: flex;
+                              align-items: flex-start;
+                              justify-content: space-between;
+                              gap: 4px;
+                              margin-bottom: 2px;
+                            "
+                          >
+                            <span
+                              style="
+                                font-size: 11.5px;
+                                font-weight: 600;
+                                color: #202124;
+                                line-height: 1.3;
+                                flex: 1;
+                              "
+                              >Ranehill et al. (2015)</span
+                            >
+                            <span
+                              style="
+                                font-size: 10px;
+                                font-weight: 600;
+                                padding: 2px 6px;
+                                border-radius: 10px;
+                                white-space: nowrap;
+                                flex-shrink: 0;
+                                background: #fff3e0;
+                                color: #e65100;
+                              "
+                              >mixed</span
+                            >
+                          </div>
+                          <div style="font-size: 10.5px; color: #5f6368">
+                            Psychological Science &middot; 2015
+                          </div>
+                        </div>
+                        <!-- Entry 2 -->
+                        <div
+                          style="
+                            padding: 8px 14px;
+                            border-bottom: 1px solid #f0f0f0;
+                          "
+                        >
+                          <div
+                            style="
+                              display: flex;
+                              align-items: flex-start;
+                              justify-content: space-between;
+                              gap: 4px;
+                              margin-bottom: 2px;
+                            "
+                          >
+                            <span
+                              style="
+                                font-size: 11.5px;
+                                font-weight: 600;
+                                color: #202124;
+                                line-height: 1.3;
+                                flex: 1;
+                              "
+                              >Garrison et al. (2016)</span
+                            >
+                            <span
+                              style="
+                                font-size: 10px;
+                                font-weight: 600;
+                                padding: 2px 6px;
+                                border-radius: 10px;
+                                white-space: nowrap;
+                                flex-shrink: 0;
+                                background: #fce8e6;
+                                color: #c5221f;
+                              "
+                              >failed</span
+                            >
+                          </div>
+                          <div style="font-size: 10.5px; color: #5f6368">
+                            Social Psych &amp; Personality Sci &middot; 2016
+                          </div>
+                        </div>
+                        <!-- Entry 3 -->
+                        <div
+                          style="
+                            padding: 8px 14px;
+                            border-bottom: 1px solid #e8e8e8;
+                          "
+                        >
+                          <div
+                            style="
+                              display: flex;
+                              align-items: flex-start;
+                              justify-content: space-between;
+                              gap: 4px;
+                              margin-bottom: 2px;
+                            "
+                          >
+                            <span
+                              style="
+                                font-size: 11.5px;
+                                font-weight: 600;
+                                color: #202124;
+                                line-height: 1.3;
+                                flex: 1;
+                              "
+                              >Ronay et al. (2016)</span
+                            >
+                            <span
+                              style="
+                                font-size: 10px;
+                                font-weight: 600;
+                                padding: 2px 6px;
+                                border-radius: 10px;
+                                white-space: nowrap;
+                                flex-shrink: 0;
+                                background: #fce8e6;
+                                color: #c5221f;
+                              "
+                              >failed</span
+                            >
+                          </div>
+                          <div style="font-size: 10.5px; color: #5f6368">
+                            Comp. Results in Social Psych &middot; 2016
+                          </div>
+                        </div>
+                        <!-- References section -->
+                        <div
+                          style="
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #5f6368;
+                            text-transform: uppercase;
+                            padding: 8px 14px;
+                            letter-spacing: 0.5px;
+                            border-bottom: 1px solid #e8e8e8;
+                          "
+                        >
+                          References
+                        </div>
+                        <div
+                          style="
+                            padding: 8px 14px;
+                            border-bottom: 1px solid #f0f0f0;
+                          "
+                        >
+                          <div
+                            style="
+                              font-size: 11.5px;
+                              color: #202124;
+                              margin-bottom: 3px;
+                              line-height: 1.3;
+                            "
+                          >
+                            Nonverbal behavior and the vertical dimension of
+                            social relations
+                          </div>
+                          <span
+                            style="
+                              font-size: 10px;
+                              font-weight: 500;
+                              padding: 2px 6px;
+                              border-radius: 10px;
+                              background: #e8f0fe;
+                              color: #1967d2;
+                            "
+                            >1 comment</span
+                          >
+                        </div>
+                        <div
+                          style="
+                            padding: 8px 14px;
+                            border-bottom: 1px solid #e8e8e8;
+                          "
+                        >
+                          <div
+                            style="
+                              font-size: 11.5px;
+                              color: #202124;
+                              margin-bottom: 3px;
+                              line-height: 1.3;
+                            "
+                          >
+                            Inhibiting the facial feedback hypothesis
+                          </div>
+                          <span
+                            style="
+                              font-size: 10px;
+                              font-weight: 500;
+                              padding: 2px 6px;
+                              border-radius: 10px;
+                              background: #e8f0fe;
+                              color: #1967d2;
+                            "
+                            >2 comments</span
+                          >
+                        </div>
+                        <!-- Open in FLoRA Atlas button -->
+                        <div
+                          style="
+                            padding: 10px 14px;
+                            background: #f5f8fa;
+                            border-top: 1px solid #e8e8e8;
+                            text-align: right;
+                            margin-top: auto;
+                          "
+                        >
+                          <span
+                            style="
+                              font-size: 11.5px;
+                              font-weight: 600;
+                              color: #fff;
+                              background: linear-gradient(
+                                135deg,
+                                #853953,
+                                #612d53
+                              );
+                              padding: 6px 10px;
+                              border-radius: 6px;
+                              cursor: pointer;
+                            "
+                            >Open in FLoRA Atlas</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- /step-4 -->
+
+          <!-- ═══ NAVIGATION ═══ -->
+          <div class="wt-nav">
+            <button class="wt-nav-btn" id="prev-btn" disabled>
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back
+            </button>
+
+            <div class="wt-nav-center">
+              <div class="wt-dots-row">
+                <button class="wt-dot active" data-step="0"></button>
+                <div class="wt-dot-line"></div>
+                <button class="wt-dot" data-step="1"></button>
+                <div class="wt-dot-line"></div>
+                <button class="wt-dot" data-step="2"></button>
+                <div class="wt-dot-line"></div>
+                <button class="wt-dot" data-step="3"></button>
+                <div class="wt-dot-line"></div>
+                <button class="wt-dot" data-step="4"></button>
+              </div>
+            </div>
+
+            <button class="wt-nav-btn primary" id="next-btn">Next →</button>
+          </div>
+        </div>
+        <!-- /wt-card -->
+      </div>
+      <!-- /wt-container -->
+    </main>
+
+    <!-- ═══ FOOTER ═══ -->
+    <div class="footer-bar">
+      <span
+        >FORRT &middot; Framework for Open and Reproducible Research
+        Training</span
+      >
+      <div>
+        <a href="https://forrt.org/about/us/" target="_blank" rel="noopener"
+          >About</a
+        >
+        <a
+          href="https://forrt.org/apps/fred_explorer.html"
+          target="_blank"
+          rel="noopener"
+          >FReD Explorer</a
+        >
+        <a
+          href="https://forrt.org/about/community/"
+          target="_blank"
+          rel="noopener"
+          >Contact</a
+        >
+      </div>
+    </div>
+
+    <script src="walkthrough.js"></script>
+  </body>
+</html>

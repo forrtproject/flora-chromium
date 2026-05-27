@@ -1,6 +1,6 @@
 import type { DoiString, LookupState, ReplicationResult, ReplicationEntry, OriginalEntry, DoiContext } from "../shared/types";
 import type { PubPeerFeedback } from "../shared/pubpeer-api";
-import { normaliseDOI } from "../shared/doi-normalise";
+import { extractDoiOccurrences, type DoiOccurrence } from "../shared/doi-extractor";
 import { debugLog } from "../shared/debug";
 import { getSettings } from "../shared/settings";
 import styles from "./styles.css";
@@ -304,50 +304,59 @@ function adjustPageForBanner(): void {
 // Inline badges (still use shadow DOM for isolation)
 // ──────────────────────────────────────────────
 
+// Among occurrences of the same DOI, prefer the one with the most accurate
+// position for badge placement. Lower number = better.
+const OCCURRENCE_RANK: Record<DoiOccurrence["kind"], number> = {
+    "link-text": 0,
+    "link-doi-org": 1,
+    "text": 2,
+    "link-embedded": 3,
+};
+
 export function renderInlineBadges(
-    pageState: Map<DoiString, LookupState>
+    pageState: Map<DoiString, LookupState>,
+    occurrences?: DoiOccurrence[]
 ): void {
-    const allLinks = document.querySelectorAll<HTMLAnchorElement>("a[href]");
-    const badgedDois = new Set<DoiString>();
+    // Use occurrences captured at extraction time when the caller passes them
+    // in (no regex re-scan); otherwise compute them now from the live DOM.
+    const occs = occurrences ?? extractDoiOccurrences(document);
 
-    debugLog("renderInlineBadges: scanning", allLinks.length, "links, pageState has", pageState.size, "DOIs:",
-        [...pageState.entries()].map(([doi, s]) => `${doi}(${s.status})`));
-
-    for (const link of allLinks) {
-        if (link.nextElementSibling?.classList.contains(BADGE_CLASS)) continue;
-
-        // Only badge links whose visible text contains a DOI, or that point to doi.org
-        const linkText = link.innerText ? link.innerText : link.textContent;
-        const textMatch = linkText.match(/\b(10\.\d{4,}(?:\.\d+)*\/\S+)\b/);
-        const isDoiOrgLink = /^https?:\/\/(dx\.)?doi\.org\//i.test(link.href);
-        const hrefMatch = isDoiOrgLink
-            ? link.href.match(/\b(10\.\d{4,}(?:\.\d+)*\/\S+)\b/)
-            : null;
-        const rawDoi = textMatch?.[0] ?? hrefMatch?.[1];
-        if (!rawDoi) continue;
-
-        const doi = normaliseDOI(rawDoi);
-        if (!doi) continue;
-
-        // Only badge the first occurrence of each DOI
-        if (badgedDois.has(doi)) {
-            debugLog("renderInlineBadges: skipping duplicate", doi);
-            continue;
+    // Pick the best occurrence per DOI for placement.
+    const bestByDoi = new Map<DoiString, DoiOccurrence>();
+    for (const occ of occs) {
+        const cur = bestByDoi.get(occ.doi);
+        if (!cur || OCCURRENCE_RANK[occ.kind] < OCCURRENCE_RANK[cur.kind]) {
+            bestByDoi.set(occ.doi, occ);
         }
+    }
 
-        const state = pageState.get(doi);
+    debugLog("renderInlineBadges:", bestByDoi.size, "DOI(s) located;",
+        "pageState has", pageState.size, "DOI(s):",
+        [...pageState.entries()].map(([d, s]) => `${d}(${s.status})`));
+
+    for (const occ of bestByDoi.values()) {
+        const state = pageState.get(occ.doi);
         if (!state || state.status !== "matched") {
-            debugLog("renderInlineBadges: DOI not matched in pageState:", doi, "status:", state?.status ?? "not found");
+            const status = state?.status ?? "not found";
+            // "no-match" is expected — it means FORRT simply has no replication
+            // record for this DOI, not that extraction or lookup failed.
+            debugLog(
+                `renderInlineBadges: no badge for ${occ.doi} —`,
+                status === "no-match"
+                    ? "FORRT has no replication record for this DOI (expected)"
+                    : `status: ${status}`
+            );
             continue;
         }
-
-        if (!isVisible(link)) continue;
 
         const r = state.result;
         const stats = r.record.stats;
-
         const hasData = stats.n_replications_total > 0 || stats.n_reproductions_total > 0;
         if (!hasData) continue;
+
+        if (!isVisible(occ.anchor)) continue;
+        // Skip if this anchor already carries a badge (idempotent re-runs).
+        if (anchorAlreadyBadged(occ.anchor)) continue;
 
         const replLabel = stats.n_replications_total === 1 ? "replication" : "replications";
         const reproLabel = stats.n_reproductions_total === 1 ? "reproduction" : "reproductions";
@@ -372,10 +381,26 @@ export function renderInlineBadges(
     `;
         shadow.appendChild(badge);
 
-        link.insertAdjacentElement("afterend", badgeHost);
-        badgedDois.add(doi);
-        debugLog("renderInlineBadges: badged", doi, "link text:", link.textContent?.slice(0, 60));
+        placeBadge(occ.anchor, badgeHost);
+        debugLog("renderInlineBadges: badged", occ.doi, "as", occ.kind);
     }
+}
+
+/** Place a badge relative to its anchor: after the anchor for links, inside
+ *  for everything else (reference entries, paragraphs). */
+function placeBadge(anchor: HTMLElement, badge: HTMLElement): void {
+    if (anchor.tagName === "A") {
+        anchor.insertAdjacentElement("afterend", badge);
+    } else {
+        anchor.appendChild(badge);
+    }
+}
+
+function anchorAlreadyBadged(anchor: HTMLElement): boolean {
+    if (anchor.tagName === "A") {
+        return !!anchor.nextElementSibling?.classList.contains(BADGE_CLASS);
+    }
+    return !!anchor.lastElementChild?.classList.contains(BADGE_CLASS);
 }
 
 function isVisible(el: HTMLElement): boolean {
@@ -564,6 +589,10 @@ export function hideAllFloraUI(): void {
         el.style.display = "none";
     }
 
+    for (const el of document.querySelectorAll<HTMLElement>(".flora-doi-label")) {
+        el.style.display = "none";
+    }
+
   const setup = document.getElementById(SETUP_HOST_ID);
   if (setup) setup.style.display = "none";
 
@@ -579,6 +608,10 @@ export function showAllFloraUI(): void {
     if (modal) modal.style.display = "";
 
     for (const el of document.querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)) {
+        el.style.display = "";
+    }
+
+    for (const el of document.querySelectorAll<HTMLElement>(".flora-doi-label")) {
         el.style.display = "";
     }
 
@@ -760,14 +793,18 @@ function setupTabPositioning(tab: HTMLElement): void {
 
 export function renderPubPeerPanel(
   articleFeedbacks: PubPeerFeedback[],
-  referenceFeedbacks: PubPeerFeedback[],
+  references: { doi: DoiString; title: string }[],
   pageState: Map<DoiString, LookupState>,
   doiContext: Map<DoiString, DoiContext>,
-  refFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map()
+  refFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map(),
+  retractions: RetractionResponse[] = []
 ): void {
   const existingHost = document.getElementById(PUBPEER_PANEL_ID);
-  const existingPanel = existingHost?.querySelector<HTMLElement>(".flora-sliding-panel");
-  const wasOpen = existingPanel?.style.transform === "translateX(0)";
+  // Track open state via a stateful marker on the host — comparing inline
+  // `transform` strings is fragile because browsers may normalise the value
+  // (e.g. `translateX(0)` → `translateX(0px)`). The marker is set in
+  // openPanel/closePanel below so reading it here is always reliable.
+  const wasOpen = existingHost?.dataset.floraPanelOpen === "1";
   cleanupTabPositioning();
   existingHost?.remove();
 
@@ -799,7 +836,24 @@ export function renderPubPeerPanel(
 
   const hasReplicationData = articleReplications > 0 || articleReproductions > 0 || articleOriginals > 0;
 
-  if (withComments.length === 0 && !hasReplicationData) return;
+  // Retraction status — keyed by the DOI as it appears on the page (originDoi).
+  const retractionByDoi = new Map<DoiString, RetractionResponse>();
+  for (const r of retractions) retractionByDoi.set(r.originDoi, r);
+  const articleRetraction = articleDois
+    .map((doi) => retractionByDoi.get(doi))
+    .find((r): r is RetractionResponse => r !== undefined);
+
+  // The panel always renders on a recognised article page (checkPubPeer only
+  // calls this when a primary DOI exists). When nothing is flagged it still
+  // shows the article title and the "No PubPeer comments" empty state, so the
+  // reader can see FLoRA ran and found nothing rather than seeing no UI at all.
+  debugLog(
+    "renderPubPeerPanel:",
+    `articleComments=${withComments.length}`,
+    `replicationData=${hasReplicationData}`,
+    `articleRetracted=${!!articleRetraction}`,
+    `flaggedRefs=${references.length}`
+  );
 
   const primary = withComments.length > 0
     ? withComments.reduce((best, f) => f.total_comments > best.total_comments ? f : best)
@@ -918,24 +972,55 @@ export function renderPubPeerPanel(
     : null;
 
   const articleTitleEl = document.createElement("div");
+  articleTitleEl.style.cssText = "display:flex;align-items:center;gap:8px;padding:12px 16px;";
+  // OA placeholder for the main article — filled in by the Unpaywall lookup below.
+  // Kept as a sibling of the title (not a child of titleLink) to avoid nested <a>.
+  let articleOaPlaceholder: HTMLElement | undefined;
   if (articleFloraUrl) {
     const titleLink = document.createElement("a");
     titleLink.href = articleFloraUrl;
     titleLink.target = "_blank";
     titleLink.rel = "noopener";
     titleLink.style.cssText =
-      "display:inline-flex;align-items:flex-start;gap:4px;color:#853953;font-weight:600;padding:12px 16px;" +
-      "font-size:18px;text-decoration:none;line-height:1.4;word-break:break-word;";
+      "display:inline-flex;align-items:flex-start;gap:4px;color:#853953;font-weight:600;" +
+      "font-size:18px;text-decoration:none;line-height:1.4;word-break:break-word;flex:1;min-width:0;";
     const titleSpan = document.createElement("span");
     titleSpan.style.cssText = "text-transform:capitalize;";
     titleSpan.textContent = articleTitleText;
     titleLink.appendChild(titleSpan);
     articleTitleEl.appendChild(titleLink);
   } else {
-    articleTitleEl.style.cssText = "color:#853953;font-weight:600;font-size:18px;padding:12px 16px;";
-    articleTitleEl.textContent = articleTitleText;
+    const titleSpan = document.createElement("span");
+    titleSpan.style.cssText =
+      "color:#853953;font-weight:600;font-size:18px;line-height:1.4;word-break:break-word;flex:1;min-width:0;";
+    titleSpan.textContent = articleTitleText;
+    articleTitleEl.appendChild(titleSpan);
+  }
+  if (articleDois.length > 0) {
+    articleOaPlaceholder = document.createElement("span");
+    articleOaPlaceholder.style.cssText = "flex-shrink:0;";
+    articleTitleEl.appendChild(articleOaPlaceholder);
   }
   summary.appendChild(articleTitleEl);
+
+  // Retraction alert — shown when the article's DOI appears in Retraction Watch data
+  if (articleRetraction) {
+    const retractBanner = document.createElement("a");
+    retractBanner.href = `https://doi.org/${articleRetraction.doi}`;
+    retractBanner.target = "_blank";
+    retractBanner.rel = "noopener noreferrer";
+    retractBanner.title = "View the retraction notice";
+    retractBanner.style.cssText =
+      "display:flex;align-items:center;gap:8px;margin:0 16px 12px;padding:10px 12px;" +
+      "background:#fdecef;border:1px solid #f5a3b4;border-left:4px solid #FF1744;" +
+      "border-radius:8px;text-decoration:none;";
+    retractBanner.innerHTML =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="18" height="18" fill="#FF1744" style="flex-shrink:0;">` +
+      `<path d="M320 64C334.7 64 348.2 72.1 355.2 85L571.2 485C577.9 497.4 577.6 512.4 570.4 524.5C563.2 536.6 550.1 544 536 544L104 544C89.9 544 76.8 536.6 69.6 524.5C62.4 512.4 62.1 497.4 68.8 485L284.8 85C291.8 72.1 305.3 64 320 64zM320 416C302.3 416 288 430.3 288 448C288 465.7 302.3 480 320 480C337.7 480 352 465.7 352 448C352 430.3 337.7 416 320 416zM320 224C301.8 224 287.3 239.5 288.6 257.7L296 361.7C296.9 374.2 307.4 384 319.9 384C332.5 384 342.9 374.3 343.8 361.7L351.2 257.7C352.5 239.5 338.1 224 319.8 224z"/></svg>` +
+      `<span style="font-size:12px;font-weight:600;color:#a30d2d;line-height:1.4;">` +
+      `This article has been retracted. `;
+    summary.appendChild(retractBanner);
+  }
 
   // Replication/reproduction/original entry lists from FORRT API
   const renderEntrySection = (
@@ -1026,6 +1111,12 @@ export function renderPubPeerPanel(
   renderEntrySection(allReproductionEntries, `Reproduction${allReproductionEntries.length !== 1 ? "s" : ""}`);
   renderEntrySection(allOriginalEntries, `Original Paper${allOriginalEntries.length !== 1 ? "s" : ""}`);
 
+  // Include the main article in the Unpaywall lookup. Skip if its DOI already
+  // belongs to a replication entry so that entry's placeholder isn't clobbered.
+  if (articleOaPlaceholder && articleDois.length > 0 && !oaPlaceholders.has(articleDois[0])) {
+    oaPlaceholders.set(articleDois[0], articleOaPlaceholder);
+  }
+
   void (async () => {
     if (oaPlaceholders.size === 0) return;
     const { email } = await getSettings();
@@ -1048,10 +1139,20 @@ export function renderPubPeerPanel(
         icon.target = "_blank";
         icon.rel = "noopener noreferrer";
         icon.title = "Free PDF available via Unpaywall";
+        // Both the article title and the reference/replication entries get a
+        // circular OA badge so the status reads as a deliberate element; the
+        // title's is larger to match its prominence.
+        const isArticleBadge = placeholder === articleOaPlaceholder;
+        const circleSize = isArticleBadge ? 30 : 20;
+        const svgSize = isArticleBadge ? 16 : 11;
         icon.style.cssText =
-          "flex-shrink:0;display:inline-flex;align-items:center;color:#853953;line-height:1;";
+          `flex-shrink:0;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;` +
+          `width:${circleSize}px;height:${circleSize}px;border-radius:50%;background:#f9f0f4;` +
+          `border:1px solid #d4a5b8;color:#853953;line-height:1;transition:background 0.15s;`;
+        icon.addEventListener("mouseenter", () => { icon.style.background = "#f1dde5"; });
+        icon.addEventListener("mouseleave", () => { icon.style.background = "#f9f0f4"; });
         icon.innerHTML =
-          `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" ` +
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${svgSize}" height="${svgSize}" viewBox="0 0 24 24" fill="none" ` +
           `stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">` +
           `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>` +
           `<path d="M7 11V7a5 5 0 0 1 9.9-1"/>` +
@@ -1063,9 +1164,13 @@ export function renderPubPeerPanel(
     }
   })();
 
-  // References — names + per-reference PubPeer comment count + replication tags
-  const refFeedbacksWithComments = referenceFeedbacks.filter((f) => f.total_comments > 0);
-  if (refFeedbacksWithComments.length > 0) {
+  // References — only the entries worth attention: the caller pre-filters to
+  // references with PubPeer comments, a retraction, or FORRT replication data,
+  // each carrying a canonical title. A flagged reference that happens to lack
+  // PubPeer comments (retraction- or replication-only) still shows a muted
+  // "No PubPeer comments" tag. The list is collapsible: first 5 visible, a
+  // toggle reveals the rest.
+  if (references.length > 0) {
     const refSection = document.createElement("div");
     refSection.style.cssText = "border-top:1px solid #e8e8e8;";
 
@@ -1073,95 +1178,156 @@ export function renderPubPeerPanel(
     refLabel.style.cssText =
       "font-size:14px;font-weight:600;color:#5f6368;text-transform:uppercase;" +
       "letter-spacing:0.5px;border-bottom:1px solid #e8e8e8;padding:10px 16px;";
-    refLabel.textContent = "References";
+    refLabel.textContent = `References (${references.length})`;
     refSection.appendChild(refLabel);
 
     const refList = document.createElement("ul");
     refList.style.cssText = "margin:0;list-style:none;padding:0;";
 
-    // Build URL→DOI reverse map from individual-lookup results for exact matching.
-    // PubPeer feedbacks carry no DOI, but a single-DOI lookup yields the same URL
-    // as the batch lookup, so URL is a stable key.
-    const feedbackUrlToDoi = new Map<string, DoiString>();
-    for (const [doi, feedback] of refFeedbackByDoi) {
-      feedbackUrlToDoi.set(feedback.url, doi);
-    }
+    const COLLAPSED_COUNT = 5;
+    const refItems: HTMLLIElement[] = [];
 
-    for (const ref of refFeedbacksWithComments) {
+    for (const ref of references) {
+      const doi = ref.doi;
+      const feedback = refFeedbackByDoi.get(doi);
       const li = document.createElement("li");
       li.style.cssText = "padding:10px 16px;border-bottom:1px solid #f0f0f0;";
 
+      // Canonical title resolved by the caller (PubPeer / Crossref / OpenAlex).
+      const title = ref.title || feedback?.title || doi;
       const titleLink = document.createElement("a");
-      titleLink.href = ref.url;
+      titleLink.href = feedback?.url || `https://doi.org/${doi}`;
       titleLink.target = "_blank";
       titleLink.rel = "noopener";
+      titleLink.title = title;
+      // Clamp to 3 lines so a long/unparsed citation can't blow up the row.
       titleLink.style.cssText =
-        "display:block;font-size:12px;font-weight:500;color:#853953;" +
+        "display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;" +
+        "overflow:hidden;text-overflow:ellipsis;word-break:break-word;" +
+        "font-size:12px;font-weight:500;color:#853953;" +
         "text-decoration:none;line-height:1.4;margin-bottom:6px;";
-      titleLink.textContent = ref.title || "Unknown reference";
+      titleLink.textContent = title;
 
       const tagsRow = document.createElement("div");
       tagsRow.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:4px;";
 
-      const matchedDoi = feedbackUrlToDoi.get(ref.url);
-      if (matchedDoi) {
-        const s = pageState.get(matchedDoi);
-        if (s?.status === "matched") {
-          const { n_replications_total, n_reproductions_total, n_originals_total } = s.result.record.stats;
-          const floraUrl = `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(matchedDoi)}`;
-          const makeTag = (label: string, bg: string, fg: string, border: string): HTMLAnchorElement => {
-            const tag = document.createElement("a");
-            tag.href = floraUrl;
-            tag.target = "_blank";
-            tag.rel = "noopener noreferrer";
-            tag.style.cssText =
-              `flex-shrink:0;font-size:10px;font-weight:600;color:${fg};` +
-              `background:${bg};border:1px solid ${border};padding:1px 7px;border-radius:10px;` +
-              "white-space:nowrap;text-decoration:none;cursor:pointer;";
-            tag.textContent = label;
-            return tag;
-          };
-          if (n_replications_total > 0) {
-            tagsRow.appendChild(makeTag(
-              `${n_replications_total} Replication${n_replications_total === 1 ? "" : "s"}`,
-              "#e0f2fe", "#0369a1", "#7dd3fc"
-            ));
-          }
-          if (n_reproductions_total > 0) {
-            tagsRow.appendChild(makeTag(
-              `${n_reproductions_total} Reproduction${n_reproductions_total === 1 ? "" : "s"}`,
-              "#ede9fe", "#6d28d9", "#c4b5fd"
-            ));
-          }
-          if (n_originals_total > 0) {
-            tagsRow.appendChild(makeTag("Is Replication", "#fef9c3", "#854d0e", "#fde047"));
-          }
+      const s = pageState.get(doi);
+      if (s?.status === "matched") {
+        const { n_replications_total, n_reproductions_total, n_originals_total } = s.result.record.stats;
+        const floraUrl = `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(doi)}`;
+        const makeTag = (label: string, bg: string, fg: string, border: string): HTMLAnchorElement => {
+          const tag = document.createElement("a");
+          tag.href = floraUrl;
+          tag.target = "_blank";
+          tag.rel = "noopener noreferrer";
+          tag.style.cssText =
+            `flex-shrink:0;font-size:10px;font-weight:600;color:${fg};` +
+            `background:${bg};border:1px solid ${border};padding:1px 7px;border-radius:10px;` +
+            "white-space:nowrap;text-decoration:none;cursor:pointer;";
+          tag.textContent = label;
+          return tag;
+        };
+        if (n_replications_total > 0) {
+          tagsRow.appendChild(makeTag(
+            `${n_replications_total} Replication${n_replications_total === 1 ? "" : "s"}`,
+            "#e0f2fe", "#0369a1", "#7dd3fc"
+          ));
+        }
+        if (n_reproductions_total > 0) {
+          tagsRow.appendChild(makeTag(
+            `${n_reproductions_total} Reproduction${n_reproductions_total === 1 ? "" : "s"}`,
+            "#ede9fe", "#6d28d9", "#c4b5fd"
+          ));
+        }
+        if (n_originals_total > 0) {
+          tagsRow.appendChild(makeTag("Is Replication", "#fef9c3", "#854d0e", "#fde047"));
         }
       }
 
-      const countPill = document.createElement("a");
-      countPill.href = ref.url;
-      countPill.target = "_blank";
-      countPill.rel = "noopener";
-      countPill.style.cssText =
-        "flex-shrink:0;font-size:10px;font-weight:600;color:#853953;" +
-        "background:#f9f0f4;border:1px solid #d4a5b8;padding:1px 7px;border-radius:10px;white-space:nowrap;" +
-        "text-decoration:none;cursor:pointer;";
-      countPill.textContent = `${ref.total_comments} ${ref.total_comments === 1 ? "comment" : "comments"}`;
-      tagsRow.appendChild(countPill);
+      const refRetraction = retractionByDoi.get(doi);
+      if (refRetraction) {
+        const retractTag = document.createElement("a");
+        retractTag.href = `https://doi.org/${refRetraction.doi}`;
+        retractTag.target = "_blank";
+        retractTag.rel = "noopener noreferrer";
+        retractTag.title = "View the retraction notice";
+        retractTag.style.cssText =
+          "flex-shrink:0;font-size:10px;font-weight:600;color:#fff;" +
+          "background:#FF1744;border:1px solid #FF1744;padding:1px 7px;border-radius:10px;" +
+          "white-space:nowrap;text-decoration:none;cursor:pointer;";
+        retractTag.textContent = "Retracted";
+        tagsRow.appendChild(retractTag);
+      }
+
+      if (feedback && feedback.total_comments > 0) {
+        const commentText = `${feedback.total_comments} ${feedback.total_comments === 1 ? "comment" : "comments"}`;
+        const pillW = Math.ceil(commentText.length * 6 + 14);
+        const pillH = 18;
+        const tmp = document.createElement("div");
+        tmp.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}" style="flex-shrink:0;cursor:pointer;display:inline-block;vertical-align:middle;">
+          <a href="${feedback.url}" target="_blank" rel="noopener" style="text-decoration:none;">
+            <rect x="0.5" y="0.5" width="${pillW - 1}" height="${pillH - 1}" rx="8.5" fill="#f9f0f4" stroke="#d4a5b8" stroke-width="1"/>
+            <text x="${pillW / 2}" y="13" fill="#853953" font-size="10" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" text-anchor="middle" text-decoration="none">${commentText}</text>
+          </a>
+        </svg>`;
+        const countPill = tmp.firstElementChild as SVGElement;
+        tagsRow.appendChild(countPill);
+      } else {
+        const noCommentsTag = document.createElement("span");
+        noCommentsTag.style.cssText =
+          "flex-shrink:0;font-size:10px;font-weight:600;color:#9aa0a6;" +
+          "background:#f1f3f4;border:1px solid #e0e0e0;padding:1px 7px;border-radius:10px;" +
+          "white-space:nowrap;";
+        noCommentsTag.textContent = "No PubPeer comments";
+        tagsRow.appendChild(noCommentsTag);
+      }
 
       li.appendChild(titleLink);
       li.appendChild(tagsRow);
+      refItems.push(li);
       refList.appendChild(li);
     }
 
     refSection.appendChild(refList);
+
+    // Collapsible behaviour — hide entries beyond COLLAPSED_COUNT by default.
+    if (refItems.length > COLLAPSED_COUNT) {
+      const hidden = refItems.slice(COLLAPSED_COUNT);
+      for (const li of hidden) li.style.display = "none";
+
+      const toggleWrap = document.createElement("div");
+      toggleWrap.style.cssText = "padding:8px 16px;text-align:center;border-bottom:1px solid #f0f0f0;";
+
+      const toggle = document.createElement("button");
+      toggle.style.cssText =
+        "all:unset;cursor:pointer;font-size:12px;font-weight:600;color:#853953;" +
+        "padding:4px 10px;border-radius:6px;transition:background 0.15s;";
+      toggle.addEventListener("mouseenter", () => { toggle.style.background = "#f9f0f4"; });
+      toggle.addEventListener("mouseleave", () => { toggle.style.background = ""; });
+
+      let expanded = false;
+      const setLabel = (): void => {
+        toggle.textContent = expanded
+          ? "Show fewer references"
+          : `Show ${hidden.length} more reference${hidden.length === 1 ? "" : "s"}`;
+      };
+      setLabel();
+      toggle.addEventListener("click", () => {
+        expanded = !expanded;
+        for (const li of hidden) li.style.display = expanded ? "" : "none";
+        setLabel();
+      });
+
+      toggleWrap.appendChild(toggle);
+      refSection.appendChild(toggleWrap);
+    }
+
     summary.appendChild(refSection);
   }
 
   // Single scrollable body between header and footer
   const scrollBody = document.createElement("div");
-  scrollBody.style.cssText = "flex:1;overflow-y:auto;";
+  scrollBody.style.cssText = "flex:1;overflow-y:auto; background: #f5f8fa;";
   scrollBody.appendChild(summary);
 
   // PubPeer comments section — only rendered when there is a primary PubPeer URL
@@ -1174,26 +1340,67 @@ export function renderPubPeerPanel(
     scrollBody.appendChild(commentsHeader);
 
     const iframeWrap = document.createElement("div");
-    iframeWrap.style.cssText = "height:500px;overflow:hidden;";
+    iframeWrap.style.cssText = "overflow:hidden;";
     const iframe = document.createElement("iframe");
     iframe.src = primary.url;
     iframe.title = "PubPeer comments";
     iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms");
-    iframe.style.cssText = "width:100%;height:100%;border:none;display:block;opacity:0;transition:opacity 0.15s;";
+    iframe.style.cssText = "width:100%;height:200px;border:none;display:block;opacity:0;transition:opacity 0.15s;overflow:hidden;";
 
     const revealIframe = (): void => { iframe.style.opacity = "1"; };
     const fallbackTimer = setTimeout(revealIframe, 3000);
-    const onCssReady = (e: MessageEvent): void => {
+    const onIframeMessage = (e: MessageEvent): void => {
       if (e.source !== iframe.contentWindow) return;
-      if ((e.data as { type?: string })?.type !== "FLORA_PUBPEER_CSS_READY") return;
-      clearTimeout(fallbackTimer);
-      window.removeEventListener("message", onCssReady);
-      revealIframe();
+      const data = e.data as { type?: string; height?: number };
+      if (data?.type === "FLORA_PUBPEER_CSS_READY") {
+        clearTimeout(fallbackTimer);
+        revealIframe();
+      } else if (data?.type === "FLORA_PUBPEER_HEIGHT" && typeof data.height === "number") {
+        iframe.style.height = `${data.height}px`;
+      }
     };
-    window.addEventListener("message", onCssReady);
+    window.addEventListener("message", onIframeMessage);
 
     iframeWrap.appendChild(iframe);
     scrollBody.appendChild(iframeWrap);
+  } else {
+    // No PubPeer thread for this article — show an empty state so the panel
+    // doesn't read as broken when there's only FORRT replication data, or
+    // nothing flagged at all.
+    const commentsHeader = document.createElement("p");
+    commentsHeader.style.cssText =
+      "padding:12px 16px;font-size:14px;color:#5f6368;line-height:1.6;" +
+      "flex-shrink:0;margin:0;font-weight:600;background:#f5f8fa;text-transform:uppercase;" +
+      "border-top:1px solid #e8e8e8;";
+    commentsHeader.textContent = "Comments";
+    scrollBody.appendChild(commentsHeader);
+
+    const emptyState = document.createElement("div");
+    emptyState.style.cssText =
+      "display:flex;flex-direction:column;align-items:center;gap:8px;" +
+      "padding:32px 24px;text-align:center;color:#9aa0a6;";
+    emptyState.innerHTML =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" ` +
+      `fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">` +
+      `<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>` +
+      `<span style="font-size:13px;font-weight:500;color:#5f6368;">No PubPeer comments yet</span>` +
+      `<span style="font-size:12px;line-height:1.5;">This article hasn't been discussed on PubPeer.</span>`;
+
+    const startDiscussion = document.createElement("a");
+    startDiscussion.href = articleDois.length > 0
+      ? `https://pubpeer.com/search?q=${encodeURIComponent(articleDois[0])}`
+      : "https://pubpeer.com/";
+    startDiscussion.target = "_blank";
+    startDiscussion.rel = "noopener";
+    startDiscussion.textContent = "Start a discussion on PubPeer";
+    startDiscussion.style.cssText =
+      "all:unset;cursor:pointer;margin-top:8px;padding:6px 14px;font-size:12px;font-weight:500;" +
+      "color:#853953;border:1px solid #853953;border-radius:6px;transition:background 0.15s;";
+    startDiscussion.addEventListener("mouseenter", () => { startDiscussion.style.background = "#f9f0f4"; });
+    startDiscussion.addEventListener("mouseleave", () => { startDiscussion.style.background = ""; });
+    emptyState.appendChild(startDiscussion);
+
+    scrollBody.appendChild(emptyState);
   }
 
   panel.appendChild(scrollBody);
@@ -1222,24 +1429,26 @@ export function renderPubPeerPanel(
     // Clear animation fill so JS can freely control 'right'
     tab.style.animation = "none";
     isOpen = true;
+    host.dataset.floraPanelOpen = "1";
     panel.style.transform = "translateX(0)";
     tab.style.right = `${PANEL_WIDTH}px`;
     arrow.style.transform = "rotate(180deg)";
     tab.setAttribute("aria-label", "Close FLoRA panel");
     const style = document.createElement("style");
-    style.textContent = "#scite-popup{z-index:2147483646 !important;}";
+    style.textContent = "#scite-popup,#unpaywall{z-index:2147483646 !important;}";
     (document.head ?? document.documentElement).appendChild(style);
   };
 
   const closePanel = (): void => {
     tab.style.animation = "none";
     isOpen = false;
+    host.dataset.floraPanelOpen = "0";
     panel.style.transform = "translateX(100%)";
     tab.style.right = "0";
     arrow.style.transform = "rotate(0deg)";
     tab.setAttribute("aria-label", "Open FLoRA panel");
     const style = document.createElement("style");
-    style.textContent = "#scite-popup{z-index:2147483647 !important;}";
+    style.textContent = "#scite-popup,#unpaywall{z-index:2147483647 !important;}";
     (document.head ?? document.documentElement).appendChild(style);
   };
 
@@ -1255,10 +1464,24 @@ export function renderPubPeerPanel(
   host.appendChild(tab);
   host.appendChild(panel);
   document.body.appendChild(host);
+  debugLog(`renderPubPeerPanel: panel rendered (${references.length} reference row(s), reopened=${wasOpen})`);
 
   setupTabPositioning(tab);
 
-  if (wasOpen) openPanel();
+  if (wasOpen) {
+    // The panel was already open before this re-render (e.g. references
+    // lazy-loaded and triggered a content refresh). Snap it straight to the
+    // open position without the 0.3s slide-in — otherwise the user perceives
+    // the panel as closing and reopening on every content update. Drop the
+    // transition for one frame, set the open state, then restore it so future
+    // user-driven open/close still animates.
+    const savedTransition = panel.style.transition;
+    panel.style.transition = "none";
+    openPanel();
+    // Force a reflow so the transition reset takes effect before re-enabling.
+    void panel.offsetHeight;
+    panel.style.transition = savedTransition;
+  }
 }
 
 export function removePubPeerPanel(): void {

@@ -43,6 +43,11 @@ const configs: esbuild.BuildOptions[] = [
     entryPoints: ["src/popup/popup.ts"],
     outfile: "dist/popup.js",
   },
+  {
+    ...sharedOptions,
+    entryPoints: ["src/walkthrough/walkthrough.ts"],
+    outfile: "dist/walkthrough.js",
+  },
 ];
 
 function copyStaticAssets() {
@@ -51,6 +56,8 @@ function copyStaticAssets() {
   copyFileSync("src/options/styles.css", "dist/styles.css");
   copyFileSync("src/popup/popup.html", "dist/popup.html");
   copyFileSync("src/popup/popup.css", "dist/popup.css");
+  copyFileSync("src/walkthrough/index.html", "dist/walkthrough.html");
+  copyFileSync("src/walkthrough/walkthrough.css", "dist/walkthrough.css");
   copyFileSync("assets/forrt-logo.svg", "dist/forrt-logo.svg");
 }
 

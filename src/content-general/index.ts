@@ -2,9 +2,11 @@ import {
     classifyPageDois,
     extractDOIs,
     extractDOIsFromText,
-    extractPrimaryDOI
+    extractDoiOccurrences,
+    extractPrimaryDOI,
+    findReferenceEntries
 } from "@shared/doi-extractor";
-import {augmentDOIs} from "@shared/doi-augment";
+import {augmentDOIs, fetchTitleByDoi} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
 import {debounce} from "@shared/debounce";
 import type {DoiContext, DoiString, LookupState} from "@shared/types";
@@ -27,11 +29,12 @@ import {
     type SheetsModalCallbacks,
     showAllFloraUI
 } from "./injector";
-import {lookupPubPeer, type PubPeerFeedback} from "@shared/pubpeer-api";
+import {lookupPubPeer, lookupPubPeerForDois, type PubPeerFeedback} from "@shared/pubpeer-api";
 import {debugLog} from "@shared/debug";
 import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
-import {retractionCheck, RetractionResponse} from "@shared/doi-retraction"
+import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
+import {processReferenceDois} from "./references";
 
 const pageState = new Map<DoiString, LookupState>();
 let redacts: RetractionResponse[] = [];
@@ -40,9 +43,9 @@ const processedDois = new Set<DoiString>();
 const doiContext = new Map<DoiString, DoiContext>();
 let lastUrl = location.href;
 let augmentAttempted = false;
-let pubpeerChecked = false;
+let articleFeedbacksFetched = false;
+let lastReferenceDoiKey = "";
 let lastArticleFeedbacks: PubPeerFeedback[] = [];
-let lastReferenceFeedbacks: PubPeerFeedback[] = [];
 let lastRefFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map();
 
 /** Monotonic counter — incremented on each sheet tab switch to discard stale CSV responses. */
@@ -86,17 +89,28 @@ async function pageRenderChangeHandler(): Promise<void> {
         processedDois.clear();
         doiContext.clear();
         lastArticleFeedbacks = [];
-        lastReferenceFeedbacks = [];
         lastRefFeedbackByDoi = new Map();
+        articleFeedbacksFetched = false;
+        lastReferenceDoiKey = "";
         pageState.clear();
         augmentAttempted = false;
+        resetRetractionPills();
         if (isSheets) {
             removeSheetsModal();
         } else {
             removePubPeerPanel();
         }
     }
+    // Resolve & inline-render DOIs for DOI-less reference-list entries.
+    // Fire-and-forget; idempotent via a per-entry processed marker.
+    void processReferenceDois();
+
     let dois = extractDOIs(document);
+    // Capture DOI occurrences (with source + anchor) at extraction time so
+    // renderInlineBadges can place badges directly on the right DOM element
+    // without re-scanning. The anchor lifts to the reference entry for DOIs
+    // inside a citation so badges don't land next to a tiny "Crossref" button.
+    const occurrences = extractDoiOccurrences(document);
 
     const hasDoiChange = processedDois.size !== dois.length ||
         !dois.every(doi => processedDois.has(doi));
@@ -133,9 +147,32 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     // retraction check logic
     if (hasDoiChange && dois.length > 0) {
+        // Retraction status is tracked via `redacts` — kept separate from
+        // doiContext so it can't clobber the article/reference classification
+        // (a DOI can be both the article and retracted).
         redacts = await retractionCheck(dois);
-        for (const {originDoi} of redacts) doiContext.set(originDoi, "retracted");
-        // TODO: now do something with redacts
+    }
+
+    // Exclude occurrences whose anchor sits inside FLoRA-injected UI elements
+    // (the PubPeer panel, retracts modal, banner). Without this guard the
+    // mutation observer re-fires after each UI injection, extractDoiOccurrences
+    // picks up DOI links inside the panel, and we'd stamp retraction pills onto
+    // our own panel's reference rows.
+    const FLORA_UI_IDS = ["flora-pubpeer-panel", "flora-retracts-modal", "flora-banner-host", "flora-setup-prompt", "flora-sheets-modal"];
+    const pageOccurrences = occurrences.filter(
+        (occ) => !FLORA_UI_IDS.some((id) => occ.anchor.closest(`#${id}`) !== null)
+    );
+
+    // Render inline "Retracted" pills at every occurrence of a retracted DOI
+    // on the page (reference entries, body links, prose mentions). Uses the
+    // anchors captured by extractDoiOccurrences so the renderer never has to
+    // re-scan the DOM; idempotent via FLORA_RET_CHECK_KEY on each anchor.
+    if (redacts.length > 0) {
+        const retractionByDoi = new Map(redacts.map((r) => [r.originDoi, r] as const));
+        for (const occ of pageOccurrences) {
+            const retraction = retractionByDoi.get(occ.doi);
+            if (retraction) injectRetractionInfo(occ.anchor, retraction);
+        }
     }
 
     // Filter out already-processed DOIs
@@ -208,7 +245,6 @@ async function pageRenderChangeHandler(): Promise<void> {
             }));
 
         debugLog("Matched DOIs with replication data:", matched.length, matched.map(m => m.doi));
-
         if (matched.length > 0) {
             if (isSheets) {
                 if (!isSheetsModalSuppressed()) {
@@ -221,13 +257,14 @@ async function pageRenderChangeHandler(): Promise<void> {
             if (isSheets) {
                 removeSheetsModal();
             } else {
-                removeBanner();
+                void checkPubPeer();
+                // removeBanner();
             }
         }
 
         // Inline badges (skip on Google Sheets — modal only)
         if (!isSheets) {
-            renderInlineBadges(pageState);
+            renderInlineBadges(pageState, pageOccurrences);
         }
     } catch {
         renderErrorBanner("Failed to contact FLoRA service");
@@ -266,46 +303,74 @@ async function augmentFromTitle(): Promise<void> {
 }
 
 async function checkPubPeer(): Promise<void> {
-    if (pubpeerChecked || isSheets) return;
-    pubpeerChecked = true;
+    if (isSheets) return;
     const primaryDoi = extractPrimaryDOI(document);
     if (!primaryDoi) return;
     try {
-        const referenceDois = [...doiContext.entries()]
-            .filter(([, ctx]) => ctx === "reference")
-            .map(([doi]) => doi);
-        const [articleFeedbacks, referenceFeedbacks] = await Promise.all([
-            lookupPubPeer([primaryDoi], [location.href]),
-            referenceDois.length > 0 ? lookupPubPeer(referenceDois, []) : Promise.resolve([]),
-        ]);
-        lastArticleFeedbacks = articleFeedbacks;
-        lastReferenceFeedbacks = referenceFeedbacks;
-
-        // For reference DOIs with FORRT replication data, do individual PubPeer lookups so
-        // we can build a reliable DOI→feedback map (the batch call returns no DOI per entry).
-        const replicationRefDois = referenceDois.filter((doi) => {
-            const s = pageState.get(doi);
-            return (
-                s?.status === "matched" &&
-                (s.result.record.stats.n_replications_total > 0 ||
-                    s.result.record.stats.n_reproductions_total > 0 ||
-                    s.result.record.stats.n_originals_total > 0)
-            );
-        });
-        const refFeedbackByDoi = new Map<DoiString, PubPeerFeedback>();
-        if (replicationRefDois.length > 0) {
-            const pairs = await Promise.all(
-                replicationRefDois.map(async (doi) => ({
-                    doi,
-                    feedback: (await lookupPubPeer([doi], []))[0] ?? null,
-                }))
-            );
-            for (const {doi, feedback} of pairs) {
-                if (feedback) refFeedbackByDoi.set(doi, feedback);
-            }
+        // Source of truth for "what counts as a reference" = the page's actual
+        // reference-list entries. Using classifyPageDois().referenceDois here
+        // would pull in DOIs from related-articles sidebars or any element
+        // whose class/id matches the reference regex — phantom rows in the panel.
+        const seen = new Set<DoiString>();
+        const referenceDois: DoiString[] = [];
+        for (const entry of findReferenceEntries(document)) {
+            if (!entry.doi || seen.has(entry.doi)) continue;
+            seen.add(entry.doi);
+            referenceDois.push(entry.doi);
         }
+
+        // Content-keyed gate: skip re-rendering when the article side is
+        // already fetched AND the set of reference DOIs is unchanged. This is
+        // what lets lazily-loaded references (e.g. Wiley's collapsible "Citing
+        // Literature" / references section) flow into the panel — the DOM
+        // observer fires checkPubPeer again, finds new DOIs, and re-renders.
+        const refKey = [...referenceDois].sort().join("|");
+        if (articleFeedbacksFetched && refKey === lastReferenceDoiKey) return;
+
+        // Article: URL-based lookup, fetched once per page. References: one
+        // batched lookup keyed by DOI (PubPeer's v3 endpoint returns `id` =
+        // the DOI), cached in chrome.storage so lazy-load re-runs are cheap.
+        const articlePromise = articleFeedbacksFetched
+            ? Promise.resolve(lastArticleFeedbacks)
+            : lookupPubPeer([primaryDoi], [location.href]);
+        const [articleFeedbacks, refFeedbackByDoi] = await Promise.all([
+            articlePromise,
+            lookupPubPeerForDois(referenceDois),
+        ]);
+        articleFeedbacksFetched = true;
+        lastArticleFeedbacks = articleFeedbacks;
         lastRefFeedbackByDoi = refFeedbackByDoi;
-        renderPubPeerPanel(articleFeedbacks, referenceFeedbacks, pageState, doiContext, refFeedbackByDoi);
+        lastReferenceDoiKey = refKey;
+
+        // The panel only lists references worth a reader's attention: those
+        // with PubPeer comments, a retraction, or FORRT replication data.
+        // Titles are taken from PubPeer when it has the paper, otherwise
+        // resolved from Crossref/OpenAlex — never from page-scraped citation
+        // text, which varies too much between publishers to render cleanly.
+        const retractedDois = new Set(redacts.map((r) => r.originDoi));
+        const hasReplication = (doi: DoiString): boolean => {
+            const s = pageState.get(doi);
+            if (s?.status !== "matched") return false;
+            const {n_replications_total, n_reproductions_total, n_originals_total} =
+                s.result.record.stats;
+            return n_replications_total > 0 || n_reproductions_total > 0 || n_originals_total > 0;
+        };
+        // A PubPeer record can exist with zero comments — only count it as a
+        // reason to surface the reference when it actually has comments.
+        const flagged = referenceDois.filter((doi) => {
+            const fb = refFeedbackByDoi.get(doi);
+            return (fb !== undefined && fb.total_comments > 0)
+                || retractedDois.has(doi)
+                || hasReplication(doi);
+        });
+        const panelRefs = await Promise.all(flagged.map(async (doi) => {
+            const title = refFeedbackByDoi.get(doi)?.title
+                ?? (await fetchTitleByDoi(doi))
+                ?? doi;
+            return {doi, title};
+        }));
+
+        renderPubPeerPanel(articleFeedbacks, panelRefs, pageState, doiContext, refFeedbackByDoi, redacts);
     } catch {
         // PubPeer is supplementary — fail silently
     }
@@ -401,9 +466,41 @@ function startDomListener(callback: () => void) {
     if (window !== window.top) {
         if (location.hostname === "pubpeer.com" || location.hostname.endsWith(".pubpeer.com")) {
             const style = document.createElement("style");
-            style.textContent = "nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.sticky.affix, div.extension-installer.container, div.footer.fixed, div.page-component-up, a.forum-item-title, .ibox-title span { display: none !important; } div.vertical-timeline-block {margin:0 15px 0px 10px;} div.selected div {background-color: transparent!important;} div.wrapper {width: 500px!important;} .ibox-title div, .ibox-title strong, .ibox-title span, .ibox-title em, .ibox-content a{color:#853953!important;}  .all-user-footer div:nth-child(1){visibility:hidden;} .el-button{background-color:#853953!important; border-color:#853953!important;} .ibox-bordered:before{background-color:#853953!important;} #comment-editor .nav>li>a{color#fff!important;} .btn-link.manual-file-chooser-text{color:#853953!important;} #comment-editor.nav>li>a:nth-child(2){color:#fff!important;}}";
+            style.textContent = "body.top-navigation{overflow:hidden!important;} nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.sticky.affix, div.sticky.affix-top, div.extension-installer.container, div.footer.fixed, div.page-component-up, a.forum-item-title { display: none !important; } div.vertical-timeline-block {margin:0 15px 0px 10px;} div.selected div {background-color: transparent!important;} div.wrapper {width: 500px!important;} ul.nav.nav-tabs>li>a{color:#fff!important;} ul.nav.nav-tabs>li:nth-child(2).active>a{color:#853953!important;} ul.nav.nav-tabs>li:nth-child(1).active>a{color:#853953!important;} .ibox-title div, .ibox-title strong, .ibox-title span, .ibox-title em, .ibox-content a{color:#853953!important;}  .all-user-footer div:nth-child(1){visibility:hidden;} .el-button{background-color:#853953!important; border-color:#853953!important;} .ibox-bordered:before{background-color:#853953!important;} .btn-link.manual-file-chooser-text{color:#853953!important;}  .el-button.el-button--text{background:transparent!important;border-color:transparent!important;color:#853953!important;}}";
             (document.head ?? document.documentElement).appendChild(style);
             window.parent.postMessage({type: "FLORA_PUBPEER_CSS_READY"}, "*");
+
+            const stripCommentAccepted = (root: Node = document.body): void => {
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+                const nodes: Text[] = [];
+                while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+                for (const node of nodes) {
+                    if (/comment accepted /i.test(node.nodeValue ?? "")) {
+                        node.nodeValue = (node.nodeValue ?? "").replace(/comment accepted /gi, "");
+                    }
+                }
+            };
+            const observer = new MutationObserver((mutations) => {
+                for (const m of mutations) {
+                    for (const n of m.addedNodes) stripCommentAccepted(n);
+                }
+            });
+            const startStripping = (): void => {
+                stripCommentAccepted();
+                observer.observe(document.body, {childList: true, subtree: true});
+            };
+            if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", startStripping);
+            } else {
+                startStripping();
+            }
+
+            const sendHeight = (): void => {
+                const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+                window.parent.postMessage({type: "FLORA_PUBPEER_HEIGHT", height: h}, "*");
+            };
+            window.addEventListener("load", sendHeight);
+            new ResizeObserver(sendHeight).observe(document.documentElement);
         }
         return;
     }
