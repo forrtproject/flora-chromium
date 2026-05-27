@@ -4,17 +4,18 @@
 
 export const DOI_LABEL_CLASS = "flora-doi-label";
 
-// One-time stylesheet: gives every Flora inline pill (DOI label, notice pill)
-// a 6px left margin only when it has a previous sibling. First pill in its
-// container hugs the left edge; subsequent pills get inter-pill air.
 let inlinePillStyleInjected = false;
 function ensureInlinePillStyle(): void {
     if (inlinePillStyleInjected) return;
     inlinePillStyleInjected = true;
     const style = document.createElement("style");
     style.textContent = `
+        .${DOI_LABEL_CLASS}:not(:first-child),
         .${FLORA_NOTICE_PILL_CLASS}:not(:first-child) {
             margin-left: 6px;
+        }
+        .${DOI_LABEL_CLASS} {
+            margin-right: 2px;
         }
     `;
     document.head.appendChild(style);
@@ -41,7 +42,7 @@ export function createDoiPill(doi: string, color: string, isAugmented = false): 
     ensureInlinePillStyle();
     const wrapper = document.createElement("span");
     wrapper.className = DOI_LABEL_CLASS;
-    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle;`;
+    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: baseline; transform: translateY(-1px);`;
 
     const pill = document.createElement("span");
     pill.style.cssText = `

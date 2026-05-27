@@ -289,13 +289,8 @@ async function pageRenderChangeHandler(): Promise<void> {
     }
 }
 
-/**
- * Heuristic: does the page declare itself as a scholarly article?
- * We require at least one publisher-emitted citation/DC/PRISM meta tag —
- * the same signals Zotero, Unpaywall, etc. rely on. Without this gate the
- * fallback ships every page's <h1>/title to Crossref+OpenAlex, polluting
- * the cache with junk like "dashboard" or "tu dortmund anmeldung".
- */
+// Without this gate, augmentFromTitle ships every page's <h1>/title to
+// Crossref+OpenAlex, polluting the cache with non-article queries.
 function isScholarlyArticlePage(): boolean {
     return document.querySelector(
         'meta[name="citation_title"],'
@@ -365,16 +360,20 @@ async function checkPubPeer(): Promise<void> {
     try {
         const resolvedRefs = resolvedRefsPromise ? await resolvedRefsPromise : [];
 
-        // Reference DOI set comes from the unified resolved list — both DOIs
-        // visible on the page AND those we had to augment via Crossref/OpenAlex.
-        // De-duped because a hidden DOI and its augmented twin could coincide
-        // in pathological cases (e.g. mixed publisher templates).
+        // Union resolved refs with on-page reference DOIs so publishers that
+        // print DOIs inline still get PubPeer coverage.
         const seen = new Set<DoiString>();
         const referenceDois: DoiString[] = [];
         for (const r of resolvedRefs) {
             if (seen.has(r.doi)) continue;
             seen.add(r.doi);
             referenceDois.push(r.doi);
+        }
+        for (const [doi, ctx] of doiContext) {
+            if (ctx !== "reference") continue;
+            if (seen.has(doi)) continue;
+            seen.add(doi);
+            referenceDois.push(doi);
         }
 
         // Content-keyed gate: skip re-running when the article side is
@@ -589,5 +588,7 @@ function startDomListener(callback: () => void) {
     } else {
         debounce(pageRenderChangeHandler, 1000);
         startDomListener(pageRenderChangeHandler);
+        // Initial run — static pages may never trigger the MutationObserver.
+        void pageRenderChangeHandler();
     }
 })();

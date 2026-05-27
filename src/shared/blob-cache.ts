@@ -1,37 +1,18 @@
-/**
- * BlobCache — a single chrome.storage.local key holding a JSON object map
- * of all entries for a given cache. Collapses what used to be hundreds of
- * `prefix:<key>` rows into one entry per cache so the storage view stays
- * readable.
- *
- * Each entry carries a timestamp; reads honour the supplied TTL and lazily
- * evict expired entries on access. The in-memory map is loaded once per
- * script lifetime; writes serialize the whole blob back to storage.
- *
- * Trade-off: cross-context concurrent writes can clobber each other
- * (last-writer-wins on the whole blob). For a cache this is acceptable —
- * a lost write just means a subsequent re-fetch.
- */
+// Single chrome.storage.local key holding a JSON object of all entries.
+// Cross-context concurrent writes are last-writer-wins on the whole blob —
+// acceptable for a cache (lost write = re-fetch).
 
 interface CacheEntry<T> {
-    /** value */
     v: T;
-    /** timestamp (ms since epoch) */
     t: number;
 }
 
 type CacheBlob<T> = Record<string, CacheEntry<T>>;
 
 export interface BlobCacheOptions {
-    /** chrome.storage.local key under which the whole blob lives. */
     storageKey: string;
-    /** Max entry age before it's treated as missing. */
     ttlMs: number;
-    /**
-     * Optional one-shot cleanup: legacy per-row prefixes (e.g. "flora_doi:")
-     * left behind by the pre-consolidation cache shape. Cleared the first
-     * time this cache is loaded after the upgrade.
-     */
+    /** One-shot cleanup of legacy per-row keys from the pre-blob cache shape. */
     legacyPrefixes?: string[];
 }
 
@@ -57,7 +38,6 @@ export class BlobCache<T> {
         } catch {
             this.mem = {};
         }
-        // Fire-and-forget legacy cleanup — never blocks reads/writes.
         if (this.opts.legacyPrefixes && this.opts.legacyPrefixes.length > 0) {
             void this.sweepLegacy(this.opts.legacyPrefixes);
         }
@@ -73,7 +53,7 @@ export class BlobCache<T> {
                 await chrome.storage.local.remove(stale);
             }
         } catch {
-            // Best-effort cleanup; ignore failures.
+            // best-effort
         }
     }
 
@@ -114,7 +94,6 @@ export class BlobCache<T> {
         await this.flush();
     }
 
-    /** Write many entries with a single blob flush. */
     async setMany(entries: Iterable<[string, T]>): Promise<void> {
         await this.ensureLoaded();
         const now = Date.now();
@@ -129,14 +108,10 @@ export class BlobCache<T> {
         try {
             await chrome.storage.local.set({[this.opts.storageKey]: this.mem});
         } catch {
-            // Storage write failures are non-fatal for a cache.
+            // non-fatal
         }
     }
 
-    /**
-     * Drop the in-memory view so the next access re-reads from storage.
-     * Used by tests to isolate cache state between cases.
-     */
     resetForTesting(): void {
         this.mem = null;
         this.loading = null;
