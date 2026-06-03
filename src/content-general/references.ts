@@ -13,7 +13,7 @@
 import {findReferenceEntries, extractDoiFromHref, type ReferenceEntry} from "@shared/doi-extractor";
 import {augmentDOIs} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
-import {injectRetractionInfo, retractionCheck} from "@shared/doi-retraction";
+import {injectRetractionInfo, type RetractionResponse} from "@shared/doi-retraction";
 import {createDoiPill} from "@shared/doi-label";
 import {getSettings} from "@shared/settings";
 import {debugLog} from "@shared/debug";
@@ -29,6 +29,38 @@ import type {DoiString} from "@shared/types";
  * right after the entry's last link so it sits inline with that row. Falls
  * back to the entry end only when the entry has no links at all.
  */
+function findSmallestTextContainer(root: HTMLElement, needle: string): HTMLElement | null {
+    let best: HTMLElement | null = null;
+    let bestLen = Infinity;
+    for (const el of root.querySelectorAll<HTMLElement>("*")) {
+        const t = el.innerText ?? el.textContent ?? "";
+        if (!t.includes(needle)) continue;
+        if (t.length < bestLen) {
+            best = el;
+            bestLen = t.length;
+        }
+    }
+    return best;
+}
+
+// Descendant with ≥50% but <100% of the entry's text — the citation body,
+// excluding trailing action-link rows ("Article | Google Scholar").
+function findCitationBody(entry: HTMLElement): HTMLElement | null {
+    const entryText = (entry.innerText ?? entry.textContent ?? "").trim();
+    if (entryText.length < 40) return null;
+    const floor = Math.floor(entryText.length * 0.5);
+    let best: HTMLElement | null = null;
+    let bestLen = 0;
+    for (const el of entry.querySelectorAll<HTMLElement>("*")) {
+        const t = (el.innerText ?? el.textContent ?? "").trim();
+        if (t.length >= floor && t.length < entryText.length && t.length > bestLen) {
+            best = el;
+            bestLen = t.length;
+        }
+    }
+    return best;
+}
+
 function placeReferencePill(
     entry: HTMLElement,
     doi: DoiString,
@@ -41,6 +73,17 @@ function placeReferencePill(
                 link.insertAdjacentElement("afterend", pill);
                 return;
             }
+        }
+        const textHost = findSmallestTextContainer(entry, doi);
+        if (textHost) {
+            textHost.appendChild(pill);
+            return;
+        }
+    } else {
+        const body = findCitationBody(entry);
+        if (body) {
+            body.appendChild(pill);
+            return;
         }
     }
     const links = entry.querySelectorAll<HTMLAnchorElement>("a[href]");
@@ -72,16 +115,22 @@ type PendingEntry =
   | { entry: ReferenceEntry; mode: "augment"; doi: null }
   | { entry: ReferenceEntry; mode: "hidden"; doi: DoiString };
 
+export interface ResolvedReference {
+    entry: ReferenceEntry;
+    doi: DoiString;
+    mode: "augment" | "hidden";
+}
+
 /**
- * Find reference entries whose DOI isn't visible to the reader, resolve a DOI
- * for each (via Crossref/OpenAlex for entries with no DOI at all, or via the
- * existing hidden DOI for entries that have one tucked into a button link),
- * and render an inline DOI pill + retraction info on each.
+ * Find reference entries with no on-page DOI (and entries with hidden DOIs,
+ * when the user has opted in), resolve a DOI for each via Crossref/OpenAlex
+ * augmentation, and validate augmented results. Returns the resolved list
+ * without writing anything to the DOM.
  *
- * Idempotent: each entry is marked processed, so repeated calls (e.g. from
- * the DOM mutation observer) won't reprocess the same references.
+ * Idempotent: each entry is marked processed inside this function, so repeated
+ * calls (e.g. from the mutation observer) skip entries already handled.
  */
-export async function processReferenceDois(): Promise<void> {
+export async function resolveReferenceDois(): Promise<ResolvedReference[]> {
     const entries = findReferenceEntries(document);
     const {showDoiPillsOnAllReferences} = await getSettings();
 
@@ -91,22 +140,16 @@ export async function processReferenceDois(): Promise<void> {
         if (entry.text.length < MIN_CITATION_LENGTH) continue;
 
         if (entry.doi === null) {
-            // Gate augmentation on year presence — avoids spending Crossref
-            // queries on navigation stubs that pass the length check.
             if (!YEAR_RE.test(entry.text)) continue;
             pending.push({entry, mode: "augment", doi: null});
         } else if (showDoiPillsOnAllReferences) {
-            // Entry already carries a DOI in a link — only pill it when the
-            // user opted into pills on every reference. Otherwise the reader
-            // can already reach the DOI, so we leave it untouched.
             pending.push({entry, mode: "hidden", doi: entry.doi});
         }
     }
-    if (pending.length === 0) return;
+    if (pending.length === 0) return [];
 
-    // Cap augmentation API load only — surfacing already-known hidden DOIs is
-    // free, so don't include them in the cap.
-    const augmentTargets = pending.filter((p): p is Extract<PendingEntry, {mode: "augment"}> => p.mode === "augment")
+    const augmentTargets = pending
+        .filter((p): p is Extract<PendingEntry, {mode: "augment"}> => p.mode === "augment")
         .slice(0, MAX_REFERENCE_AUGMENTATIONS);
     const augmentSet = new Set(augmentTargets.map((p) => p.entry));
     const queued = pending.filter((p) => p.mode === "hidden" || augmentSet.has(p.entry));
@@ -116,7 +159,6 @@ export async function processReferenceDois(): Promise<void> {
     const hiddenCount = queued.length - augmentTargets.length;
     debugLog(`References: surfacing ${hiddenCount} hidden DOI(s), augmenting ${augmentTargets.length}`);
 
-    // Resolve augmented DOIs via Crossref/OpenAlex.
     let augmented = new Map<string, DoiString | null>();
     if (augmentTargets.length > 0) {
         try {
@@ -126,12 +168,7 @@ export async function processReferenceDois(): Promise<void> {
         }
     }
 
-    interface Resolved {
-        entry: ReferenceEntry;
-        doi: DoiString;
-        mode: "augment" | "hidden";
-    }
-    const resolved: Resolved[] = [];
+    const resolved: ResolvedReference[] = [];
     for (const p of queued) {
         if (p.mode === "hidden") {
             resolved.push({entry: p.entry, doi: p.doi, mode: "hidden"});
@@ -142,15 +179,12 @@ export async function processReferenceDois(): Promise<void> {
     }
     if (resolved.length === 0) {
         debugLog("References: nothing resolved");
-        return;
+        return [];
     }
 
-    // Augmented DOIs come from a Crossref/OpenAlex *fuzzy title match*, so
-    // confirm they actually resolve before rendering. Hidden DOIs were read
-    // straight off the page's own doi.org links / citation text — they're
-    // inherently trustworthy, and validating 80+ of them in parallel just
-    // gets the whole batch rate-limited by doi.org. So only augmented DOIs go
-    // through validation; hidden DOIs are kept as-is.
+    // Augmented DOIs are fuzzy title matches — validate them against doi.org.
+    // Hidden DOIs were read off the page; trust them and skip validation so
+    // doi.org doesn't rate-limit the whole batch.
     const augmentResolved = resolved.filter((r) => r.mode === "augment");
     let validated = new Map<DoiString, boolean>();
     if (augmentResolved.length > 0) {
@@ -165,36 +199,29 @@ export async function processReferenceDois(): Promise<void> {
     );
     if (confirmed.length === 0) {
         debugLog("References: resolved DOIs all failed doi.org validation");
-        return;
+        return [];
     }
+    return confirmed;
+}
 
-    // Augmented-only DOIs are absent from the page, so the main occurrences-
-    // driven retraction pass in pageRenderChangeHandler can't anchor a pill
-    // to them. Cover that gap here. Hidden/link-embedded DOIs are already in
-    // occurrences and rendered there — injectRetractionInfo is idempotent
-    // (FLORA_RET_CHECK_KEY) so calling it again here on the same entry would
-    // no-op anyway, but we skip them explicitly to avoid the extra lookup.
-    const augmentedDois = confirmed
-        .filter((r) => r.mode === "augment")
-        .map((r) => r.doi);
-    const retractionByDoi = new Map<DoiString, Awaited<ReturnType<typeof retractionCheck>>[number]>();
-    if (augmentedDois.length > 0) {
-        try {
-            const retractions = await retractionCheck(augmentedDois);
-            for (const r of retractions) retractionByDoi.set(r.originDoi, r);
-        } catch {
-            // supplementary
-        }
-    }
-
-    for (const {entry, doi, mode} of confirmed) {
+/**
+ * Render an inline DOI pill (and, when present in retractionByDoi, a notice
+ * pill) on each resolved reference. Idempotent at the pill level — repeated
+ * calls on the same entry skip via existing per-element markers.
+ */
+export function renderResolvedReferences(
+    resolved: ResolvedReference[],
+    retractionByDoi: Map<DoiString, RetractionResponse>,
+): void {
+    for (const {entry, doi, mode} of resolved) {
         const isAugmented = mode === "augment";
         const color = isAugmented ? AUGMENTED_COLOR : CONFIDENT_COLOR;
         placeReferencePill(entry.element, doi, mode, createDoiPill(doi, color, isAugmented));
-        const retraction = retractionByDoi.get(doi);
-        if (retraction) injectRetractionInfo(entry.element, retraction);
+        const notice = retractionByDoi.get(doi);
+        if (notice) injectRetractionInfo(entry.element, notice);
         debugLog(`References: surfaced "${entry.text.slice(0, 60)}" → ${doi} (${mode})`);
     }
-    debugLog(`References: rendered ${confirmed.length} inline DOI pill(s)`);
+    debugLog(`References: rendered ${resolved.length} inline DOI pill(s)`);
 }
+
 

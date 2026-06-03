@@ -8,7 +8,7 @@ vi.mock("../../src/shared/settings", () => ({
   isSetupComplete: vi.fn().mockResolvedValue(true),
 }));
 
-import { normalizeTitle, similarity, tokenSetRatio, augmentDOIs } from "../../src/shared/doi-augment";
+import { normalizeTitle, similarity, tokenSetRatio, augmentDOIs, _resetAugmentCachesForTesting } from "../../src/shared/doi-augment";
 
 const OPENALEX_URL = "https://api.openalex.org/works";
 const CROSSREF_URL = "https://api.crossref.org/works";
@@ -113,6 +113,7 @@ describe("augmentDOIs", () => {
     (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockResolvedValue(
       undefined
     );
+    _resetAugmentCachesForTesting();
   });
 
   it("returns resolved DOI when both APIs find a match", async () => {
@@ -287,7 +288,9 @@ describe("augmentDOIs", () => {
 
   it("uses cached results on second call", async () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
-      "flora_doi:test title": { found: true, doi: "10.1234/cached" },
+      flora_doi_blob: {
+        "test title": { v: { found: true, doi: "10.1234/cached" }, t: Date.now() },
+      },
     });
 
     const results = await augmentDOIs(["Test Title"]);

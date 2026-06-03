@@ -18,7 +18,7 @@
     "https://api.unpaywall.org/*",
     "https://docs.google.com/*",
     "https://pubpeer.com/*",
-    "https://gitlab.com/*"
+    "https://raw.githubusercontent.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js"

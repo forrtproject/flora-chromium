@@ -1,11 +1,20 @@
-import {RET_MAP_KEY} from "@shared/data-extract"
+import {RET_MAP_KEY, RetractionMaps} from "@shared/data-extract"
 import {normaliseDOI} from "@shared/doi-normalise";
 import {extractDoiFromHref} from "@shared/doi-extractor";
+import {FLORA_NOTICE_PILL_CLASS} from "@shared/doi-label";
 import retractionData from '../retractions.json';
 import {DoiString} from "@shared/types";
 import { debugLog } from "./debug";
 
 export const FLORA_RET_CHECK_KEY = "flora-ret-checked";
+
+export type NoticeKind = "retraction" | "concern";
+
+// Warning-triangle artwork for the "Concern" pill and the EoC banner —
+// same path as the existing banner triangle, exported once so the pill
+// and banner stay visually identical aside from fill colour.
+const WARNING_TRIANGLE_ICON =
+    `<path d="M320 64C334.7 64 348.2 72.1 355.2 85L571.2 485C577.9 497.4 577.6 512.4 570.4 524.5C563.2 536.6 550.1 544 536 544L104 544C89.9 544 76.8 536.6 69.6 524.5C62.4 512.4 62.1 497.4 68.8 485L284.8 85C291.8 72.1 305.3 64 320 64zM320 416C302.3 416 288 430.3 288 448C288 465.7 302.3 480 320 480C337.7 480 352 465.7 352 448C352 430.3 337.7 416 320 416zM320 224C301.8 224 287.3 239.5 288.6 257.7L296 361.7C296.9 374.2 307.4 384 319.9 384C332.5 384 342.9 374.3 343.8 361.7L351.2 257.7C352.5 239.5 338.1 224 319.8 224z"/>`;
 
 // Alarm-bell artwork for the "Retracted" pill — a red ringing bell with a dark
 // base and a white "!" clapper. viewBox is cropped to the bell's bounds.
@@ -31,10 +40,85 @@ const RETRACTED_BELL_ICON = `<g>
   <path fill="#FFFFFF" opacity="0.05" d="M294.1,247.717c0,27.378-6.531,52.997-17.866,74.858c-11.668,22.511-28.44,41.044-48.463,53.425h-71.846c-4.788,0-8.133-4.74-6.547-9.242l13.982-39.553c0.983-2.774,3.614-4.629,6.547-4.629h11.573l12.587-135.798c1.094-11.731,10.939-20.704,22.733-20.704h55.692C286.126,189.346,294.1,217.453,294.1,247.717z"/>
 </g>`;
 
+export interface NoticePresentation {
+    label: string;                  // pill label
+    bannerCopy: string;             // banner sentence
+    pillWidth: number;              // SVG pill width in px
+    pillBackground: string;
+    pillStroke: string;
+    pillText: string;
+    pillIconViewBox: string;        // viewBox attr for the pill's inner SVG
+    pillIconColor: string;          // fill colour for the inner SVG paths
+    pillIconBody: string;           // SVG inner markup (no <svg> wrapper)
+    bannerBackground: string;
+    bannerBorder: string;
+    bannerLeftAccent: string;
+    bannerText: string;
+    bannerIconColor: string;        // fill for the banner triangle
+}
+
+export function noticePresentation(kind: NoticeKind): NoticePresentation {
+    if (kind === "concern") {
+        return {
+            label: "Concern",
+            bannerCopy: "This article has an expression of concern.",
+            pillWidth: 92,
+            pillBackground: "#fff7ed",
+            pillStroke: "#ea580c",
+            pillText: "#9a3412",
+            pillIconViewBox: "0 0 640 640",
+            pillIconColor: "#ea580c",
+            pillIconBody: WARNING_TRIANGLE_ICON,
+            bannerBackground: "#fff7ed",
+            bannerBorder: "#fdba74",
+            bannerLeftAccent: "#ea580c",
+            bannerText: "#9a3412",
+            bannerIconColor: "#ea580c",
+        };
+    }
+    return {
+        label: "Retracted",
+        bannerCopy: "This article has been retracted.",
+        pillWidth: 106,
+        pillBackground: "#FFF5F6",
+        pillStroke: "#D82E3D",
+        pillText: "#C32430",
+        pillIconViewBox: "115 112 270 270",
+        pillIconColor: "currentColor",   // bell paths already carry their own fills
+        pillIconBody: RETRACTED_BELL_ICON,
+        bannerBackground: "#fdecef",
+        bannerBorder: "#f5a3b4",
+        bannerLeftAccent: "#FF1744",
+        bannerText: "#a30d2d",
+        bannerIconColor: "#FF1744",
+    };
+}
+
 export interface RetractionResponse {
     originDoi: DoiString;
     doi: string;
+    kind: NoticeKind;
 }
+
+/**
+ * Retraction Watch publishes DOIs in their original publisher case (SICI-style
+ * Elsevier identifiers, NEJM, ASCE, etc. carry uppercase letters), but every
+ * DOI we look up has been through normaliseDOI() which lowercases it. Without
+ * normalising the source keys too, ~12.7k of the ~58.6k bundled retractions
+ * would never match.
+ */
+function lowercaseKeys(obj: Record<string, string> | undefined): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (!obj) return out;
+    for (const k in obj) out[k.toLowerCase()] = obj[k];
+    return out;
+}
+
+// Bundled data is imported at module load and never changes — normalise once.
+const NORMALISED_BUNDLED: RetractionMaps = {
+    retractions: lowercaseKeys((retractionData as RetractionMaps).retractions),
+    concerns: lowercaseKeys((retractionData as RetractionMaps).concerns),
+};
 
 /**
  * Request retraction status. Due to CORS policies, the request
@@ -43,22 +127,35 @@ export interface RetractionResponse {
 // @ts-ignore
 export async function retractionCheck(dois: DoiString[]): Promise<RetractionResponse[]> {
     const storageResult = await chrome.storage.local.get([RET_MAP_KEY]) || {};
-    const retMap = storageResult[RET_MAP_KEY] || {};
-    if (!storageResult[RET_MAP_KEY])
+    const cached = storageResult[RET_MAP_KEY] as RetractionMaps | undefined;
+    if (!cached)
         chrome.runtime.sendMessage({type: "FLORA_RET_SYNC"}).then().catch();
-    const rawSource = (Object.keys(retMap).length > 0) ? retMap : retractionData;
-    // Extracted DOIs are lowercased by normaliseDOI, but the Retraction Watch
-    // data preserves Crossref's mixed case (SICI-style Elsevier IDs, NEJM,
-    // etc.) — lowercase the lookup keys so case-mixed entries still match.
-    const source: Record<string, string> = {};
-    for (const k in rawSource) source[k.toLowerCase()] = rawSource[k];
-    let result = []
+    // Prefer the runtime-refreshed map, fall back to the bundled data. A
+    // cached payload with only concerns is still useful, so consider both
+    // maps when deciding whether the cache is meaningful.
+    const hasCachedData = !!cached && (
+        Object.keys(cached.retractions || {}).length > 0 ||
+        Object.keys(cached.concerns || {}).length > 0
+    );
+    // Cached storage comes back as a fresh object every call (chrome.storage
+    // re-parses JSON), so we normalise on the spot rather than caching.
+    const source: RetractionMaps = hasCachedData
+        ? {
+            retractions: lowercaseKeys(cached!.retractions),
+            concerns: lowercaseKeys(cached!.concerns),
+        }
+        : NORMALISED_BUNDLED;
+    const result: RetractionResponse[] = [];
     for (const doi of dois) {
-        const retractionDOI = source[doi];
-        if (retractionDOI) result.push({
-            originDoi: doi,
-            doi: retractionDOI
-        });
+        const retractionDOI = source.retractions[doi];
+        if (retractionDOI) {
+            result.push({ originDoi: doi, doi: retractionDOI, kind: "retraction" });
+            continue;
+        }
+        const concernDOI = source.concerns?.[doi];
+        if (concernDOI) {
+            result.push({ originDoi: doi, doi: concernDOI, kind: "concern" });
+        }
     }
     debugLog("Retraction check for DOIs", dois, "result", result);
     return result;
@@ -73,7 +170,28 @@ export function resetRetractionPills(): void {
     pilledRetractionDois.clear();
 }
 
-export function injectRetractionInfo(target: Element, info: RetractionResponse): void {
+export interface InjectRetractionOptions {
+    /**
+     * Skip the link-search smart placement and append the pill directly to
+     * `target`. Use when `target` is a dedicated FLoRA pill container (e.g.
+     * Scholar's `.gs_ggs` div), so the pill isn't nested inside a sibling
+     * sub-list like Scholar's `.gs_or_ggsm` "All versions" menu.
+     */
+    append?: boolean;
+    /**
+     * Insert the pill as the next sibling of `target` rather than appending
+     * inside it. Use when `target` is a title-like element (Scholar's
+     * `.gs_rt`, an article page's `<h1>`) so the pill sits beside the title
+     * rather than nested inside its text styles.
+     */
+    afterend?: boolean;
+}
+
+export function injectRetractionInfo(
+    target: Element,
+    info: RetractionResponse,
+    options: InjectRetractionOptions = {},
+): void {
     // Idempotent per anchor (re-runs from DOM mutations must not stack pills)
     // and shown once per DOI — the first occurrence wins, later mentions of
     // the same retracted DOI are skipped.
@@ -82,27 +200,34 @@ export function injectRetractionInfo(target: Element, info: RetractionResponse):
     pilledRetractionDois.add(info.originDoi);
     target.setAttribute(FLORA_RET_CHECK_KEY, '1');
 
-    const wrapper = document.createElement("div");
-    // Class lets other code (and test-fixture tooling) identify FLoRA-injected
-    // UI, mirroring `flora-doi-label` on the DOI pill.
-    wrapper.className = "flora-retracted-pill";
+    const wrapper = document.createElement("span");
+    wrapper.className = FLORA_NOTICE_PILL_CLASS;
     wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle;`;
 
-    const W = 106, H = 22, iconSize = 16;
+    const presentation = noticePresentation(info.kind);
+    const W = presentation.pillWidth;
+    const H = 22;
+    const iconSize = 16;
     const tmp = document.createElement("div");
-    tmp.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" style="cursor:pointer;margin-left:8px;vertical-align:middle;display:inline-block;">
+    tmp.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" style="cursor:pointer;vertical-align:middle;display:inline-block;">
       <a href="https://doi.org/${info.doi}" target="_blank" rel="noopener" style="text-decoration:none;">
-        <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="${(H - 1) / 2}" fill="#FFF5F6" stroke="#D82E3D" stroke-width="1"/>
-        <text x="12" y="15" fill="#C32430" font-size="12" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" letter-spacing="0.02em">Retracted</text>
-        <svg x="${W - 8 - iconSize}" y="${(H - iconSize) / 2}" width="${iconSize}" height="${iconSize}" viewBox="115 112 270 270">
-          ${RETRACTED_BELL_ICON}
+        <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="${(H - 1) / 2}" fill="${presentation.pillBackground}" stroke="${presentation.pillStroke}" stroke-width="1"/>
+        <text x="12" y="15" fill="${presentation.pillText}" font-size="12" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" letter-spacing="0.02em">${presentation.label}</text>
+        <svg x="${W - 8 - iconSize}" y="${(H - iconSize) / 2}" width="${iconSize}" height="${iconSize}" viewBox="${presentation.pillIconViewBox}" fill="${presentation.pillIconColor}">
+          ${presentation.pillIconBody}
         </svg>
       </a>
     </svg>`;
     const pill = tmp.firstElementChild as SVGElement;
 
     wrapper.appendChild(pill);
-    placeRetractionPill(target, info.originDoi, wrapper);
+    if (options.append) {
+        target.appendChild(wrapper);
+    } else if (options.afterend) {
+        target.insertAdjacentElement("afterend", wrapper);
+    } else {
+        placeRetractionPill(target, info.originDoi, wrapper);
+    }
 }
 
 /**
@@ -120,14 +245,23 @@ function placeRetractionPill(target: Element, doi: DoiString, pill: HTMLElement)
         target.insertAdjacentElement("afterend", pill);
         return;
     }
-    const links = target.querySelectorAll<HTMLAnchorElement>("a[href]");
-    for (const link of links) {
+    // Only consider visible links. The DOI-pill widget (Scholar rows, etc.)
+    // hides its hover popover with display:none, but its <a href=doi.org/...>
+    // would otherwise win the match and the notice pill would land inside
+    // the popover. offsetParent === null also catches detached/hidden
+    // ancestors generally.
+    const visibleLinks: HTMLAnchorElement[] = [];
+    for (const link of target.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+        if (link.offsetParent === null) continue;
+        visibleLinks.push(link);
+    }
+    for (const link of visibleLinks) {
         if (extractDoiFromHref(link.href) === doi) {
             link.insertAdjacentElement("afterend", pill);
             return;
         }
     }
-    const lastLink = links[links.length - 1];
+    const lastLink = visibleLinks[visibleLinks.length - 1];
     if (lastLink) {
         lastLink.insertAdjacentElement("afterend", pill);
     } else {

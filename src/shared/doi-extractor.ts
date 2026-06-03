@@ -431,26 +431,13 @@ export function extractDOIsFromText(text: string): DoiString[] {
 // section (`<section class="cited-by">` / `id="cited-by"`); we deliberately
 // do not match Wiley's `rlist` class because it's a generic <ul> reset used
 // for skip-links, search nav, footer, related-journals, etc.
-const REFERENCE_SECTION_RE = /^(?:cites|citations|bibliography|bibliographies|references|reflist|ref-list|works-cited|footnotes|cited-by(?:__[\w-]+)?)$/i;
-
-// Namespaced design-system *class* for a reference list — a hyphen-delimited
-// prefix followed by `-references`, e.g. Springer's `c-article-references`
-// (`<ul class="c-article-references">`). Applied to class names only: ids
-// like Springer's `tab-references` / `tabpanel-references` are reading-
-// companion widgets (a duplicate sidebar list), not the canonical list, so
-// id matching stays gated by the strict regex above. The `__`-separated
-// `c-reading-companion__references` sidebar class is likewise not matched.
-const REFERENCE_CLASS_RE = /^[a-z]+(?:-[a-z]+)*-references$/i;
+// Word-boundary match catches BEM-style names (e.g. `c-article-references`).
+// Plural-only — singular `citation`/`reference` is Wiley's article-body class.
+const REFERENCE_SECTION_RE = /(?:^|[-_\s])(?:cites|citations|bibliograph(?:y|ies)|references|reflist|ref-list|works-cited|footnotes|cited-by)(?:$|[-_\s])/i;
 
 function isReferenceContainer(el: Element): boolean {
-  if (el.className) {
-    const cls = typeof el.className === "string" ? el.className : "";
-    for (const token of cls.split(/\s+/)) {
-      if (token && (REFERENCE_SECTION_RE.test(token) || REFERENCE_CLASS_RE.test(token))) {
-        return true;
-      }
-    }
-  }
+  const cls = typeof el.className === "string" ? el.className : "";
+  if (cls && REFERENCE_SECTION_RE.test(cls)) return true;
   if (el.id && REFERENCE_SECTION_RE.test(el.id)) return true;
   return false;
 }

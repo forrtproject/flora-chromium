@@ -177,8 +177,19 @@ export async function processScholarResults(doc: Document): Promise<void> {
                         });
                         preInjectLabels(info.row, info.extractedDoi, "#853953", false);
                     } else {
-                        // Invalid DOI — show nothing rather than an incorrect DOI
+                        // Invalid DOI — no DOI pill, but still check for a
+                        // retraction/concern notice (the static map is keyed
+                        // independently of doi.org validity). Place the pill
+                        // next to the row title since there's no DOI pill to
+                        // anchor against.
                         debugLog(`Scholar resolve [extracted-invalid] "${info.title}" → ${info.extractedDoi} rejected (doi.org says invalid)`);
+                        try {
+                            const notices = await retractionCheck([info.extractedDoi]);
+                            if (notices.length > 0) {
+                                const titleEl = info.row.querySelector<HTMLElement>(".gs_rt");
+                                if (titleEl) injectRetractionInfo(titleEl, notices[0], { afterend: true });
+                            }
+                        } catch { /* supplementary */ }
                     }
                 } else if (!info.extractedDoi && augmentedDoi) {
                     // No extraction, only augmented → gray with dotted underline
@@ -238,7 +249,11 @@ async function preInjectLabels(row: HTMLElement, doi: DoiString, color: string, 
         row.insertBefore(target, gsRi);
     }
     let result = await retractionCheck([doi]);
-    if (result && result[0] != undefined) injectRetractionInfo(target, result[0])
+    // Append directly inside the FLoRA pill area (.gs_ggs gs_fl) — the default
+    // smart placement would otherwise drop the pill into Scholar's nested
+    // .gs_or_ggsm "All versions" submenu, since that contains the publisher
+    // links the smart-placement heuristic matches against.
+    if (result && result[0] != undefined) injectRetractionInfo(target, result[0], { append: true })
 }
 
 function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmented = false): void {

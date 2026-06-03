@@ -1,4 +1,5 @@
 import { debugLog } from "./debug";
+import { BlobCache } from "./blob-cache";
 
 export interface PubPeerFeedback {
   id: string;
@@ -44,17 +45,17 @@ export async function lookupPubPeer(
   return data.feedbacks ?? [];
 }
 
-const CACHE_PREFIX = "flora_pubpeer:";
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24h
+
+const PUBPEER_CACHE = new BlobCache<{ feedback: PubPeerFeedback | null }>({
+  storageKey: "flora_pubpeer_blob",
+  ttlMs: CACHE_TTL,
+  legacyPrefixes: ["flora_pubpeer:"],
+});
 
 // Module-level back-off — when PubPeer returns 429, suppress further requests
 // until this timestamp passes so we don't keep retrying every DOM tick.
 let rateLimitedUntil = 0;
-
-interface CachedFeedback {
-  feedback: PubPeerFeedback | null;
-  timestamp: number;
-}
 
 /**
  * Look up PubPeer feedback for many DOIs in a single batch request.
@@ -77,16 +78,10 @@ export async function lookupPubPeerForDois<T extends string>(
   // 1. Serve from cache; collect DOIs that need a network call.
   const uncached: T[] = [];
   const now = Date.now();
-  const cacheKeys = dois.map((doi) => CACHE_PREFIX + doi);
-  let stored: Record<string, CachedFeedback | undefined> = {};
-  try {
-    stored = await chrome.storage.local.get(cacheKeys) as Record<string, CachedFeedback | undefined>;
-  } catch {
-    // storage unavailable — treat everything as uncached
-  }
+  const cached = await PUBPEER_CACHE.getMany(dois);
   for (const doi of dois) {
-    const entry = stored[CACHE_PREFIX + doi];
-    if (entry && now - entry.timestamp < CACHE_TTL) {
+    const entry = cached.get(doi);
+    if (entry) {
       if (entry.feedback) result.set(doi, entry.feedback);
     } else {
       uncached.push(doi);
@@ -122,18 +117,19 @@ export async function lookupPubPeerForDois<T extends string>(
   }
 
   // 3. Cache every uncached DOI (hit → feedback, miss → null) and populate result.
-  const writes: Record<string, CachedFeedback> = {};
+  const writes: Array<[string, { feedback: PubPeerFeedback | null }]> = [];
   for (const doi of uncached) {
     const feedback = hitByDoi.get(doi) ?? null;
-    writes[CACHE_PREFIX + doi] = { feedback, timestamp: now };
+    writes.push([doi, { feedback }]);
     if (feedback) result.set(doi, feedback);
   }
-  try {
-    await chrome.storage.local.set(writes);
-  } catch {
-    // ignore cache write failures
-  }
+  void PUBPEER_CACHE.setMany(writes);
 
   debugLog(`PubPeer: ${result.size}/${dois.length} reference DOI(s) have a PubPeer record`);
   return result;
+}
+
+/** Test-only: drop in-memory cache state so each case starts fresh. */
+export function _resetPubPeerCacheForTesting(): void {
+  PUBPEER_CACHE.resetForTesting();
 }
