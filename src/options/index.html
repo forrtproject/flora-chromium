@@ -168,6 +168,45 @@
             </label>
           </div>
 
+          <!-- ═══ CACHE STORAGE ═══ -->
+          <div class="detail-card" style="margin-top: 1.25rem">
+            <div class="dh">
+              <div class="dh-label">Performance</div>
+              <h2 class="dh-title">Cache Storage Limit</h2>
+              <div class="dh-authors">
+                FLoRA stores DOI lookup results locally so pages load faster on
+                repeat visits. Set how much browser storage it may use. Enter
+                <strong>0</strong> for unlimited.
+              </div>
+            </div>
+
+            <div class="action-bar" style="align-items: flex-end;">
+              <div class="ab-group">
+                <label class="ab-label" for="cache-quota-input">Limit (MB)</label>
+                <input
+                  id="cache-quota-input"
+                  type="number"
+                  class="ab-input"
+                  min="0"
+                  step="50"
+                  placeholder="500"
+                  style="width: 120px;"
+                />
+              </div>
+              <div class="ab-sep"></div>
+              <div class="ab-group">
+                <button type="button" id="cache-quota-save-btn" class="ab-btn accent">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                  Save
+                </button>
+              </div>
+            </div>
+
+            <p id="cache-quota-status" class="status domain-status" hidden></p>
+          </div>
+
           <!-- ═══ BLOCKED DOMAINS ═══ -->
           <div class="detail-card" style="margin-top: 1.25rem">
             <div class="dh">

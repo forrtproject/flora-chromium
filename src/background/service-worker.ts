@@ -1,18 +1,39 @@
-import {SessionCache} from "@shared/cache";
+import {LocalCache, MONTH_MS} from "@shared/cache";
 import {lookupDOIs} from "@shared/flora-api";
 import {RET_MAP_KEY, storageSync} from "@shared/data-extract";
 import type {DoiString, ReplicationResult} from "@shared/types";
 import {LookupResponse, SheetFetchResponse} from "@shared/messages";
 import {isLookupRequest, isSheetFetchRequest} from "@shared/messages";
-import {isSetupComplete} from "@shared/settings";
+import {getSettings, isSetupComplete} from "@shared/settings";
 
-const cache = new SessionCache<ReplicationResult>("flora");
+const cache = new LocalCache<ReplicationResult>("flora");
 
-// Open the walkthrough on first install
+// Initialise cache quota from persisted settings (service worker may restart).
+getSettings().then(({ cacheQuotaMb }) => {
+    cache.setQuota(cacheQuotaMb === 0 ? 0 : cacheQuotaMb * 1024 * 1024);
+}).catch();
+
+// Keep quota in sync when the user changes the setting.
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "sync" && "flora_settings" in changes) {
+        const next = (changes["flora_settings"].newValue as { cacheQuotaMb?: number } | undefined);
+        if (next?.cacheQuotaMb != null) {
+            cache.setQuota(next.cacheQuotaMb === 0 ? 0 : next.cacheQuotaMb * 1024 * 1024);
+        }
+    }
+});
+
+// Open the walkthrough on first install and seed retraction data immediately.
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === "install") {
         chrome.tabs.create({ url: chrome.runtime.getURL("dist/walkthrough.html") });
     }
+    syncRetractionsInfo().then().catch();
+});
+
+// Refresh retraction data once per browser session (weekly interval enforced inside).
+chrome.runtime.onStartup.addListener(() => {
+    syncRetractionsInfo().then().catch();
 });
 
 
@@ -66,15 +87,6 @@ chrome.runtime.onMessage.addListener(
             });
             return true;
         }
-        if (
-            typeof message === "object" &&
-            message !== null &&
-            (message as { type?: string }).type === "FLORA_RET_SYNC"
-        ) {
-            syncRetractionsInfo().then().catch();
-            return true;
-        }
-
         if (isSheetFetchRequest(message)) {
             handleSheetFetch(message.spreadsheetId, message.gid)
                 .then(sendResponse)
@@ -100,8 +112,9 @@ async function handleLookup(dois: DoiString[]): Promise<LookupResponse> {
     // Check cache and in-flight requests
     for (const doi of dois) {
         const cached = await cache.get(doi);
-        if (cached !== null) {
-            results[doi] = cached;
+        if (cached !== undefined) {
+            // undefined = not cached; null = cached no-match; T = cached match
+            if (cached !== null) results[doi] = cached;
         } else if (inflight.has(doi)) {
             const r = await inflight.get(doi)!;
             if (r) results[doi] = r;
@@ -133,7 +146,9 @@ async function handleLookup(dois: DoiString[]): Promise<LookupResponse> {
             const r = apiResults.get(doi);
             if (r) {
                 results[doi] = r;
-                await cache.set(doi, r);
+                await cache.set(doi, r, null); // resolved — cache forever
+            } else {
+                await cache.set(doi, null, MONTH_MS); // no match — cache for 1 month
             }
         }
     } catch (err) {

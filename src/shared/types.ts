@@ -94,8 +94,8 @@ export type ApiResponse = z.infer<typeof ApiResponseSchema>;
 
 /** Cache entry with TTL tracking */
 export interface CachedEntry<T> {
-  data: T;
-  timestamp: number;
+  data: T | null; // null = cached no-match
+  expiresAt: number | null; // null = never expires
 }
 
 /** How a DOI was classified on the page */

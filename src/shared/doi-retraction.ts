@@ -120,31 +120,42 @@ const NORMALISED_BUNDLED: RetractionMaps = {
     concerns: lowercaseKeys((retractionData as RetractionMaps).concerns),
 };
 
+// In-memory cache of the normalized retraction source. Populated on the first
+// retractionCheck call and invalidated whenever the background sync writes new
+// data to storage — so lowercaseKeys runs once per sync, not once per call.
+let cachedSource: RetractionMaps | null = null;
+
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && RET_MAP_KEY in changes) {
+        cachedSource = null;
+    }
+});
+
+async function getRetractionSource(): Promise<RetractionMaps> {
+    if (cachedSource) return cachedSource;
+
+    const storageResult = await chrome.storage.local.get([RET_MAP_KEY]);
+    const stored = storageResult[RET_MAP_KEY] as RetractionMaps | undefined;
+
+    const hasCachedData = !!stored && (
+        Object.keys(stored.retractions || {}).length > 0 ||
+        Object.keys(stored.concerns || {}).length > 0
+    );
+
+    cachedSource = hasCachedData
+        ? { retractions: lowercaseKeys(stored!.retractions), concerns: lowercaseKeys(stored!.concerns) }
+        : NORMALISED_BUNDLED;
+
+    return cachedSource;
+}
+
 /**
  * Request retraction status. Due to CORS policies, the request
  * must execute in the background context.
  */
 // @ts-ignore
 export async function retractionCheck(dois: DoiString[]): Promise<RetractionResponse[]> {
-    const storageResult = await chrome.storage.local.get([RET_MAP_KEY]) || {};
-    const cached = storageResult[RET_MAP_KEY] as RetractionMaps | undefined;
-    if (!cached)
-        chrome.runtime.sendMessage({type: "FLORA_RET_SYNC"}).then().catch();
-    // Prefer the runtime-refreshed map, fall back to the bundled data. A
-    // cached payload with only concerns is still useful, so consider both
-    // maps when deciding whether the cache is meaningful.
-    const hasCachedData = !!cached && (
-        Object.keys(cached.retractions || {}).length > 0 ||
-        Object.keys(cached.concerns || {}).length > 0
-    );
-    // Cached storage comes back as a fresh object every call (chrome.storage
-    // re-parses JSON), so we normalise on the spot rather than caching.
-    const source: RetractionMaps = hasCachedData
-        ? {
-            retractions: lowercaseKeys(cached!.retractions),
-            concerns: lowercaseKeys(cached!.concerns),
-        }
-        : NORMALISED_BUNDLED;
+    const source = await getRetractionSource();
     const result: RetractionResponse[] = [];
     for (const doi of dois) {
         const retractionDOI = source.retractions[doi];

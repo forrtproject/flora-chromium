@@ -9,6 +9,11 @@ export interface FloraSettings {
    * visible DOI of their own get a pill.
    */
   showDoiPillsOnAllReferences: boolean;
+  /**
+   * Soft cap on chrome.storage.local usage in MB. 0 = unlimited.
+   * Expired cache entries are evicted when this limit is approached.
+   */
+  cacheQuotaMb: number;
 }
 
 const STORAGE_KEY = "flora_settings";
@@ -16,6 +21,7 @@ const STORAGE_KEY = "flora_settings";
 const DEFAULTS: FloraSettings = {
   email: "",
   showDoiPillsOnAllReferences: false,
+  cacheQuotaMb: 500,
 };
 
 /** Read current settings (returns defaults for any missing keys). */
