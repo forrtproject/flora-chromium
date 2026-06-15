@@ -1,4 +1,5 @@
 import {
+    beginDomScanPass,
     classifyPageDois,
     extractDOIs,
     extractDOIsFromText,
@@ -7,7 +8,7 @@ import {
 } from "@shared/doi-extractor";
 import {augmentDOIs, fetchTitleByDoi} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
-import type {DoiContext, DoiString, LookupState} from "@shared/types";
+import type {ClassifiedDois, DoiContext, DoiString, LookupState} from "@shared/types";
 import type {
     LookupRequest,
     LookupResponse,
@@ -16,7 +17,6 @@ import type {
 } from "@shared/messages";
 import {
     hideAllFloraUI,
-    removeBanner,
     removePubPeerPanel,
     removeSheetsModal,
     renderErrorBanner,
@@ -45,10 +45,7 @@ let articleFeedbacksFetched = false;
 let lastReferenceDoiKey = "";
 let lastArticleFeedbacks: PubPeerFeedback[] = [];
 let lastRefFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map();
-// In-flight reference resolution for the current page render pass. Held at
-// module scope so a single pageRenderChangeHandler invocation can kick off
-// resolution early (in parallel with FORRT lookup) and have the post-FORRT
-// rendering path await the same promise rather than re-running resolution.
+// In-flight reference resolution, shared across one render pass.
 let resolvedRefsPromise: Promise<ResolvedReference[]> | null = null;
 
 /** Monotonic counter — incremented on each sheet tab switch to discard stale CSV responses. */
@@ -105,37 +102,38 @@ async function pageRenderChangeHandler(): Promise<void> {
             removePubPeerPanel();
         }
     }
-    // Resolve DOIs for DOI-less reference-list entries (and, when the user
-    // has opted in, surface hidden ones too). Runs in parallel with the
-    // FORRT lookup below — when it settles, the result feeds the unified
-    // retraction check and the single PubPeer batch in checkPubPeer().
+    // Fresh DOM scan pass — resets the per-pass findReferenceContainers memo.
+    beginDomScanPass();
+
+    // Resolve reference-list DOIs, in parallel with the lookup below.
     resolvedRefsPromise = resolveReferenceDois();
-    // Fire the PubPeer/panel render when reference resolution completes — the
-    // panel no longer waits for the FORRT response to surface PubPeer + notice
-    // data. checkPubPeer is idempotent via the content-keyed gate so the later
-    // FORRT-triggered call (lines below) is a no-op when refs haven't changed.
+    // Render PubPeer/panel once refs resolve; checkPubPeer is idempotent.
     void resolvedRefsPromise.then(() => { void checkPubPeer(); });
 
-    let dois = extractDOIs(document);
-    // Capture DOI occurrences (with source + anchor) at extraction time so
-    // renderInlineBadges can place badges directly on the right DOM element
-    // without re-scanning. The anchor lifts to the reference entry for DOIs
-    // inside a citation so badges don't land next to a tiny "Crossref" button.
+    // Non-Sheets: one classification scan (allDois). Sheets: canvas extractDOIs + CSV.
+    let dois: DoiString[];
+    let classified: ClassifiedDois | null = null;
+    if (isSheets) {
+        dois = extractDOIs(document);
+        if (sheetCsvDois.length > 0) {
+            dois = [...new Set([...dois, ...sheetCsvDois])];
+        }
+    } else {
+        classified = classifyPageDois(document);
+        dois = classified.allDois;
+    }
+
+    // DOI occurrences with source + anchor, so badges place without re-scanning.
     const occurrences = extractDoiOccurrences(document);
 
     const hasDoiChange = processedDois.size !== dois.length ||
         !dois.every(doi => processedDois.has(doi));
 
-    // On Sheets, also extract DOIs from the full sheet data fetched via CSV
-    if (isSheets && sheetCsvDois.length > 0) {
-        const combined = new Set([...dois, ...sheetCsvDois]);
-        dois = [...combined];
-    } else if (hasDoiChange) {
-        const classified = classifyPageDois(document);
+    // Populate per-DOI context only when the set changed (idempotent map sets).
+    if (classified && hasDoiChange) {
         for (const doi of classified.articleDois) doiContext.set(doi, "article");
         for (const doi of classified.referenceDois) doiContext.set(doi, "reference");
         for (const doi of classified.otherDois) doiContext.set(doi, "other");
-        dois = [...classified.articleDois, ...classified.referenceDois, ...classified.otherDois];
         debugLog("General: pageType =", classified.pageType);
         debugLog(classified.articleDois, "article DOIs,", classified.referenceDois, "reference DOIs,", classified.otherDois, "other DOIs");
     }
@@ -156,20 +154,13 @@ async function pageRenderChangeHandler(): Promise<void> {
         }
     }
 
-    // Exclude occurrences whose anchor sits inside FLoRA-injected UI elements
-    // (the PubPeer panel, retracts modal, banner). Without this guard the
-    // mutation observer re-fires after each UI injection, extractDoiOccurrences
-    // picks up DOI links inside the panel, and we'd stamp retraction pills onto
-    // our own panel's reference rows.
+    // Drop occurrences inside FLoRA's own UI so we don't pill our own panel rows.
     const FLORA_UI_IDS = ["flora-pubpeer-panel", "flora-retracts-modal", "flora-banner-host", "flora-setup-prompt", "flora-sheets-modal"];
     const pageOccurrences = occurrences.filter(
         (occ) => !FLORA_UI_IDS.some((id) => occ.anchor.closest(`#${id}`) !== null)
     );
 
-    // Single retraction check covering occurrences AND resolved references
-    // (extracted + augmented). One storage round-trip, one source of truth.
-    // Held in `redacts` (module-level) so checkPubPeer can pass it to the
-    // panel renderer alongside its own PubPeer data.
+    // One retraction check for occurrences + resolved refs; held in `redacts`.
     if (hasDoiChange && dois.length > 0) {
         const resolvedRefs = resolvedRefsPromise ? await resolvedRefsPromise : [];
         const allNoticeDois = Array.from(new Set([
@@ -185,10 +176,7 @@ async function pageRenderChangeHandler(): Promise<void> {
             if (notice) injectRetractionInfo(occ.anchor, notice);
         }
 
-        // Inline pills: render against augmented reference entries which have
-        // no on-page anchor for the occurrence loop to find. (Hidden DOIs are
-        // covered by the occurrence pass above; injectRetractionInfo is
-        // idempotent so a second call on the same entry no-ops.)
+        // Pills for augmented refs with no on-page anchor (idempotent).
         renderResolvedReferences(resolvedRefs, retractionByDoi);
     }
 
@@ -275,7 +263,6 @@ async function pageRenderChangeHandler(): Promise<void> {
                 removeSheetsModal();
             } else {
                 void checkPubPeer();
-                // removeBanner();
             }
         }
 
@@ -288,8 +275,7 @@ async function pageRenderChangeHandler(): Promise<void> {
     }
 }
 
-// Without this gate, augmentFromTitle ships every page's <h1>/title to
-// Crossref+OpenAlex, polluting the cache with non-article queries.
+// Gate augmentFromTitle to real article pages — avoids polluting the cache.
 function isScholarlyArticlePage(): boolean {
     return document.querySelector(
         'meta[name="citation_title"],'
@@ -335,9 +321,7 @@ async function augmentFromTitle(): Promise<void> {
             };
             await chrome.runtime.sendMessage(request);
 
-            // The augmented DOI never makes it into `dois`, so the occurrence-
-            // driven retraction pass would miss it. Check here and render the
-            // pill beside the article title when flagged.
+            // Augmented DOI isn't in `dois` — check + pill it beside the title here.
             if (titleEl) {
                 try {
                     const notices = await retractionCheck([resolvedDoi]);
@@ -359,8 +343,7 @@ async function checkPubPeer(): Promise<void> {
     try {
         const resolvedRefs = resolvedRefsPromise ? await resolvedRefsPromise : [];
 
-        // Union resolved refs with on-page reference DOIs so publishers that
-        // print DOIs inline still get PubPeer coverage.
+        // Union resolved refs with on-page reference DOIs for full PubPeer coverage.
         const seen = new Set<DoiString>();
         const referenceDois: DoiString[] = [];
         for (const r of resolvedRefs) {
@@ -375,16 +358,11 @@ async function checkPubPeer(): Promise<void> {
             referenceDois.push(doi);
         }
 
-        // Content-keyed gate: skip re-running when the article side is
-        // already fetched AND the resolved reference DOI set is unchanged.
-        // Lazy-loaded references (e.g. Wiley's "Citing Literature") trigger a
-        // re-resolution + re-batch by changing the key.
+        // Skip re-run when article is fetched and the ref DOI set is unchanged.
         const refKey = [...referenceDois].sort().join("|");
         if (articleFeedbacksFetched && refKey === lastReferenceDoiKey) return;
 
-        // Article: URL-based lookup, fetched once per page. References: one
-        // batched lookup keyed by DOI (PubPeer's v3 endpoint returns `id` =
-        // the DOI), cached in chrome.storage so re-runs are cheap.
+        // Article: URL lookup once/page. References: one batched, cached lookup.
         const articlePromise = articleFeedbacksFetched
             ? Promise.resolve(lastArticleFeedbacks)
             : lookupPubPeer([primaryDoi], [location.href]);
@@ -397,10 +375,7 @@ async function checkPubPeer(): Promise<void> {
         lastRefFeedbackByDoi = refFeedbackByDoi;
         lastReferenceDoiKey = refKey;
 
-        // The panel only lists references worth a reader's attention: those
-        // with PubPeer comments, a notice (retraction or concern), or FORRT
-        // replication data. Titles come from PubPeer when available, else
-        // Crossref/OpenAlex — never page-scraped citation text.
+        // Panel lists only refs with PubPeer comments, a notice, or FORRT data.
         const noticeDois = new Set(redacts.map((r) => r.originDoi));
         const hasReplication = (doi: DoiString): boolean => {
             const s = pageState.get(doi);
@@ -491,26 +466,39 @@ async function fetchSheetDois(): Promise<void> {
         console.warn("[FLoRA:Sheets] CSV fetch error:", err);
     }
 
-    // Always run — even if CSV fetch failed, this ensures the modal state is
-    // re-evaluated after a tab switch (processedDois was already cleared).
+    // Always run — re-evaluates modal state even if the CSV fetch failed.
     pageRenderChangeHandler();
+}
+
+function isFloraOwnedNode(node: Node): boolean {
+    if (node.nodeType !== Node.ELEMENT_NODE) return true; // text/comment nodes — not meaningful for DOI scanning
+    const el = node as Element;
+    if (el.id.startsWith("flora-")) return true;
+    for (const c of el.classList) {
+        if (c.startsWith("flora-")) return true;
+    }
+    return false;
 }
 
 function startDomListener(callback: () => void) {
     let debounceTimer: number;
     const observer = new MutationObserver((mutations) => {
-        const hasNewNodes = mutations.some(m => m.addedNodes.length > 0);
-        if (hasNewNodes) {
+        const hasExternalChange = mutations.some(m => {
+            if (m.addedNodes.length === 0) return false;
+            // Skip mutations inside FLoRA's own injected containers.
+            if ((m.target as Element).closest?.('[id^="flora-"]')) return false;
+            // Skip if every added node is a FLoRA-owned element (badges, pills, panel, etc.).
+            for (const node of m.addedNodes) {
+                if (!isFloraOwnedNode(node)) return true;
+            }
+            return false;
+        });
+        if (hasExternalChange) {
             clearTimeout(debounceTimer);
-            debounceTimer = window.setTimeout(() => {
-                callback()
-            }, 300);
+            debounceTimer = window.setTimeout(callback, 300);
         }
     });
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
+    observer.observe(document.body, { childList: true, subtree: true });
 }
 
 // Gate: skip iframes and blocked domains
@@ -568,8 +556,7 @@ function startDomListener(callback: () => void) {
     if (isSheets) {
         // Fetch full sheet data via CSV export to get all DOIs regardless of scroll
         fetchSheetDois();
-        // Detect sheet tab switches — Google Sheets uses replaceState, which doesn't
-        // fire hashchange/popstate, so we poll for gid changes instead.
+        // Poll for sheet tab switches — Sheets uses replaceState (no popstate).
         let lastGid = parseSheetsUrl(location.href)?.gid ?? "0";
         setInterval(() => {
             const nowGid = parseSheetsUrl(location.href)?.gid ?? "0";
@@ -587,8 +574,7 @@ function startDomListener(callback: () => void) {
     } else {
         // Initial run — static pages may never trigger the MutationObserver.
         void pageRenderChangeHandler();
-        // Defer the DOM observer until after full page load so mutations during
-        // initial resource loading don't trigger repeated handler calls.
+        // Defer the observer until full load so load-time mutations don't spam it.
         if (document.readyState === "complete") {
             startDomListener(pageRenderChangeHandler);
         } else {

@@ -442,15 +442,36 @@ function isReferenceContainer(el: Element): boolean {
   return false;
 }
 
+// Per-pass memo — findReferenceContainers runs several times per handler pass
+// and the full-document scan is expensive. beginDomScanPass() bumps the epoch.
+let _scanEpoch = 0;
+let _refContainerCache: { epoch: number; doc: Document; result: Element[] } | null = null;
+
+/** Invalidate the per-pass scan memo. Call once at the start of each handler pass. */
+export function beginDomScanPass(): void {
+  _scanEpoch++;
+}
+
 export function findReferenceContainers(doc: Document): Element[] {
+  if (
+    _refContainerCache &&
+    _refContainerCache.epoch === _scanEpoch &&
+    _refContainerCache.doc === doc
+  ) {
+    return _refContainerCache.result;
+  }
+
   const matched: Element[] = [];
   for (const el of doc.querySelectorAll<Element>("[class],[id]")) {
     if (isReferenceContainer(el)) matched.push(el);
   }
   // Keep only outermost containers to avoid double-counting nested elements
-  return matched.filter(
+  const result = matched.filter(
     (el) => !matched.some((other) => other !== el && other.contains(el))
   );
+
+  _refContainerCache = { epoch: _scanEpoch, doc, result };
+  return result;
 }
 
 /** A single reference-list entry, kept linked to its DOM element. */
@@ -623,7 +644,11 @@ function extractFromReferenceContainers(doc: Document, found: Set<DoiString>): v
 export function detectPageType(doc: Document): PageType {
   const primaryDoi = extractPrimaryDOI(doc);
   if (primaryDoi) return "article";
+  return pageTypeFromPath(doc);
+}
 
+/** Path-only page-type heuristic — used when no primary DOI is present. */
+function pageTypeFromPath(doc: Document): PageType {
   const path = doc.location?.pathname?.toLowerCase() ?? "";
   if (/\/(toc|issues?|volumes?|search|browse|list|results?|catalog|archive|index)(\/|$)/.test(path)) {
     return "listing";
@@ -640,33 +665,30 @@ export function detectPageType(doc: Document): PageType {
  * Also returns the detected page type.
  */
 export function classifyPageDois(doc: Document): ClassifiedDois {
-  // Article DOIs — authoritative sources only
+  // Article DOIs (authoritative sources) — scanned once, reused below.
   const articleFound = new Set<DoiString>();
   extractFromUrl(doc, articleFound);
   extractFromMeta(doc, articleFound);
   extractFromJsonLd(doc, articleFound);
 
-  // Reference section DOIs
+  // Reference section DOIs (the article's own DOI stays classified as article).
   const referenceFound = new Set<DoiString>();
   extractFromReferenceContainers(doc, referenceFound);
-  // The article's own DOI might appear in its reference list — keep it as article
   for (const doi of articleFound) referenceFound.delete(doi);
 
-  // All DOIs on the page
-  const allFound = new Set<DoiString>();
-  extractFromUrl(doc, allFound);
-  extractFromMeta(doc, allFound);
-  extractFromJsonLd(doc, allFound);
-  extractFromDoiLinks(doc, allFound);
-  extractFromVisibleText(doc, allFound);
+  // Remaining page-wide DOIs — seed from the article set to avoid re-scanning.
+  const pageWide = new Set<DoiString>(articleFound);
+  extractFromDoiLinks(doc, pageWide);
+  extractFromVisibleText(doc, pageWide);
 
   // Other = everything not already classified
   const otherFound = new Set<DoiString>();
-  for (const doi of allFound) {
+  for (const doi of pageWide) {
     if (!articleFound.has(doi) && !referenceFound.has(doi)) otherFound.add(doi);
   }
 
-  const pageType = detectPageType(doc);
+  // Article page = has a primary DOI; reuse the article set, no extra scan.
+  const pageType: PageType = articleFound.size > 0 ? "article" : pageTypeFromPath(doc);
 
   debugLog(
     `classifyPageDois: pageType=${pageType}`,
@@ -680,6 +702,8 @@ export function classifyPageDois(doc: Document): ClassifiedDois {
     articleDois: [...articleFound],
     referenceDois: [...referenceFound],
     otherDois: [...otherFound],
+    retractedDois: [],
+    allDois: [...new Set([...articleFound, ...referenceFound, ...otherFound])],
   };
 }
 
