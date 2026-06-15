@@ -120,9 +120,8 @@ const NORMALISED_BUNDLED: RetractionMaps = {
     concerns: lowercaseKeys((retractionData as RetractionMaps).concerns),
 };
 
-// In-memory cache of the normalized retraction source. Populated on the first
-// retractionCheck call and invalidated whenever the background sync writes new
-// data to storage — so lowercaseKeys runs once per sync, not once per call.
+// Normalized retraction source, cached so lowercaseKeys runs once per sync,
+// not once per retractionCheck call. Invalidated when storage changes.
 let cachedSource: RetractionMaps | null = null;
 
 chrome.storage.onChanged.addListener((changes, area) => {

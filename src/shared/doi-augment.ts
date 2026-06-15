@@ -1,7 +1,6 @@
 import type {DoiString} from "./types";
 import {normaliseDOI} from "./doi-normalise";
 import {getSettings} from "./settings";
-import {RetractionLookupResponse} from "./messages"
 import {BlobCache} from "./blob-cache";
 
 const OPENALEX_BASE = "https://api.openalex.org/works";
@@ -320,41 +319,4 @@ export async function fetchTitleByDoi(doi: string): Promise<string | null> {
 export function _resetAugmentCachesForTesting(): void {
     DOI_AUGMENT_CACHE.resetForTesting();
     TITLE_CACHE.resetForTesting();
-}
-
-/**
- * Check for retraction status on Retraction Watch, via Crossref.
- * @param doi - the DOI of interest
- * @returns RedactionStatus
- */
-export async function retractionWatchLookup(doi: string): Promise<RetractionLookupResponse | null> {
-    const email = await getUserEmail();
-    const poolParam = email ? `?mailto=${encodeURIComponent(email)}` : '';
-    const requestUrl = `${CROSSREF_BASE}/${doi}${poolParam}`;
-    const response = await fetch(requestUrl);
-    if (!response.ok) return null;
-    const data = await response.json() as {
-        message?: {
-            "title": string,
-            "updated-by"?: Array<{
-                DOI?: string,
-                type?: string,
-                label?: string,
-                source?: string,
-                updated?: {
-                    timestamp?: number
-                }
-            }>;
-        };
-    };
-    const updates = data.message?.["updated-by"] || [];
-    const retractionUpdate = updates.find(update =>
-        update.type === "retraction");
-    return {
-        doi: retractionUpdate ? (retractionUpdate.DOI ?? doi) : doi,
-        retracted: !!retractionUpdate,
-        title: retractionUpdate ? data.message?.title ?? "" : "",
-        timestamp: retractionUpdate ? (retractionUpdate.updated ?? {}).timestamp ?? 0 : 0,
-        source: (retractionUpdate ? retractionUpdate.source : undefined) ?? "crossref"
-    }
 }
