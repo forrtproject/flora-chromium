@@ -181,6 +181,11 @@ export function resetRetractionPills(): void {
     pilledRetractionDois.clear();
 }
 
+/** Reset the in-memory retraction source cache — for use in tests only. */
+export function resetRetractionCache(): void {
+    cachedSource = null;
+}
+
 export interface InjectRetractionOptions {
     /**
      * Skip the link-search smart placement and append the pill directly to
