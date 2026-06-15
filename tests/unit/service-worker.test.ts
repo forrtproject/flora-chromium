@@ -14,24 +14,29 @@ vi.mock("../../src/shared/flora-api", () => ({
 // Mock settings
 vi.mock("../../src/shared/settings", () => ({
     isSetupComplete: vi.fn().mockResolvedValue(true),
-    getSettings: vi.fn().mockResolvedValue({email: "test@example.com"}),
+    getSettings: vi.fn().mockResolvedValue({email: "test@example.com", cacheQuotaMb: 500}),
 }));
 
 // Mock cache
 const cacheStore = new Map<string, unknown>();
 vi.mock("../../src/shared/cache", () => ({
-    SessionCache: class {
+    MONTH_MS: 30 * 24 * 60 * 60 * 1000,
+    LocalCache: class {
         prefix: string;
 
         constructor(prefix: string) {
             this.prefix = prefix;
         }
 
+        setQuota(_bytes: number) {}
+
         async get(key: string) {
-            return cacheStore.get(`${this.prefix}:${key}`) ?? null;
+            return cacheStore.has(`${this.prefix}:${key}`)
+                ? cacheStore.get(`${this.prefix}:${key}`)
+                : undefined;
         }
 
-        async set(key: string, data: unknown) {
+        async set(key: string, data: unknown, _ttlMs: number | null) {
             cacheStore.set(`${this.prefix}:${key}`, data);
         }
     },

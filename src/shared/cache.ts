@@ -1,35 +1,77 @@
 import type { CachedEntry } from "./types";
 
-const DEFAULT_TTL_MS = 60 * 60 * 1000; // 1 hour
+export const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
- * Session cache wrapper using chrome.storage.session.
- * Entries expire after the configured TTL.
+ * Persistent cache using chrome.storage.local.
+ * Supports per-entry TTL or permanent storage (ttlMs = null).
+ * Enforces a soft storage quota by evicting expired entries when approached.
  */
-export class SessionCache<T> {
+export class LocalCache<T> {
+  private quotaBytes: number;
+
   constructor(
     private readonly prefix: string,
-    private readonly ttlMs: number = DEFAULT_TTL_MS
-  ) {}
+    quotaBytes: number = 500 * 1024 * 1024
+  ) {
+    this.quotaBytes = quotaBytes;
+  }
 
-  async get(key: string): Promise<T | null> {
+  /** Update the quota at runtime (e.g. after the user changes the setting). */
+  setQuota(bytes: number): void {
+    this.quotaBytes = bytes;
+  }
+
+  /**
+   * Returns:
+   *  - `undefined`  — not in cache (or expired)
+   *  - `null`       — cached no-match (negative result)
+   *  - `T`          — cached match
+   */
+  async get(key: string): Promise<T | null | undefined> {
     const storageKey = this.storageKey(key);
-    const result = await chrome.storage.session.get(storageKey);
+    const result = await chrome.storage.local.get(storageKey);
     const entry = result[storageKey] as CachedEntry<T> | undefined;
 
-    if (!entry) return null;
+    if (!entry) return undefined;
 
-    if (Date.now() - entry.timestamp > this.ttlMs) {
-      await chrome.storage.session.remove(storageKey);
-      return null;
+    if (entry.expiresAt !== null && Date.now() > entry.expiresAt) {
+      await chrome.storage.local.remove(storageKey);
+      return undefined;
     }
 
     return entry.data;
   }
 
-  async set(key: string, data: T): Promise<void> {
-    const entry: CachedEntry<T> = { data, timestamp: Date.now() };
-    await chrome.storage.session.set({ [this.storageKey(key)]: entry });
+  /**
+   * @param data    The value to cache; pass `null` to record a negative result.
+   * @param ttlMs   Milliseconds until expiry, or `null` to cache forever.
+   */
+  async set(key: string, data: T | null, ttlMs: number | null): Promise<void> {
+    await this.sweepIfOverQuota();
+    const expiresAt = ttlMs === null ? null : Date.now() + ttlMs;
+    const entry: CachedEntry<T> = { data, expiresAt };
+    await chrome.storage.local.set({ [this.storageKey(key)]: entry });
+  }
+
+  private async sweepIfOverQuota(): Promise<void> {
+    if (this.quotaBytes === 0) return; // 0 = unlimited
+    const used = await chrome.storage.local.getBytesInUse(null);
+    if (used < this.quotaBytes) return;
+
+    // Evict all expired entries for this cache prefix to reclaim space
+    const all = await chrome.storage.local.get(null);
+    const now = Date.now();
+    const expired = Object.keys(all)
+      .filter(k => k.startsWith(`${this.prefix}:`))
+      .filter(k => {
+        const e = all[k] as CachedEntry<T> | undefined;
+        return e?.expiresAt != null && now > e.expiresAt;
+      });
+
+    if (expired.length > 0) {
+      await chrome.storage.local.remove(expired);
+    }
   }
 
   private storageKey(key: string): string {

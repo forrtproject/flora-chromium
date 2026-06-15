@@ -47,6 +47,38 @@ allRefsToggle.addEventListener("change", () => {
   void saveSettings({ showDoiPillsOnAllReferences: allRefsToggle.checked });
 });
 
+// ── Cache storage quota ─────────────────────────────────────────────
+
+const cacheQuotaInput = document.getElementById("cache-quota-input") as HTMLInputElement;
+const cacheQuotaSaveBtn = document.getElementById("cache-quota-save-btn") as HTMLButtonElement;
+const cacheQuotaStatus = document.getElementById("cache-quota-status") as HTMLParagraphElement;
+
+getSettings().then(({ cacheQuotaMb }) => {
+  cacheQuotaInput.value = String(cacheQuotaMb);
+});
+
+cacheQuotaSaveBtn.addEventListener("click", async () => {
+  const raw = parseInt(cacheQuotaInput.value, 10);
+  const cacheQuotaMb = isNaN(raw) || raw < 0 ? 500 : raw;
+  cacheQuotaInput.value = String(cacheQuotaMb);
+  cacheQuotaSaveBtn.disabled = true;
+  try {
+    await saveSettings({ cacheQuotaMb });
+    cacheQuotaStatus.textContent = cacheQuotaMb === 0
+      ? "Storage limit removed — cache is unlimited."
+      : `Storage limit set to ${cacheQuotaMb} MB.`;
+    cacheQuotaStatus.className = "status domain-status success";
+    cacheQuotaStatus.hidden = false;
+    setTimeout(() => { cacheQuotaStatus.hidden = true; }, 3000);
+  } catch {
+    cacheQuotaStatus.textContent = "Failed to save — please try again.";
+    cacheQuotaStatus.className = "status domain-status error";
+    cacheQuotaStatus.hidden = false;
+  } finally {
+    cacheQuotaSaveBtn.disabled = false;
+  }
+});
+
 // ── Domain blocklist ────────────────────────────────────────────────
 
 const domainInput = document.getElementById("domain-input") as HTMLInputElement;

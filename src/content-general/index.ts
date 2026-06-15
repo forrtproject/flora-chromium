@@ -7,7 +7,6 @@ import {
 } from "@shared/doi-extractor";
 import {augmentDOIs, fetchTitleByDoi} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
-import {debounce} from "@shared/debounce";
 import type {DoiContext, DoiString, LookupState} from "@shared/types";
 import type {
     LookupRequest,
@@ -586,9 +585,14 @@ function startDomListener(callback: () => void) {
             }
         }, 1500);
     } else {
-        debounce(pageRenderChangeHandler, 1000);
-        startDomListener(pageRenderChangeHandler);
         // Initial run — static pages may never trigger the MutationObserver.
         void pageRenderChangeHandler();
+        // Defer the DOM observer until after full page load so mutations during
+        // initial resource loading don't trigger repeated handler calls.
+        if (document.readyState === "complete") {
+            startDomListener(pageRenderChangeHandler);
+        } else {
+            window.addEventListener("load", () => startDomListener(pageRenderChangeHandler), { once: true });
+        }
     }
 })();

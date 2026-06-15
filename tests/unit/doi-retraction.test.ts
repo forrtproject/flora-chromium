@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-import { retractionCheck } from "../../src/shared/doi-retraction";
+import { retractionCheck, resetRetractionCache } from "../../src/shared/doi-retraction";
 import { RET_MAP_KEY } from "../../src/shared/data-extract";
 import type { DoiString } from "../../src/shared/types";
 
@@ -14,6 +14,7 @@ const BUNDLED_RETRACTION_NOTICE = "10.1007/s00500-025-11130-9";
 
 describe("retractionCheck", () => {
   beforeEach(() => {
+    resetRetractionCache();
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockReset();
   });
 

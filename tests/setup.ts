@@ -20,7 +20,13 @@ const storageMock = {
 
 Object.defineProperty(globalThis, "chrome", {
   value: {
-    storage: storageMock,
+    storage: {
+      ...storageMock,
+      onChanged: {
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      },
+    },
     runtime: {
       id: "test-extension-id",
       sendMessage: vi.fn().mockResolvedValue({
@@ -33,6 +39,9 @@ Object.defineProperty(globalThis, "chrome", {
         removeListener: vi.fn(),
       },
       onInstalled: {
+        addListener: vi.fn(),
+      },
+      onStartup: {
         addListener: vi.fn(),
       },
       openOptionsPage: vi.fn(),
