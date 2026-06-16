@@ -45,6 +45,9 @@ let articleFeedbacksFetched = false;
 let lastReferenceDoiKey = "";
 let lastArticleFeedbacks: PubPeerFeedback[] = [];
 let lastRefFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map();
+// Monotonically increments when FORRT lookup results land in pageState.
+let pageStateVersion = 0;
+let lastRenderedPageStateVersion = -1;
 // In-flight reference resolution, shared across one render pass.
 let resolvedRefsPromise: Promise<ResolvedReference[]> | null = null;
 
@@ -92,6 +95,7 @@ async function pageRenderChangeHandler(): Promise<void> {
         lastRefFeedbackByDoi = new Map();
         articleFeedbacksFetched = false;
         lastReferenceDoiKey = "";
+        lastRenderedPageStateVersion = -1;
         resolvedRefsPromise = null;
         pageState.clear();
         augmentAttempted = false;
@@ -105,10 +109,8 @@ async function pageRenderChangeHandler(): Promise<void> {
     // Fresh DOM scan pass — resets the per-pass findReferenceContainers memo.
     beginDomScanPass();
 
-    // Resolve reference-list DOIs, in parallel with the lookup below.
+    // Resolve reference-list DOIs in parallel with the FORRT lookup below.
     resolvedRefsPromise = resolveReferenceDois();
-    // Render PubPeer/panel once refs resolve; checkPubPeer is idempotent.
-    void resolvedRefsPromise.then(() => { void checkPubPeer(); });
 
     // Non-Sheets: one classification scan (allDois). Sheets: canvas extractDOIs + CSV.
     let dois: DoiString[];
@@ -187,11 +189,13 @@ async function pageRenderChangeHandler(): Promise<void> {
     if (newDois.length === 0 && dois.length === 0) {
         debugLog("No valid DOIs found on page, attempting title augmentation");
         if (!isSheets) augmentFromTitle().then().catch();
+        if (!isSheets) void checkPubPeer();
         return;
     }
 
     if (newDois.length === 0) {
         debugLog("No new DOIs (all already processed)");
+        if (!isSheets) void checkPubPeer();
         return;
     }
     debugLog(isSheets ? "Sheets:" : "General:", "New DOIs to look up:", newDois.length, newDois);
@@ -228,6 +232,7 @@ async function pageRenderChangeHandler(): Promise<void> {
                 pageState.set(doi, {status: "no-match"});
             }
         }
+        pageStateVersion++; // signal that replication data is now available
 
         // Collect matched DOIs for display
         // On Sheets, skip the "still in DOM" re-check — the canvas DOM is unreliable
@@ -358,9 +363,9 @@ async function checkPubPeer(): Promise<void> {
             referenceDois.push(doi);
         }
 
-        // Skip re-run when article is fetched and the ref DOI set is unchanged.
+        // Skip re-run when article is fetched, ref DOI set is unchanged, and no new FORRT data.
         const refKey = [...referenceDois].sort().join("|");
-        if (articleFeedbacksFetched && refKey === lastReferenceDoiKey) return;
+        if (articleFeedbacksFetched && refKey === lastReferenceDoiKey && lastRenderedPageStateVersion === pageStateVersion) return;
 
         // Article: URL lookup once/page. References: one batched, cached lookup.
         const articlePromise = articleFeedbacksFetched
@@ -397,6 +402,7 @@ async function checkPubPeer(): Promise<void> {
             return {doi, title};
         }));
 
+        lastRenderedPageStateVersion = pageStateVersion;
         renderPubPeerPanel(articleFeedbacks, panelRefs, pageState, doiContext, refFeedbackByDoi, redacts);
     } catch {
         // PubPeer is supplementary — fail silently
