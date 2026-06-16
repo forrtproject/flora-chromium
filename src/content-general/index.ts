@@ -171,11 +171,29 @@ async function pageRenderChangeHandler(): Promise<void> {
         ]));
         redacts = await retractionCheck(allNoticeDois);
 
-        // Inline pills: occurrence-driven for DOIs visible on the page.
         const retractionByDoi = new Map(redacts.map((r) => [r.originDoi, r] as const));
+        const articleDois = new Set(
+            [...doiContext.entries()].filter(([, ctx]) => ctx === "article").map(([doi]) => doi)
+        );
+        const titleEl = document.querySelector<HTMLHeadingElement>("h1");
+
+        // Article notice → pinned inline at the end of the page title for a
+        // consistent spot across sites, instead of at whatever DOI occurrence
+        // happens to exist.
+        if (titleEl) {
+            for (const doi of articleDois) {
+                const notice = retractionByDoi.get(doi);
+                if (notice) injectRetractionInfo(titleEl, notice, { append: true });
+            }
+        }
+
+        // Inline pills for remaining (reference/other) occurrences. Article DOIs
+        // are handled at the title above when a title element exists.
         for (const occ of pageOccurrences) {
             const notice = retractionByDoi.get(occ.doi);
-            if (notice) injectRetractionInfo(occ.anchor, notice);
+            if (!notice) continue;
+            if (titleEl && articleDois.has(occ.doi)) continue;
+            injectRetractionInfo(occ.anchor, notice);
         }
 
         // Pills for augmented refs with no on-page anchor (idempotent).
@@ -195,6 +213,10 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     if (newDois.length === 0) {
         debugLog("No new DOIs (all already processed)");
+        // Re-place inline badges against the live DOM — hydrating SPAs (e.g.
+        // Sage) re-render and wipe a previously placed badge, and this pass
+        // (triggered by that mutation) would otherwise return without restoring it.
+        if (!isSheets) renderInlineBadges(pageState, pageOccurrences);
         if (!isSheets) void checkPubPeer();
         return;
     }

@@ -217,7 +217,7 @@ export function injectRetractionInfo(
 
     const wrapper = document.createElement("span");
     wrapper.className = FLORA_NOTICE_PILL_CLASS;
-    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle;`;
+    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle; margin-left: 6px;`;
 
     const presentation = noticePresentation(info.kind);
     const W = presentation.pillWidth;

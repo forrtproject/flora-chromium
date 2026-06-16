@@ -116,6 +116,26 @@ describe("service-worker", () => {
         expect(response.results["10.1038/nature12373"]).toEqual(MOCK_RESULT);
     });
 
+    it("re-queries no-match DOIs (does not negative-cache)", async () => {
+        // FORRT may add a record later, so an unmatched DOI must hit the API
+        // again on the next request rather than being suppressed by the cache.
+        mockLookupDOIs.mockResolvedValue(new Map());
+
+        await sendMessage({
+            type: "FLORA_LOOKUP",
+            dois: [doi("10.9999/not.yet.in.forrt")],
+        });
+        expect(mockLookupDOIs).toHaveBeenCalledOnce();
+
+        const response = await sendMessage({
+            type: "FLORA_LOOKUP",
+            dois: [doi("10.9999/not.yet.in.forrt")],
+        });
+        // Second request re-hits the API instead of serving a cached no-match.
+        expect(mockLookupDOIs).toHaveBeenCalledTimes(2);
+        expect(Object.keys(response.results)).toHaveLength(0);
+    });
+
     it("returns errors on API failure", async () => {
         mockLookupDOIs.mockRejectedValue(new Error("FLoRA API error: 500"));
 

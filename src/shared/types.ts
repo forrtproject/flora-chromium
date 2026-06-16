@@ -33,13 +33,21 @@ const AuthorSchema = z.object({
   family: z.string().nullable().optional(),
 });
 
+// FORRT sometimes returns a consortium/group name as a plain string instead of
+// an author array (e.g. "Open Science Collaboration"). Normalise that to a
+// single-author array so one such field can't fail the whole response parse.
+const AuthorsField = z.preprocess(
+  (val) => (typeof val === "string" ? [{ family: val }] : val),
+  z.array(AuthorSchema)
+);
+
 /** A single replication or reproduction entry from the FORRT API */
 export const ReplicationEntrySchema = z.object({
   doi: z.string().nullable().optional(),
   doi_hash: z.string().optional(),
   type: z.string().nullable().optional(),
   title: z.string().nullable().optional(),
-  authors: z.array(AuthorSchema).nullable().optional(),
+  authors: AuthorsField.nullable().optional(),
   journal: z.string().nullable().optional(),
   year: z.number().nullable().optional(),
   volume: z.string().nullable().optional(),
@@ -58,7 +66,7 @@ export const OriginalEntrySchema = z.object({
   doi: z.string().nullable().optional(),
   doi_hash: z.string().optional(),
   title: z.string().nullable().optional(),
-  authors: z.array(AuthorSchema).nullable().optional(),
+  authors: AuthorsField.nullable().optional(),
   journal: z.string().nullable().optional(),
   year: z.number().nullable().optional(),
   url: z.string().nullable().optional(),
@@ -71,7 +79,7 @@ export const ReplicationResultSchema = z.object({
   doi: z.string(),
   types: z.array(z.string()).optional(),
   title: z.string().nullable(),
-  authors: z.array(AuthorSchema).nullable(),
+  authors: AuthorsField.nullable(),
   journal: z.string().nullable(),
   year: z.number().nullable(),
   url: z.string().nullable(),
@@ -84,13 +92,6 @@ export const ReplicationResultSchema = z.object({
 });
 
 export type ReplicationResult = z.infer<typeof ReplicationResultSchema>;
-
-/** Zod schema for the full API response — keyed by DOI */
-export const ApiResponseSchema = z.object({
-  results: z.record(z.string(), ReplicationResultSchema.nullable()),
-});
-
-export type ApiResponse = z.infer<typeof ApiResponseSchema>;
 
 /** Cache entry with TTL tracking */
 export interface CachedEntry<T> {

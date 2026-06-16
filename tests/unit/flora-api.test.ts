@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { lookupDOIs } from "../../src/shared/flora-api";
-import { doi, mockResult } from "../helpers";
+import { doi, mockResult, mockEntry } from "../helpers";
 
 const API_URL = "https://rep-api.forrt.org/v1/original-lookup";
 
@@ -91,6 +91,43 @@ describe("lookupDOIs", () => {
 
     const results = await lookupDOIs([doi("10.1038/test")]);
     expect(results.size).toBe(0);
+  });
+
+  it("accepts a string in the authors field (consortium name)", async () => {
+    const result = mockResult();
+    result.record.replications = [mockEntry()];
+    // FORRT returns a group name as a plain string for some entries.
+    (result.record.replications[0] as Record<string, unknown>).authors =
+      "Open Science Collaboration";
+    server.use(
+      http.get(API_URL, () =>
+        HttpResponse.json({ results: { "10.1038/nature12373": result } })
+      )
+    );
+
+    const results = await lookupDOIs([doi("10.1038/nature12373")]);
+    expect(results.size).toBe(1);
+    const authors = results.get(doi("10.1038/nature12373"))!.record.replications[0].authors;
+    expect(authors).toEqual([{ family: "Open Science Collaboration" }]);
+  });
+
+  it("skips one malformed result without dropping the rest of the batch", async () => {
+    const good = mockResult({ doi: "10.1038/good" });
+    server.use(
+      http.get(API_URL, () =>
+        HttpResponse.json({
+          results: {
+            "10.1038/good": good,
+            "10.1038/bad": { doi: "10.1038/bad" }, // missing required fields
+          },
+        })
+      )
+    );
+
+    const results = await lookupDOIs([doi("10.1038/good"), doi("10.1038/bad")]);
+    expect(results.size).toBe(1);
+    expect(results.get(doi("10.1038/good"))).toBeTruthy();
+    expect(results.has(doi("10.1038/bad"))).toBe(false);
   });
 
   it("returns empty map when response has null fields where numbers expected (per-batch error handling)", async () => {

@@ -321,9 +321,12 @@ export function renderInlineBadges(
     // in (no regex re-scan); otherwise compute them now from the live DOM.
     const occs = occurrences ?? extractDoiOccurrences(document);
 
-    // Pick the best occurrence per DOI for placement.
+    // Pick the best occurrence per DOI for placement. Skip anchors detached
+    // from the live DOM (captured before a SPA re-render) so a stale node can't
+    // win the ranking and leave the DOI silently un-badged.
     const bestByDoi = new Map<DoiString, DoiOccurrence>();
     for (const occ of occs) {
+        if (!occ.anchor.isConnected) continue;
         const cur = bestByDoi.get(occ.doi);
         if (!cur || OCCURRENCE_RANK[occ.kind] < OCCURRENCE_RANK[cur.kind]) {
             bestByDoi.set(occ.doi, occ);
