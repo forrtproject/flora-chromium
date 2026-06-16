@@ -834,7 +834,32 @@ export function renderPubPeerPanel(
     }
   }
 
-  const hasReplicationData = articleReplications > 0 || articleReproductions > 0 || articleOriginals > 0;
+  // Fallback: when the article itself has no replications/reproductions, surface
+  // the ones found among the page's references in the same top sections, so they
+  // render exactly like an article's own replications (title · authors · outcome).
+  if (allReplicationEntries.length === 0 && allReproductionEntries.length === 0) {
+    const seenRepl = new Set<string>();
+    const seenRepro = new Set<string>();
+    for (const ref of references) {
+      const state = pageState.get(ref.doi);
+      if (state?.status !== "matched") continue;
+      for (const e of state.result.record.replications) {
+        const key = e.doi ?? e.title ?? "";
+        if (key && seenRepl.has(key)) continue;
+        if (key) seenRepl.add(key);
+        allReplicationEntries.push(e);
+      }
+      for (const e of state.result.record.reproductions ?? []) {
+        const key = e.doi ?? e.title ?? "";
+        if (key && seenRepro.has(key)) continue;
+        if (key) seenRepro.add(key);
+        allReproductionEntries.push(e);
+      }
+    }
+  }
+
+  const hasReplicationData = articleReplications > 0 || articleReproductions > 0 || articleOriginals > 0
+    || allReplicationEntries.length > 0 || allReproductionEntries.length > 0;
 
   // Notice status — keyed by the DOI as it appears on the page (originDoi).
   // A "notice" is either a retraction or an expression of concern; the kind
@@ -983,6 +1008,7 @@ export function renderPubPeerPanel(
     titleLink.href = articleFloraUrl;
     titleLink.target = "_blank";
     titleLink.rel = "noopener";
+    titleLink.title = "Open in FLoRA";
     titleLink.style.cssText =
       "display:inline-flex;align-items:flex-start;gap:4px;color:#853953;font-weight:600;" +
       "font-size:18px;text-decoration:none;line-height:1.4;word-break:break-word;flex:1;min-width:0;";
@@ -1171,135 +1197,138 @@ export function renderPubPeerPanel(
     }
   })();
 
-  // References — only the entries worth attention: the caller pre-filters to
-  // references with PubPeer comments, a retraction, or FORRT replication data,
-  // each carrying a canonical title. A flagged reference that happens to lack
-  // PubPeer comments (retraction- or replication-only) still shows a muted
-  // "No PubPeer comments" tag. The list is collapsible: first 5 visible, a
-  // toggle reveals the rest.
-  if (references.length > 0) {
-    const refSection = document.createElement("div");
-    refSection.style.cssText = "border-top:1px solid #e8e8e8;";
+  // Build one reference row (title + FORRT/retraction/PubPeer tags).
+  const buildRefRow = (ref: { doi: DoiString; title: string }): HTMLLIElement => {
+    const doi = ref.doi;
+    const feedback = refFeedbackByDoi.get(doi);
+    const li = document.createElement("li");
+    li.style.cssText = "padding:10px 16px;border-bottom:1px solid #f0f0f0;";
 
-    const refLabel = document.createElement("div");
-    refLabel.style.cssText =
-      "font-size:14px;font-weight:600;color:#5f6368;text-transform:uppercase;" +
-      "letter-spacing:0.5px;border-bottom:1px solid #e8e8e8;padding:10px 16px;";
-    refLabel.textContent = `References (${references.length})`;
-    refSection.appendChild(refLabel);
+    // Canonical title resolved by the caller (PubPeer / Crossref / OpenAlex).
+    const title = ref.title || feedback?.title || doi;
+    const titleLink = document.createElement("a");
+    titleLink.href = feedback?.url || `https://doi.org/${doi}`;
+    titleLink.target = "_blank";
+    titleLink.rel = "noopener";
+    titleLink.title = title;
+    // Clamp to 3 lines so a long/unparsed citation can't blow up the row.
+    titleLink.style.cssText =
+      "display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;" +
+      "overflow:hidden;text-overflow:ellipsis;word-break:break-word;" +
+      "font-size:12px;font-weight:500;color:#853953;" +
+      "text-decoration:none;line-height:1.4;margin-bottom:6px;";
+    titleLink.textContent = title;
 
-    const refList = document.createElement("ul");
-    refList.style.cssText = "margin:0;list-style:none;padding:0;";
+    const tagsRow = document.createElement("div");
+    tagsRow.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:4px;";
 
-    const COLLAPSED_COUNT = 5;
-    const refItems: HTMLLIElement[] = [];
-
-    for (const ref of references) {
-      const doi = ref.doi;
-      const feedback = refFeedbackByDoi.get(doi);
-      const li = document.createElement("li");
-      li.style.cssText = "padding:10px 16px;border-bottom:1px solid #f0f0f0;";
-
-      // Canonical title resolved by the caller (PubPeer / Crossref / OpenAlex).
-      const title = ref.title || feedback?.title || doi;
-      const titleLink = document.createElement("a");
-      titleLink.href = feedback?.url || `https://doi.org/${doi}`;
-      titleLink.target = "_blank";
-      titleLink.rel = "noopener";
-      titleLink.title = title;
-      // Clamp to 3 lines so a long/unparsed citation can't blow up the row.
-      titleLink.style.cssText =
-        "display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;" +
-        "overflow:hidden;text-overflow:ellipsis;word-break:break-word;" +
-        "font-size:12px;font-weight:500;color:#853953;" +
-        "text-decoration:none;line-height:1.4;margin-bottom:6px;";
-      titleLink.textContent = title;
-
-      const tagsRow = document.createElement("div");
-      tagsRow.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:4px;";
-
-      const s = pageState.get(doi);
-      if (s?.status === "matched") {
-        const { n_replications_total, n_reproductions_total, n_originals_total } = s.result.record.stats;
-        const floraUrl = `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(doi)}`;
-        const makeTag = (label: string, bg: string, fg: string, border: string): HTMLAnchorElement => {
-          const tag = document.createElement("a");
-          tag.href = floraUrl;
-          tag.target = "_blank";
-          tag.rel = "noopener noreferrer";
-          tag.style.cssText =
-            `flex-shrink:0;font-size:10px;font-weight:600;color:${fg};` +
-            `background:${bg};border:1px solid ${border};padding:1px 7px;border-radius:10px;` +
-            "white-space:nowrap;text-decoration:none;cursor:pointer;";
-          tag.textContent = label;
-          return tag;
-        };
-        if (n_replications_total > 0) {
-          tagsRow.appendChild(makeTag(
-            `${n_replications_total} Replication${n_replications_total === 1 ? "" : "s"}`,
-            "#e0f2fe", "#0369a1", "#7dd3fc"
-          ));
-        }
-        if (n_reproductions_total > 0) {
-          tagsRow.appendChild(makeTag(
-            `${n_reproductions_total} Reproduction${n_reproductions_total === 1 ? "" : "s"}`,
-            "#ede9fe", "#6d28d9", "#c4b5fd"
-          ));
-        }
-        if (n_originals_total > 0) {
-          tagsRow.appendChild(makeTag("Is Replication", "#fef9c3", "#854d0e", "#fde047"));
-        }
-      }
-
-      const refRetraction = retractionByDoi.get(doi);
-      if (refRetraction) {
-        const retractTag = document.createElement("a");
-        retractTag.href = `https://doi.org/${refRetraction.doi}`;
-        retractTag.target = "_blank";
-        retractTag.rel = "noopener noreferrer";
-        retractTag.title = "View the retraction notice";
-        retractTag.style.cssText =
-          "flex-shrink:0;font-size:10px;font-weight:600;color:#fff;" +
-          "background:#FF1744;border:1px solid #FF1744;padding:1px 7px;border-radius:10px;" +
+    const s = pageState.get(doi);
+    if (s?.status === "matched") {
+      const { n_replications_total, n_reproductions_total, n_originals_total } = s.result.record.stats;
+      const floraUrl = `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(doi)}`;
+      const makeTag = (label: string, bg: string, fg: string, border: string): HTMLAnchorElement => {
+        const tag = document.createElement("a");
+        tag.href = floraUrl;
+        tag.target = "_blank";
+        tag.rel = "noopener noreferrer";
+        tag.style.cssText =
+          `flex-shrink:0;font-size:10px;font-weight:600;color:${fg};` +
+          `background:${bg};border:1px solid ${border};padding:1px 7px;border-radius:10px;` +
           "white-space:nowrap;text-decoration:none;cursor:pointer;";
-        retractTag.textContent = "Retracted";
-        tagsRow.appendChild(retractTag);
+        tag.textContent = label;
+        return tag;
+      };
+      if (n_replications_total > 0) {
+        tagsRow.appendChild(makeTag(
+          `${n_replications_total} Replication${n_replications_total === 1 ? "" : "s"}`,
+          "#e0f2fe", "#0369a1", "#7dd3fc"
+        ));
       }
-
-      if (feedback && feedback.total_comments > 0) {
-        const commentText = `${feedback.total_comments} ${feedback.total_comments === 1 ? "comment" : "comments"}`;
-        const pillW = Math.ceil(commentText.length * 6 + 14);
-        const pillH = 18;
-        const tmp = document.createElement("div");
-        tmp.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}" style="flex-shrink:0;cursor:pointer;display:inline-block;vertical-align:middle;">
-          <a href="${feedback.url}" target="_blank" rel="noopener" style="text-decoration:none;">
-            <rect x="0.5" y="0.5" width="${pillW - 1}" height="${pillH - 1}" rx="8.5" fill="#f9f0f4" stroke="#d4a5b8" stroke-width="1"/>
-            <text x="${pillW / 2}" y="13" fill="#853953" font-size="10" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" text-anchor="middle" text-decoration="none">${commentText}</text>
-          </a>
-        </svg>`;
-        const countPill = tmp.firstElementChild as SVGElement;
-        tagsRow.appendChild(countPill);
-      } else {
-        const noCommentsTag = document.createElement("span");
-        noCommentsTag.style.cssText =
-          "flex-shrink:0;font-size:10px;font-weight:600;color:#9aa0a6;" +
-          "background:#f1f3f4;border:1px solid #e0e0e0;padding:1px 7px;border-radius:10px;" +
-          "white-space:nowrap;";
-        noCommentsTag.textContent = "No PubPeer comments";
-        tagsRow.appendChild(noCommentsTag);
+      if (n_reproductions_total > 0) {
+        tagsRow.appendChild(makeTag(
+          `${n_reproductions_total} Reproduction${n_reproductions_total === 1 ? "" : "s"}`,
+          "#ede9fe", "#6d28d9", "#c4b5fd"
+        ));
       }
-
-      li.appendChild(titleLink);
-      li.appendChild(tagsRow);
-      refItems.push(li);
-      refList.appendChild(li);
+      if (n_originals_total > 0) {
+        tagsRow.appendChild(makeTag("Is Replication", "#fef9c3", "#854d0e", "#fde047"));
+      }
     }
 
-    refSection.appendChild(refList);
+    const refRetraction = retractionByDoi.get(doi);
+    if (refRetraction) {
+      const retractTag = document.createElement("a");
+      retractTag.href = `https://doi.org/${refRetraction.doi}`;
+      retractTag.target = "_blank";
+      retractTag.rel = "noopener noreferrer";
+      retractTag.title = "View the retraction notice";
+      retractTag.style.cssText =
+        "flex-shrink:0;font-size:10px;font-weight:600;color:#fff;" +
+        "background:#FF1744;border:1px solid #FF1744;padding:1px 7px;border-radius:10px;" +
+        "white-space:nowrap;text-decoration:none;cursor:pointer;";
+      retractTag.textContent = "Retracted";
+      tagsRow.appendChild(retractTag);
+    }
 
-    // Collapsible behaviour — hide entries beyond COLLAPSED_COUNT by default.
-    if (refItems.length > COLLAPSED_COUNT) {
-      const hidden = refItems.slice(COLLAPSED_COUNT);
+    if (feedback && feedback.total_comments > 0) {
+      const commentText = `${feedback.total_comments} ${feedback.total_comments === 1 ? "comment" : "comments"}`;
+      const pillW = Math.ceil(commentText.length * 6 + 14);
+      const pillH = 18;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}" style="flex-shrink:0;cursor:pointer;display:inline-block;vertical-align:middle;">
+        <a href="${feedback.url}" target="_blank" rel="noopener" style="text-decoration:none;">
+          <rect x="0.5" y="0.5" width="${pillW - 1}" height="${pillH - 1}" rx="8.5" fill="#f9f0f4" stroke="#d4a5b8" stroke-width="1"/>
+          <text x="${pillW / 2}" y="13" fill="#853953" font-size="10" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" text-anchor="middle" text-decoration="none">${commentText}</text>
+        </a>
+      </svg>`;
+      const countPill = tmp.firstElementChild as SVGElement;
+      tagsRow.appendChild(countPill);
+    } else {
+      const noCommentsTag = document.createElement("span");
+      noCommentsTag.style.cssText =
+        "flex-shrink:0;font-size:10px;font-weight:600;color:#9aa0a6;" +
+        "background:#f1f3f4;border:1px solid #e0e0e0;padding:1px 7px;border-radius:10px;" +
+        "white-space:nowrap;";
+      noCommentsTag.textContent = "No PubPeer comments";
+      tagsRow.appendChild(noCommentsTag);
+    }
+
+    li.appendChild(titleLink);
+    li.appendChild(tagsRow);
+    return li;
+  };
+
+  // Render a collapsible reference-row section (first 5 visible, toggle reveals rest).
+  const renderRefSection = (
+    headingText: string,
+    refs: { doi: DoiString; title: string }[],
+    noun: string
+  ): void => {
+    if (refs.length === 0) return;
+    const section = document.createElement("div");
+    section.style.cssText = "border-top:1px solid #e8e8e8;";
+
+    const label = document.createElement("div");
+    label.style.cssText =
+      "font-size:14px;font-weight:600;color:#5f6368;text-transform:uppercase;" +
+      "letter-spacing:0.5px;border-bottom:1px solid #e8e8e8;padding:10px 16px;";
+    label.textContent = `${headingText} (${refs.length})`;
+    section.appendChild(label);
+
+    const list = document.createElement("ul");
+    list.style.cssText = "margin:0;list-style:none;padding:0;";
+
+    const COLLAPSED_COUNT = 5;
+    const items: HTMLLIElement[] = [];
+    for (const ref of refs) {
+      const li = buildRefRow(ref);
+      items.push(li);
+      list.appendChild(li);
+    }
+    section.appendChild(list);
+
+    if (items.length > COLLAPSED_COUNT) {
+      const hidden = items.slice(COLLAPSED_COUNT);
       for (const li of hidden) li.style.display = "none";
 
       const toggleWrap = document.createElement("div");
@@ -1315,8 +1344,8 @@ export function renderPubPeerPanel(
       let expanded = false;
       const setLabel = (): void => {
         toggle.textContent = expanded
-          ? "Show fewer references"
-          : `Show ${hidden.length} more reference${hidden.length === 1 ? "" : "s"}`;
+          ? `Show fewer ${noun}s`
+          : `Show ${hidden.length} more ${noun}${hidden.length === 1 ? "" : "s"}`;
       };
       setLabel();
       toggle.addEventListener("click", () => {
@@ -1326,11 +1355,17 @@ export function renderPubPeerPanel(
       });
 
       toggleWrap.appendChild(toggle);
-      refSection.appendChild(toggleWrap);
+      section.appendChild(toggleWrap);
     }
 
-    summary.appendChild(refSection);
-  }
+    summary.appendChild(section);
+  };
+
+  // References that carry FORRT replication/reproduction/original data are
+  // promoted to a section at the top of the panel so they're prominent — they
+  // still appear in the full References list below as well.
+  // Full reference list — every flagged reference.
+  renderRefSection("References", references, "reference");
 
   // Single scrollable body between header and footer
   const scrollBody = document.createElement("div");
