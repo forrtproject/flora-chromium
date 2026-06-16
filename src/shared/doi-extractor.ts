@@ -480,6 +480,8 @@ export interface ReferenceEntry {
   element: HTMLElement;
   /** DOI already present in the entry, or null when it needs augmentation. */
   doi: DoiString | null;
+  /** True when `doi` was read from visible citation text (vs. only a link href). */
+  doiInText: boolean;
   /** Visible citation text — used as the augmentation query when doi is null. */
   text: string;
 }
@@ -503,8 +505,14 @@ function cleanReferenceText(text: string): string {
   return cleaned;
 }
 
-/** Find the DOI already present in a single reference entry, if any. */
-function extractDoiFromEntry(entry: HTMLElement, hostDoi: DoiString | null): DoiString | null {
+/**
+ * Find the DOI already present in a single reference entry, if any, and report
+ * whether it was read from the visible citation text or only from a link href.
+ */
+function extractDoiFromEntry(
+  entry: HTMLElement,
+  hostDoi: DoiString | null
+): { doi: DoiString | null; inText: boolean } {
   // Visible citation text wins — that's the reliable signal of which paper
   // the entry is *about*. Links inside the entry are often nav/action
   // buttons ("View", "Cite", "Add to favorites") that point at the current
@@ -516,7 +524,7 @@ function extractDoiFromEntry(entry: HTMLElement, hostDoi: DoiString | null): Doi
     const raw = cleanDoiTrailing(match[1]);
     if (!isValidDoiSuffix(raw)) continue;
     const doi = normaliseDOI(raw);
-    if (doi) return doi;
+    if (doi) return { doi, inText: true };
   }
   // Fall back to link hrefs only when no DOI is written out — covers entries
   // where the DOI is tucked into a "Crossref"/"PubMed" button URL. Skip
@@ -525,9 +533,9 @@ function extractDoiFromEntry(entry: HTMLElement, hostDoi: DoiString | null): Doi
   // otherwise those non-citation stubs render a stray pill on the header.
   for (const link of entry.querySelectorAll<HTMLAnchorElement>("a[href]")) {
     const doi = extractDoiFromHref(link.href);
-    if (doi && doi !== hostDoi) return doi;
+    if (doi && doi !== hostDoi) return { doi, inText: false };
   }
-  return null;
+  return { doi: null, inText: false };
 }
 
 /**
@@ -606,11 +614,15 @@ export function findReferenceEntries(doc: Document): ReferenceEntry[] {
   }
 
   const hostDoi = extractPrimaryDOI(doc);
-  return elements.map((element) => ({
-    element,
-    doi: extractDoiFromEntry(element, hostDoi),
-    text: cleanReferenceText(element.innerText ?? element.textContent ?? ""),
-  }));
+  return elements.map((element) => {
+    const { doi, inText } = extractDoiFromEntry(element, hostDoi);
+    return {
+      element,
+      doi,
+      doiInText: inText,
+      text: cleanReferenceText(element.innerText ?? element.textContent ?? ""),
+    };
+  });
 }
 
 function extractFromReferenceContainers(doc: Document, found: Set<DoiString>): void {

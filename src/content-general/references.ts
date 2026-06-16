@@ -6,8 +6,9 @@
 // link href), gray dotted = DOI resolved via Crossref/OpenAlex augmentation
 // for entries that exposed no DOI of their own.
 //
-// By default only augmented (DOI-less) entries get a pill — entries that
-// already carry a DOI in a link get one too when the user opts into
+// Entries with no DOI (augmented) and entries whose DOI is hidden in a link
+// href (not rendered as text) always get a pill. Entries that already show
+// their DOI as visible text only get one when the user opts into
 // `showDoiPillsOnAllReferences`.
 
 import {findReferenceEntries, extractDoiFromHref, type ReferenceEntry} from "@shared/doi-extractor";
@@ -142,7 +143,12 @@ export async function resolveReferenceDois(): Promise<ResolvedReference[]> {
         if (entry.doi === null) {
             if (!YEAR_RE.test(entry.text)) continue;
             pending.push({entry, mode: "augment", doi: null});
+        } else if (!entry.doiInText) {
+            // DOI is tucked into a link href and not rendered as text — always
+            // surface a pill so the reference isn't silently skipped.
+            pending.push({entry, mode: "hidden", doi: entry.doi});
         } else if (showDoiPillsOnAllReferences) {
+            // DOI is visible in the citation text — only pill it when opted in.
             pending.push({entry, mode: "hidden", doi: entry.doi});
         }
     }

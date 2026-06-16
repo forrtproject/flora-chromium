@@ -638,5 +638,24 @@ describe("findReferenceEntries", () => {
     expect(entries).toHaveLength(2);
     expect(entries[0].doi).toBe("10.1234/found.via.button");
     expect(entries[1].doi).toBe("10.5678/also.found");
+    // DOI came from the link href, not visible text — flagged so the pill
+    // surfaces even when "show on all references" is off.
+    expect(entries[0].doiInText).toBe(false);
+    expect(entries[1].doiInText).toBe(false);
+  });
+
+  it("flags a DOI written in entry text as in-text", () => {
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <ol class="references">
+          <li>Smith J. Title. Journal. 2020. https://doi.org/10.1234/in.the.text</li>
+          <li>Jones K. Another. 2021. doi:10.5678/also.text</li>
+        </ol>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const entries = findReferenceEntries(doc);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].doiInText).toBe(true);
+    expect(entries[1].doiInText).toBe(true);
   });
 });
