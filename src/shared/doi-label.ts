@@ -42,7 +42,10 @@ export function createDoiPill(doi: string, color: string, isAugmented = false): 
     ensureInlinePillStyle();
     const wrapper = document.createElement("span");
     wrapper.className = DOI_LABEL_CLASS;
-    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: baseline; transform: translateY(-1px);`;
+    // Nudge up 1px with relative `top`, NOT `transform` — a transform would make
+    // this wrapper the containing block for the position:fixed popover below,
+    // throwing its viewport-based coordinates far off from the pill.
+    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: baseline; top: -1px;`;
 
     const pill = document.createElement("span");
     pill.style.cssText = `

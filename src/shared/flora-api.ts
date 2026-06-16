@@ -1,6 +1,13 @@
+import { z } from "zod";
 import type { DoiString, ReplicationResult } from "./types";
-import { ApiResponseSchema } from "./types";
+import { ReplicationResultSchema } from "./types";
 import { debugLog, debugError } from "./debug";
+
+// Loose envelope — validate each result individually below so one malformed
+// entry can't fail the whole batch.
+const ResponseEnvelopeSchema = z.object({
+  results: z.record(z.string(), z.unknown()),
+});
 
 const API_BASE = "https://rep-api.forrt.org";
 const BATCH_SIZE = 50;
@@ -53,12 +60,17 @@ async function lookupBatch(
   }
 
   const raw = await response.json();
-  const parsed = ApiResponseSchema.parse(raw);
+  const envelope = ResponseEnvelopeSchema.parse(raw);
 
   const results = new Map<DoiString, ReplicationResult>();
-  for (const [doi, result] of Object.entries(parsed.results)) {
-    if (result !== null) {
-      results.set(doi.toLowerCase() as DoiString, result);
+  for (const [doi, rawResult] of Object.entries(envelope.results)) {
+    if (rawResult == null) continue; // genuine no-record for this DOI
+    const parsed = ReplicationResultSchema.safeParse(rawResult);
+    if (parsed.success) {
+      results.set(doi.toLowerCase() as DoiString, parsed.data);
+    } else {
+      // Skip a malformed entry rather than failing every DOI in the batch.
+      debugError(`FLoRA API: skipping malformed result for ${doi}:`, parsed.error.issues);
     }
   }
 

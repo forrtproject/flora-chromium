@@ -213,6 +213,10 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     if (newDois.length === 0) {
         debugLog("No new DOIs (all already processed)");
+        // Re-place inline badges against the live DOM — hydrating SPAs (e.g.
+        // Sage) re-render and wipe a previously placed badge, and this pass
+        // (triggered by that mutation) would otherwise return without restoring it.
+        if (!isSheets) renderInlineBadges(pageState, pageOccurrences);
         if (!isSheets) void checkPubPeer();
         return;
     }

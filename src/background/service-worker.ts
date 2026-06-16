@@ -1,4 +1,4 @@
-import {LocalCache, MONTH_MS} from "@shared/cache";
+import {LocalCache} from "@shared/cache";
 import {lookupDOIs} from "@shared/flora-api";
 import {RET_MAP_KEY, storageSync} from "@shared/data-extract";
 import type {DoiString, ReplicationResult} from "@shared/types";
@@ -109,12 +109,13 @@ async function handleLookup(dois: DoiString[]): Promise<LookupResponse> {
     const errors: Record<string, string> = {};
     const toFetch: DoiString[] = [];
 
-    // Check cache and in-flight requests
+    // Check cache and in-flight requests. We only persist matched results, so a
+    // truthy cache hit is a real result. A null entry (legacy negative cache) or
+    // a miss both fall through to re-query, so newly added FORRT data surfaces.
     for (const doi of dois) {
         const cached = await cache.get(doi);
-        if (cached !== undefined) {
-            // undefined = not cached; null = cached no-match; T = cached match
-            if (cached !== null) results[doi] = cached;
+        if (cached) {
+            results[doi] = cached;
         } else if (inflight.has(doi)) {
             const r = await inflight.get(doi)!;
             if (r) results[doi] = r;
@@ -147,9 +148,10 @@ async function handleLookup(dois: DoiString[]): Promise<LookupResponse> {
             if (r) {
                 results[doi] = r;
                 await cache.set(doi, r, null); // resolved — cache forever
-            } else {
-                await cache.set(doi, null, MONTH_MS); // no match — cache for 1 month
             }
+            // No result (no record yet, or a transient batch failure): do NOT
+            // cache. We re-query every time so newly added FORRT data surfaces
+            // instead of being suppressed by a stale negative cache entry.
         }
     } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
