@@ -46,6 +46,16 @@ Object.defineProperty(globalThis, "chrome", {
       },
       openOptionsPage: vi.fn(),
     },
+    tabs: {
+      create: vi.fn(),
+      onUpdated: {
+        addListener: vi.fn(),
+      },
+    },
+    action: {
+      setIcon: vi.fn().mockResolvedValue(undefined),
+      setTitle: vi.fn().mockResolvedValue(undefined),
+    },
   },
   writable: true,
 });

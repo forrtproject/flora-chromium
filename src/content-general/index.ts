@@ -16,6 +16,8 @@ import type {
     SheetFetchResponse
 } from "@shared/messages";
 import {
+    beginWorkIndicator,
+    endWorkIndicator,
     hideAllFloraUI,
     removePubPeerPanel,
     removeSheetsModal,
@@ -66,6 +68,16 @@ const isSheets = location.href.includes("docs.google.com/spreadsheets");
 let floraHidden = false;
 let dismissRedacts = false;
 
+// Tell the service worker whether FLoRA is active on this tab so it can swap the
+// toolbar icon (maroon = active, gray = inactive).
+function reportActiveState(active: boolean): void {
+    try {
+        chrome.runtime.sendMessage({type: "FLORA_ACTIVE_STATE", active}).catch(() => {});
+    } catch {
+        // extension context unavailable — ignore
+    }
+}
+
 // Listen for popup messages (works regardless of gate checks above)
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
     if (typeof message !== "object" || message === null) return;
@@ -74,10 +86,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     if (type === "FLORA_HIDE_UI") {
         floraHidden = true;
         hideAllFloraUI();
+        reportActiveState(false);
         sendResponse({ok: true});
     } else if (type === "FLORA_SHOW_UI") {
         floraHidden = false;
         showAllFloraUI();
+        reportActiveState(true);
         sendResponse({ok: true});
     } else if (type === "FLORA_GET_STATE") {
         sendResponse({hidden: floraHidden});
@@ -143,6 +157,7 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     // Validate extracted DOIs via doi.org — remove invalid ones
     if (hasDoiChange && !isSheets && dois.length > 0) {
+        beginWorkIndicator();
         try {
             const validation = await validateDOIs(dois);
             const before = dois.length;
@@ -153,6 +168,8 @@ async function pageRenderChangeHandler(): Promise<void> {
             }
         } catch {
             // Validation failed — keep all extracted DOIs as-is
+        } finally {
+            endWorkIndicator();
         }
     }
 
@@ -233,6 +250,7 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     const request: LookupRequest = {type: "FLORA_LOOKUP", dois: newDois};
 
+    beginWorkIndicator();
     try {
         const response: LookupResponse =
             await chrome.runtime.sendMessage(request);
@@ -299,6 +317,8 @@ async function pageRenderChangeHandler(): Promise<void> {
         }
     } catch {
         renderErrorBanner("Failed to contact FLoRA service");
+    } finally {
+        endWorkIndicator();
     }
 }
 
@@ -511,6 +531,8 @@ function isFloraOwnedNode(node: Node): boolean {
 function startDomListener(callback: () => void) {
     let debounceTimer: number;
     const observer = new MutationObserver((mutations) => {
+        // Do no work while this tab is in the background.
+        if (document.hidden) return;
         const hasExternalChange = mutations.some(m => {
             if (m.addedNodes.length === 0) return false;
             // Skip mutations inside FLoRA's own injected containers.
@@ -527,6 +549,11 @@ function startDomListener(callback: () => void) {
         }
     });
     observer.observe(document.body, { childList: true, subtree: true });
+    // Re-scan when the tab becomes active again — mutations that happened while
+    // it was hidden were ignored above.
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) callback();
+    });
 }
 
 // Gate: skip iframes and blocked domains
@@ -575,38 +602,57 @@ function startDomListener(callback: () => void) {
 
     if (await isDomainBlocked(location.hostname)) {
         debugLog("Domain is blocked:", location.hostname);
+        reportActiveState(false); // gray toolbar icon — disabled on this domain
         return;
     }
+    // Applicable page — mark the toolbar icon active for this tab.
+    reportActiveState(true);
     // Show setup prompt if email not configured (non-blocking — extension still runs)
     if (!(await isSetupComplete())) {
         renderSetupPrompt().then().catch();
     }
-    if (isSheets) {
-        // Fetch full sheet data via CSV export to get all DOIs regardless of scroll
-        fetchSheetDois();
-        // Poll for sheet tab switches — Sheets uses replaceState (no popstate).
-        let lastGid = parseSheetsUrl(location.href)?.gid ?? "0";
-        setInterval(() => {
-            const nowGid = parseSheetsUrl(location.href)?.gid ?? "0";
-            if (nowGid !== lastGid) {
-                lastGid = nowGid;
-                console.log("[FLoRA:Sheets] Tab change detected (gid:", nowGid, ") — re-fetching…");
-                sheetFetchGen++;
-                sheetCsvDois = [];
-                processedDois.clear();
-                pageState.clear();
-                removeSheetsModal();
-                fetchSheetDois();
-            }
-        }, 1500);
-    } else {
-        // Initial run — static pages may never trigger the MutationObserver.
-        void pageRenderChangeHandler();
-        // Defer the observer until full load so load-time mutations don't spam it.
-        if (document.readyState === "complete") {
-            startDomListener(pageRenderChangeHandler);
+    const startFlora = (): void => {
+        if (isSheets) {
+            // Fetch full sheet data via CSV export to get all DOIs regardless of scroll
+            fetchSheetDois();
+            // Poll for sheet tab switches — Sheets uses replaceState (no popstate).
+            let lastGid = parseSheetsUrl(location.href)?.gid ?? "0";
+            setInterval(() => {
+                const nowGid = parseSheetsUrl(location.href)?.gid ?? "0";
+                if (nowGid !== lastGid) {
+                    lastGid = nowGid;
+                    console.log("[FLoRA:Sheets] Tab change detected (gid:", nowGid, ") — re-fetching…");
+                    sheetFetchGen++;
+                    sheetCsvDois = [];
+                    processedDois.clear();
+                    pageState.clear();
+                    removeSheetsModal();
+                    fetchSheetDois();
+                }
+            }, 1500);
         } else {
-            window.addEventListener("load", () => startDomListener(pageRenderChangeHandler), { once: true });
+            // Initial run — static pages may never trigger the MutationObserver.
+            void pageRenderChangeHandler();
+            // Defer the observer until full load so load-time mutations don't spam it.
+            if (document.readyState === "complete") {
+                startDomListener(pageRenderChangeHandler);
+            } else {
+                window.addEventListener("load", () => startDomListener(pageRenderChangeHandler), { once: true });
+            }
         }
+    };
+
+    // Only run on the active/visible tab. Content scripts auto-inject into every
+    // matching tab (including background ones); defer all work until this tab is
+    // shown so background tabs don't scan, look up, or render.
+    if (document.visibilityState === "visible") {
+        startFlora();
+    } else {
+        document.addEventListener("visibilitychange", function onVisible() {
+            if (document.visibilityState === "visible") {
+                document.removeEventListener("visibilitychange", onVisible);
+                startFlora();
+            }
+        });
     }
 })();

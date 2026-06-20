@@ -425,6 +425,71 @@ function escapeHtml(s: string): string {
 }
 
 // ──────────────────────────────────────────────
+// "Working" toast — small bottom-right indicator shown while FLoRA queries.
+// ──────────────────────────────────────────────
+
+const WORKING_TOAST_ID = "flora-working-toast";
+let workingRefCount = 0;
+let workingHideTimer: ReturnType<typeof setTimeout> | null = null;
+// Suppressed while the user has hidden FLoRA UI on this page.
+let floraUiHidden = false;
+
+function ensureWorkingToast(): HTMLElement {
+    const existing = document.getElementById(WORKING_TOAST_ID);
+    if (existing) return existing;
+    const host = document.createElement("div");
+    host.id = WORKING_TOAST_ID;
+    host.style.cssText =
+        "position:fixed;bottom:18px;right:18px;z-index:2147483647;" +
+        "display:flex;align-items:center;gap:8px;pointer-events:none;" +
+        "background:linear-gradient(135deg,#853953,#612D53);color:#fff;" +
+        "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+        "font-size:12px;font-weight:500;padding:8px 12px;border-radius:8px;" +
+        "box-shadow:0 4px 16px rgba(0,0,0,0.18);" +
+        "opacity:0;transform:translateY(6px);transition:opacity 0.18s ease,transform 0.18s ease;";
+    const style = document.createElement("style");
+    style.textContent = "@keyframes flora-working-spin{to{transform:rotate(360deg)}}";
+    const spinner = document.createElement("span");
+    spinner.style.cssText =
+        "width:12px;height:12px;border-radius:50%;flex-shrink:0;box-sizing:border-box;" +
+        "border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;" +
+        "animation:flora-working-spin 0.7s linear infinite;";
+    const label = document.createElement("span");
+    label.textContent = "FLoRA is scanning this page…";
+    host.appendChild(style);
+    host.appendChild(spinner);
+    host.appendChild(label);
+    document.body.appendChild(host);
+    return host;
+}
+
+/** Show the working toast (ref-counted — nested calls keep it visible). */
+export function beginWorkIndicator(): void {
+    workingRefCount++;
+    if (floraUiHidden) return; // user hid FLoRA UI — don't surface the toast
+    if (workingHideTimer) { clearTimeout(workingHideTimer); workingHideTimer = null; }
+    const host = ensureWorkingToast();
+    requestAnimationFrame(() => {
+        host.style.opacity = "1";
+        host.style.transform = "translateY(0)";
+    });
+}
+
+/** Hide the working toast once all outstanding work has finished. */
+export function endWorkIndicator(): void {
+    workingRefCount = Math.max(0, workingRefCount - 1);
+    if (workingRefCount > 0) return;
+    const host = document.getElementById(WORKING_TOAST_ID);
+    if (!host) return;
+    // Brief delay so quick back-to-back passes don't flicker the toast.
+    workingHideTimer = setTimeout(() => {
+        host.style.opacity = "0";
+        host.style.transform = "translateY(6px)";
+        setTimeout(() => host.remove(), 200);
+    }, 500);
+}
+
+// ──────────────────────────────────────────────
 // Google Sheets modal
 // ──────────────────────────────────────────────
 
@@ -582,6 +647,9 @@ export function removeSheetsModal(): void {
 // ──────────────────────────────────────────────
 
 export function hideAllFloraUI(): void {
+    floraUiHidden = true;
+    const toast = document.getElementById(WORKING_TOAST_ID);
+    if (toast) toast.remove();
     const banner = document.getElementById(BANNER_HOST_ID);
     if (banner) banner.style.display = "none";
 
@@ -604,6 +672,7 @@ export function hideAllFloraUI(): void {
 }
 
 export function showAllFloraUI(): void {
+    floraUiHidden = false;
     const banner = document.getElementById(BANNER_HOST_ID);
     if (banner) banner.style.display = "";
 
@@ -628,6 +697,26 @@ export function showAllFloraUI(): void {
 // ──────────────────────────────────────────────
 // PubPeer panel
 // ──────────────────────────────────────────────
+
+/**
+ * Best on-page article title. Scholarly meta tags first, then headings, with
+ * document.title last — some publishers (e.g. APA PsycNet) set document.title to
+ * the site name ("APA PsycNet") rather than the paper title.
+ */
+function getPageArticleTitle(): string | null {
+    for (const sel of [
+        'meta[name="citation_title"]',
+        'meta[name="dc.Title" i]',
+        'meta[property="og:title"]',
+        'meta[name="twitter:title"]',
+    ]) {
+        const content = document.querySelector<HTMLMetaElement>(sel)?.content?.trim();
+        if (content) return content;
+    }
+    const h1 = document.querySelector<HTMLHeadingElement>("h1")?.textContent?.trim();
+    if (h1) return h1;
+    return document.title?.trim() || null;
+}
 
 const PUBPEER_PANEL_ID = "flora-pubpeer-panel";
 
@@ -837,32 +926,12 @@ export function renderPubPeerPanel(
     }
   }
 
-  // Fallback: when the article itself has no replications/reproductions, surface
-  // the ones found among the page's references in the same top sections, so they
-  // render exactly like an article's own replications (title · authors · outcome).
-  if (allReplicationEntries.length === 0 && allReproductionEntries.length === 0) {
-    const seenRepl = new Set<string>();
-    const seenRepro = new Set<string>();
-    for (const ref of references) {
-      const state = pageState.get(ref.doi);
-      if (state?.status !== "matched") continue;
-      for (const e of state.result.record.replications) {
-        const key = e.doi ?? e.title ?? "";
-        if (key && seenRepl.has(key)) continue;
-        if (key) seenRepl.add(key);
-        allReplicationEntries.push(e);
-      }
-      for (const e of state.result.record.reproductions ?? []) {
-        const key = e.doi ?? e.title ?? "";
-        if (key && seenRepro.has(key)) continue;
-        if (key) seenRepro.add(key);
-        allReproductionEntries.push(e);
-      }
-    }
-  }
+  // When the viewed paper is itself a replication (it has original studies), the
+  // panel should focus on the original(s) it replicated — not list it as a
+  // replication. Suppress the replication/reproduction sections in that case.
+  const articleIsReplication = articleOriginals > 0;
 
-  const hasReplicationData = articleReplications > 0 || articleReproductions > 0 || articleOriginals > 0
-    || allReplicationEntries.length > 0 || allReproductionEntries.length > 0;
+  const hasReplicationData = articleReplications > 0 || articleReproductions > 0 || articleOriginals > 0;
 
   // Notice status — keyed by the DOI as it appears on the page (originDoi).
   // A "notice" is either a retraction or an expression of concern; the kind
@@ -994,8 +1063,7 @@ export function renderPubPeerPanel(
   // Article title — use PubPeer title if available, else h1/document.title
   const articleTitleText =
     primary?.title ||
-    document.querySelector<HTMLHeadingElement>("h1")?.textContent?.trim() ||
-    document.title ||
+    getPageArticleTitle() ||
     "Article";
   const articleFloraUrl = articleDois.length > 0
     ? `https://forrt.org/flora-replication-atlas/?doi=${encodeURIComponent(articleDois[0])}`
@@ -1143,8 +1211,14 @@ export function renderPubPeerPanel(
     return oaPlaceholders;
   };
 
-  const oaPlaceholders = renderEntrySection(allReplicationEntries, `Replication${allReplicationEntries.length !== 1 ? "s" : ""}`, true);
-  renderEntrySection(allReproductionEntries, `Reproduction${allReproductionEntries.length !== 1 ? "s" : ""}`);
+  // A replication paper shows only the original study it replicated; otherwise
+  // show what replicated/reproduced this paper.
+  const oaPlaceholders = articleIsReplication
+    ? new Map<string, HTMLElement>()
+    : renderEntrySection(allReplicationEntries, `Replication${allReplicationEntries.length !== 1 ? "s" : ""}`, true);
+  if (!articleIsReplication) {
+    renderEntrySection(allReproductionEntries, `Reproduction${allReproductionEntries.length !== 1 ? "s" : ""}`);
+  }
   renderEntrySection(allOriginalEntries, `Original Paper${allOriginalEntries.length !== 1 ? "s" : ""}`);
 
   // Include the main article in the Unpaywall lookup. Skip if its DOI already
@@ -1213,7 +1287,6 @@ export function renderPubPeerPanel(
     titleLink.href = feedback?.url || `https://doi.org/${doi}`;
     titleLink.target = "_blank";
     titleLink.rel = "noopener";
-    titleLink.title = title;
     // Clamp to 3 lines so a long/unparsed citation can't blow up the row.
     titleLink.style.cssText =
       "display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;" +
@@ -1254,7 +1327,7 @@ export function renderPubPeerPanel(
         ));
       }
       if (n_originals_total > 0) {
-        tagsRow.appendChild(makeTag("Is Replication", "#fef9c3", "#854d0e", "#fde047"));
+        tagsRow.appendChild(makeTag("View in Atlas", "#fef9c3", "#854d0e", "#fde047"));
       }
     }
 
@@ -1275,25 +1348,32 @@ export function renderPubPeerPanel(
 
     if (feedback && feedback.total_comments > 0) {
       const commentText = `${feedback.total_comments} ${feedback.total_comments === 1 ? "comment" : "comments"}`;
-      const pillW = Math.ceil(commentText.length * 6 + 14);
-      const pillH = 18;
-      const tmp = document.createElement("div");
-      tmp.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${pillH}" style="flex-shrink:0;cursor:pointer;display:inline-block;vertical-align:middle;">
-        <a href="${feedback.url}" target="_blank" rel="noopener" style="text-decoration:none;">
-          <rect x="0.5" y="0.5" width="${pillW - 1}" height="${pillH - 1}" rx="8.5" fill="#f9f0f4" stroke="#d4a5b8" stroke-width="1"/>
-          <text x="${pillW / 2}" y="13" fill="#853953" font-size="10" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" text-anchor="middle" text-decoration="none">${commentText}</text>
-        </a>
-      </svg>`;
-      const countPill = tmp.firstElementChild as SVGElement;
-      tagsRow.appendChild(countPill);
-    } else {
-      const noCommentsTag = document.createElement("span");
-      noCommentsTag.style.cssText =
-        "flex-shrink:0;font-size:10px;font-weight:600;color:#9aa0a6;" +
-        "background:#f1f3f4;border:1px solid #e0e0e0;padding:1px 7px;border-radius:10px;" +
-        "white-space:nowrap;";
-      noCommentsTag.textContent = "No PubPeer comments";
-      tagsRow.appendChild(noCommentsTag);
+      // PubPeer-branded pill: speech-bubble mark + count in PubPeer's colours
+      // (#446058 teal on a light-teal background).
+      const commentTag = document.createElement("a");
+      commentTag.href = feedback.url;
+      commentTag.target = "_blank";
+      commentTag.rel = "noopener noreferrer";
+      commentTag.title = "View on PubPeer";
+      commentTag.style.cssText =
+        "flex-shrink:0;display:inline-flex;align-items:center;gap:4px;" +
+        "font-size:10px;font-weight:600;color:#446058;" +
+        "background:#e9f3f1;border:1px solid #7accc8;padding:1px 7px;border-radius:10px;" +
+        "white-space:nowrap;text-decoration:none;cursor:pointer;";
+      commentTag.innerHTML =
+        `<svg width="9" height="13" viewBox="0 0 98.5 146.5" fill="none" stroke="#446058" ` +
+        `stroke-width="7" stroke-linecap="round" style="display:block;flex-shrink:0;">` +
+        `<circle cx="13.667" cy="34.833" r="10.167"/>` +
+        `<circle cx="86.302" cy="80.344" r="10.167"/>` +
+        `<circle cx="86.302" cy="12.741" r="10.167"/>` +
+        `<circle cx="13.04" cy="133.811" r="10.166"/>` +
+        `<line x1="13.04" y1="45" x2="13.04" y2="123.645"/>` +
+        `<line x1="23.44" y1="32.04" x2="76.554" y2="15.626"/>` +
+        `<line x1="86.303" y1="22.907" x2="86.303" y2="70.177"/>` +
+        `<line x1="18.027" y1="124.955" x2="80.772" y2="21.267"/>` +
+        `<line x1="76.136" y1="80.344" x2="45.023" y2="80.344"/></svg>` +
+        `<span>${commentText}</span>`;
+      tagsRow.appendChild(commentTag);
     }
 
     li.appendChild(titleLink);
@@ -1315,7 +1395,7 @@ export function renderPubPeerPanel(
     label.style.cssText =
       "font-size:14px;font-weight:600;color:#5f6368;text-transform:uppercase;" +
       "letter-spacing:0.5px;border-bottom:1px solid #e8e8e8;padding:10px 16px;";
-    label.textContent = `${headingText} (${refs.length})`;
+    label.textContent = `${headingText} with Tags (${refs.length})`;
     section.appendChild(label);
 
     const list = document.createElement("ul");
@@ -1393,7 +1473,39 @@ export function renderPubPeerPanel(
     iframe.style.cssText = "width:100%;height:200px;border:none;display:block;opacity:0;transition:opacity 0.15s;overflow:hidden;";
 
     const revealIframe = (): void => { iframe.style.opacity = "1"; };
-    const fallbackTimer = setTimeout(revealIframe, 3000);
+
+    // When PubPeer refuses to embed (X-Frame-Options / CSP frame-ancestors) the
+    // frame stays blank and our in-iframe script never posts CSS_READY. Swap the
+    // broken frame for an external link so the comments are still reachable.
+    const showFallback = (): void => {
+      if (iframeWrap.dataset.floraFallback === "1") return;
+      iframeWrap.dataset.floraFallback = "1";
+      clearTimeout(fallbackTimer);
+      window.removeEventListener("message", onIframeMessage);
+      iframe.remove();
+
+      const fb = document.createElement("div");
+      fb.style.cssText =
+        "display:flex;flex-direction:column;align-items:center;gap:10px;" +
+        "padding:24px 20px;text-align:center;color:#5f6368;";
+      const msg = document.createElement("span");
+      msg.style.cssText = "font-size:12px;line-height:1.5;";
+      msg.textContent = "PubPeer comments can't be shown inline here.";
+      const link = document.createElement("a");
+      link.href = primary.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "View comments on PubPeer ↗";
+      link.style.cssText =
+        "display:inline-flex;align-items:center;gap:6px;padding:8px 14px;" +
+        "font-size:13px;font-weight:600;color:#fff;background:#853953;" +
+        "border-radius:6px;text-decoration:none;";
+      fb.appendChild(msg);
+      fb.appendChild(link);
+      iframeWrap.appendChild(fb);
+    };
+
+    const fallbackTimer = setTimeout(showFallback, 4000);
     const onIframeMessage = (e: MessageEvent): void => {
       if (e.source !== iframe.contentWindow) return;
       const data = e.data as { type?: string; height?: number };
@@ -1405,6 +1517,7 @@ export function renderPubPeerPanel(
       }
     };
     window.addEventListener("message", onIframeMessage);
+    iframe.addEventListener("error", showFallback);
 
     iframeWrap.appendChild(iframe);
     scrollBody.appendChild(iframeWrap);

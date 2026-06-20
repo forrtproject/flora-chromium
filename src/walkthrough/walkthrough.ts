@@ -1,4 +1,4 @@
-const TOTAL = 5;
+const TOTAL = 6;
 let current = 0;
 
 function activate(n: number): void {
