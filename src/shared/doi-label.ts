@@ -1,6 +1,8 @@
-// Shared inline "DOI" pill — a small rounded label that reveals the resolved
+1111// Shared inline "DOI" pill — a small rounded label that reveals the resolved
 // DOI (plus a copy button) on hover. Used by Google Scholar result rows and by
 // reference-list entries on article pages.
+
+import type { OpenAccessStatus } from "./openaccess";
 
 export const DOI_LABEL_CLASS = "flora-doi-label";
 
@@ -26,6 +28,12 @@ function ensureInlinePillStyle(): void {
 // :not(:first-child) margin rule above.
 export const FLORA_NOTICE_PILL_CLASS = "flora-notice-pill";
 
+// Open padlock — shown inside the pill only when a free full text exists.
+const OA_UNLOCK_SVG =
+    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+    `stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;">` +
+    `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`;
+
 /**
  * Build a DOI pill element (pill + hover popover with copy button).
  *
@@ -37,8 +45,16 @@ export const FLORA_NOTICE_PILL_CLASS = "flora-notice-pill";
  * @param isAugmented  true when the DOI came from Crossref/OpenAlex augmentation
  *                     rather than direct extraction — renders a dotted "DOI"
  *                     label instead of the "DOI ✓" check.
+ * @param oaStatus     optional Open Access lookup; when it resolves to an open
+ *                     access result, an open-padlock link to the free full text
+ *                     is added inside the pill. Paywalled/unknown adds nothing.
  */
-export function createDoiPill(doi: string, color: string, isAugmented = false): HTMLElement {
+export function createDoiPill(
+    doi: string,
+    color: string,
+    isAugmented = false,
+    oaStatus?: Promise<OpenAccessStatus | null>
+): HTMLElement {
     ensureInlinePillStyle();
     const wrapper = document.createElement("span");
     wrapper.className = DOI_LABEL_CLASS;
@@ -85,6 +101,40 @@ export function createDoiPill(doi: string, color: string, isAugmented = false): 
     } else {
         const checkSvg = `<svg width="12" height="12" viewBox="0 0 16 16" fill="white" style="display:inline-block;vertical-align:middle;"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path></svg>`;
         pill.innerHTML = `DOI ${checkSvg}`;
+    }
+
+    // Open Access affordance inside the pill — only surfaced when a free full
+    // text exists (a positive, tappable signal). Paywalled/unknown adds nothing.
+    if (oaStatus) {
+        const oaSlot = document.createElement("span");
+        oaSlot.style.cssText = "display:inline-flex;align-items:center;gap:5px;line-height:0;";
+        pill.appendChild(oaSlot);
+        void oaStatus.then((oa) => {
+            if (!oa || !oa.isOa) { oaSlot.remove(); return; }
+
+            // Thin divider so the lock reads as a separate action, not part of "DOI ✓".
+            const divider = document.createElement("span");
+            divider.style.cssText = "width:1px;height:11px;background:rgba(255,255,255,0.4);";
+
+            const el = oa.url ? document.createElement("a") : document.createElement("span");
+            el.title = "Open Access — view free full text";
+            el.style.cssText =
+                "display:inline-flex;align-items:center;gap:3px;line-height:1;color:#fff;" +
+                "font-size:11px;font-weight:600;letter-spacing:0.02em;text-decoration:none;" +
+                "opacity:0.9;transition:opacity 0.15s ease;";
+            if (oa.url && el instanceof HTMLAnchorElement) {
+                el.href = oa.url;
+                el.target = "_blank";
+                el.rel = "noopener noreferrer";
+                el.addEventListener("click", (e) => e.stopPropagation());
+                el.addEventListener("mouseenter", () => { el.style.opacity = "1"; });
+                el.addEventListener("mouseleave", () => { el.style.opacity = "0.9"; });
+            }
+            el.innerHTML = `${OA_UNLOCK_SVG}<span>Free</span>`;
+
+            oaSlot.appendChild(divider);
+            oaSlot.appendChild(el);
+        });
     }
 
     const popover = document.createElement("div");

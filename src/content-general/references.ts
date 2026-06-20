@@ -16,6 +16,7 @@ import {augmentDOIs} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
 import {injectRetractionInfo, type RetractionResponse} from "@shared/doi-retraction";
 import {createDoiPill} from "@shared/doi-label";
+import {fetchOpenAccess} from "@shared/openaccess";
 import {getSettings} from "@shared/settings";
 import {debugLog} from "@shared/debug";
 import type {DoiString} from "@shared/types";
@@ -222,7 +223,9 @@ export function renderResolvedReferences(
     for (const {entry, doi, mode} of resolved) {
         const isAugmented = mode === "augment";
         const color = isAugmented ? AUGMENTED_COLOR : CONFIDENT_COLOR;
-        placeReferencePill(entry.element, doi, mode, createDoiPill(doi, color, isAugmented));
+        // Pass the Open Access lookup so the padlock renders inside the pill.
+        const pill = createDoiPill(doi, color, isAugmented, fetchOpenAccess(doi));
+        placeReferencePill(entry.element, doi, mode, pill);
         const notice = retractionByDoi.get(doi);
         if (notice) injectRetractionInfo(entry.element, notice);
         debugLog(`References: surfaced "${entry.text.slice(0, 60)}" → ${doi} (${mode})`);

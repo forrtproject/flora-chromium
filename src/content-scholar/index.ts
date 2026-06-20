@@ -4,13 +4,24 @@ import { isSetupComplete } from "@shared/settings";
 import { isDomainBlocked } from "@shared/domains";
 import { renderSetupPrompt, hideAllFloraUI, showAllFloraUI } from "../content-general/injector";
 
+// Tell the service worker whether FLoRA is active on this tab (toolbar icon).
+function reportActiveState(active: boolean): void {
+  try {
+    chrome.runtime.sendMessage({ type: "FLORA_ACTIVE_STATE", active }).catch(() => {});
+  } catch {
+    // extension context unavailable — ignore
+  }
+}
+
 (async () => {
   if (window !== window.top) return;
 
   if (await isDomainBlocked(location.hostname)) {
     debugLog("Domain is blocked:", location.hostname);
+    reportActiveState(false);
     return;
   }
+  reportActiveState(true);
 
   if (!(await isSetupComplete())) {
     renderSetupPrompt();
@@ -54,10 +65,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   if (type === "FLORA_HIDE_UI") {
     floraHidden = true;
     hideScholarUI();
+    reportActiveState(false);
     sendResponse({ ok: true });
   } else if (type === "FLORA_SHOW_UI") {
     floraHidden = false;
     showScholarUI();
+    reportActiveState(true);
     sendResponse({ ok: true });
   } else if (type === "FLORA_GET_STATE") {
     sendResponse({ hidden: floraHidden });

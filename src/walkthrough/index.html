@@ -64,7 +64,7 @@
                     </svg>
                     Google Scholar
                   </span>
-                  <span class="wt-step-num">1 of 5</span>
+                  <span class="wt-step-num">1 of 6</span>
                 </div>
                 <h2 class="wt-title">Confirmed DOI</h2>
                 <p class="wt-desc">
@@ -218,7 +218,7 @@
                     </svg>
                     Google Scholar
                   </span>
-                  <span class="wt-step-num">2 of 5</span>
+                  <span class="wt-step-num">2 of 6</span>
                 </div>
                 <h2 class="wt-title">Unconfirmed DOI</h2>
                 <p class="wt-desc">
@@ -372,7 +372,7 @@
                     </svg>
                     Google Sheets
                   </span>
-                  <span class="wt-step-num">3 of 5</span>
+                  <span class="wt-step-num">3 of 6</span>
                 </div>
                 <h2 class="wt-title">Spreadsheet Detection</h2>
                 <p class="wt-desc">
@@ -718,14 +718,15 @@
                     </svg>
                     Journal &amp; Article Pages
                   </span>
-                  <span class="wt-step-num">4 of 5</span>
+                  <span class="wt-step-num">4 of 6</span>
                 </div>
                 <h2 class="wt-title">Replication Badges</h2>
                 <p class="wt-desc">
                   On journal pages, FLoRA injects inline badges next to DOI
-                  links and adds a draggable <strong>FLoRA tab</strong> to the
-                  right edge of the page. Click it to open the full Meta Report
-                  panel.
+                  links, flags retractions right beside the title, adds an Open
+                  Access "Free" link to reference DOIs when a free copy exists,
+                  and adds a draggable <strong>FLoRA tab</strong> to the right
+                  edge of the page. Click it to open the full Meta Report panel.
                 </p>
                 <div class="wt-callouts">
                   <div class="wt-callout callout-confirmed">
@@ -864,13 +865,16 @@
                     </svg>
                     Journal &amp; Article Pages
                   </span>
-                  <span class="wt-step-num">5 of 5</span>
+                  <span class="wt-step-num">5 of 6</span>
                 </div>
                 <h2 class="wt-title">Meta Report Panel</h2>
                 <p class="wt-desc">
                   Click the FLoRA tab to open the Meta Report panel. It lists
-                  every known replication and reproduction study, color-coded by
-                  outcome, plus references with PubPeer comment counts.
+                  every known replication and reproduction study color-coded by
+                  outcome, flags retractions and expressions of concern, links to
+                  free full text where available, and shows references with
+                  PubPeer comments. If the paper is itself a replication, it
+                  shows the <strong>original study</strong> instead.
                 </p>
                 <div class="wt-callouts">
                   <div class="wt-callout callout-confirmed">
@@ -894,6 +898,57 @@
                       </div>
                     </div>
                   </div>
+                  <div class="wt-callout callout-unconfirmed">
+                    <div class="wt-callout-icon icon-unconfirmed">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <path
+                          d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+                        />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">
+                        Retraction &amp; concern flags
+                      </div>
+                      <div class="wt-callout-text">
+                        A red "Retracted" or "Concern" tag appears beside the
+                        title and any affected reference. Click to read the
+                        notice.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="wt-callout callout-confirmed">
+                    <div class="wt-callout-icon icon-confirmed">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">Open Access links</div>
+                      <div class="wt-callout-text">
+                        When a free full text exists (via Unpaywall), a green
+                        "Free" link is added to the DOI — one click to the open
+                        copy.
+                      </div>
+                    </div>
+                  </div>
                   <div class="wt-callout callout-neutral">
                     <div class="wt-callout-icon icon-neutral">
                       <svg
@@ -910,10 +965,11 @@
                       </svg>
                     </div>
                     <div class="wt-callout-body">
-                      <div class="wt-callout-title">PubPeer comment counts</div>
+                      <div class="wt-callout-title">PubPeer comments</div>
                       <div class="wt-callout-text">
-                        References in the paper that have PubPeer comments are
-                        listed below the replications. Click to open the thread.
+                        References discussed on PubPeer show a teal comment pill
+                        with the count. The article's thread loads inline — if it
+                        can't be embedded, a link to open it on PubPeer is shown.
                       </div>
                     </div>
                   </div>
@@ -1229,24 +1285,69 @@
                             style="
                               font-size: 11.5px;
                               color: #202124;
-                              margin-bottom: 3px;
+                              margin-bottom: 4px;
                               line-height: 1.3;
                             "
                           >
                             Nonverbal behavior and the vertical dimension of
                             social relations
                           </div>
-                          <span
+                          <div
                             style="
-                              font-size: 10px;
-                              font-weight: 500;
-                              padding: 2px 6px;
-                              border-radius: 10px;
-                              background: #e8f0fe;
-                              color: #1967d2;
+                              display: flex;
+                              align-items: center;
+                              flex-wrap: wrap;
+                              gap: 4px;
                             "
-                            >1 comment</span
                           >
+                            <span
+                              style="
+                                font-size: 10px;
+                                font-weight: 600;
+                                padding: 2px 6px;
+                                border-radius: 10px;
+                                background: #fef9c3;
+                                color: #854d0e;
+                                border: 1px solid #fde047;
+                              "
+                              >View in Atlas</span
+                            >
+                            <span
+                              style="
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 4px;
+                                font-size: 10px;
+                                font-weight: 600;
+                                padding: 1px 7px;
+                                border-radius: 10px;
+                                background: #e9f3f1;
+                                color: #446058;
+                                border: 1px solid #7accc8;
+                              "
+                            >
+                              <svg
+                                width="9"
+                                height="13"
+                                viewBox="0 0 98.5 146.5"
+                                fill="none"
+                                stroke="#446058"
+                                stroke-width="7"
+                                stroke-linecap="round"
+                              >
+                                <circle cx="13.667" cy="34.833" r="10.167" />
+                                <circle cx="86.302" cy="80.344" r="10.167" />
+                                <circle cx="86.302" cy="12.741" r="10.167" />
+                                <circle cx="13.04" cy="133.811" r="10.166" />
+                                <line x1="13.04" y1="45" x2="13.04" y2="123.645" />
+                                <line x1="23.44" y1="32.04" x2="76.554" y2="15.626" />
+                                <line x1="86.303" y1="22.907" x2="86.303" y2="70.177" />
+                                <line x1="18.027" y1="124.955" x2="80.772" y2="21.267" />
+                                <line x1="76.136" y1="80.344" x2="45.023" y2="80.344" />
+                              </svg>
+                              1 comment
+                            </span>
+                          </div>
                         </div>
                         <div
                           style="
@@ -1258,23 +1359,68 @@
                             style="
                               font-size: 11.5px;
                               color: #202124;
-                              margin-bottom: 3px;
+                              margin-bottom: 4px;
                               line-height: 1.3;
                             "
                           >
                             Inhibiting the facial feedback hypothesis
                           </div>
-                          <span
+                          <div
                             style="
-                              font-size: 10px;
-                              font-weight: 500;
-                              padding: 2px 6px;
-                              border-radius: 10px;
-                              background: #e8f0fe;
-                              color: #1967d2;
+                              display: flex;
+                              align-items: center;
+                              flex-wrap: wrap;
+                              gap: 4px;
                             "
-                            >2 comments</span
                           >
+                            <span
+                              style="
+                                font-size: 10px;
+                                font-weight: 600;
+                                padding: 2px 6px;
+                                border-radius: 10px;
+                                background: #ff1744;
+                                color: #fff;
+                                border: 1px solid #ff1744;
+                              "
+                              >Retracted</span
+                            >
+                            <span
+                              style="
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 4px;
+                                font-size: 10px;
+                                font-weight: 600;
+                                padding: 1px 7px;
+                                border-radius: 10px;
+                                background: #e9f3f1;
+                                color: #446058;
+                                border: 1px solid #7accc8;
+                              "
+                            >
+                              <svg
+                                width="9"
+                                height="13"
+                                viewBox="0 0 98.5 146.5"
+                                fill="none"
+                                stroke="#446058"
+                                stroke-width="7"
+                                stroke-linecap="round"
+                              >
+                                <circle cx="13.667" cy="34.833" r="10.167" />
+                                <circle cx="86.302" cy="80.344" r="10.167" />
+                                <circle cx="86.302" cy="12.741" r="10.167" />
+                                <circle cx="13.04" cy="133.811" r="10.166" />
+                                <line x1="13.04" y1="45" x2="13.04" y2="123.645" />
+                                <line x1="23.44" y1="32.04" x2="76.554" y2="15.626" />
+                                <line x1="86.303" y1="22.907" x2="86.303" y2="70.177" />
+                                <line x1="18.027" y1="124.955" x2="80.772" y2="21.267" />
+                                <line x1="76.136" y1="80.344" x2="45.023" y2="80.344" />
+                              </svg>
+                              2 comments
+                            </span>
+                          </div>
                         </div>
                         <!-- Open in FLoRA Atlas button -->
                         <div
@@ -1312,6 +1458,328 @@
           </div>
           <!-- /step-4 -->
 
+          <!-- ─────────────────────────────────
+               STEP 5 — Open Access & Retractions
+               ───────────────────────────────── -->
+          <div class="wt-step" id="step-5">
+            <div class="wt-step-inner wider">
+              <div class="wt-info">
+                <div class="wt-context">
+                  <span class="wt-context-tag tag-pages">
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                    >
+                      <path
+                        d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                      />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                    Journal &amp; Article Pages
+                  </span>
+                  <span class="wt-step-num">6 of 6</span>
+                </div>
+                <h2 class="wt-title">Open Access &amp; Retractions</h2>
+                <p class="wt-desc">
+                  As FLoRA scans a page it flags retracted papers and surfaces
+                  free full text. A small toast shows while it works, and it only
+                  runs on the tab you're actually viewing.
+                </p>
+                <div class="wt-callouts">
+                  <div class="wt-callout callout-confirmed">
+                    <div class="wt-callout-icon icon-confirmed">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">"Free" Open Access link</div>
+                      <div class="wt-callout-text">
+                        Reference DOIs with a free full text (via Unpaywall) get
+                        a green "Free" link inside the pill — one click to the
+                        open copy.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="wt-callout callout-unconfirmed">
+                    <div class="wt-callout-icon icon-unconfirmed">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <path
+                          d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+                        />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">Retraction flags</div>
+                      <div class="wt-callout-text">
+                        Retracted papers and expressions of concern are flagged
+                        with a red tag beside the title and DOIs. Click to read
+                        the notice.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="wt-callout callout-neutral">
+                    <div class="wt-callout-icon icon-neutral">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <polyline points="23 4 23 10 17 10" />
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">Scanning indicator</div>
+                      <div class="wt-callout-text">
+                        A small toast in the corner appears while FLoRA is
+                        scanning the page, then disappears when it's done.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="wt-callout callout-neutral">
+                    <div class="wt-callout-icon icon-neutral">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        stroke-width="2.5"
+                      >
+                        <path
+                          d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"
+                        />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    </div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">Active tab only</div>
+                      <div class="wt-callout-text">
+                        FLoRA only works on the tab you're viewing — background
+                        tabs stay idle until you switch to them.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Demo: article with retraction flag + reference OA "Free" + scanning toast -->
+              <div class="step-demo" id="demo-5">
+                <button class="replay-btn">
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 1 0 .49-4" />
+                  </svg>
+                  Replay
+                </button>
+                <div class="mock-browser">
+                  <div class="mock-browser-bar">
+                    <div class="mock-browser-dots">
+                      <span></span><span></span><span></span>
+                    </div>
+                    <div class="mock-url">
+                      journals.example.org/doi/10.1037/0033-2909.131.6.803
+                    </div>
+                  </div>
+                  <div class="mock-pages-single">
+                    <div class="mock-article-body">
+                      <div class="mock-journal-name">Psychological Bulletin</div>
+                      <h3 class="mock-article-title">
+                        Mood and the Endowment Effect: A Reassessment
+                        <span
+                          class="anim-badge"
+                          style="
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 4px;
+                            vertical-align: middle;
+                            margin-left: 8px;
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #fff;
+                            background: #ff1744;
+                            padding: 2px 9px;
+                            border-radius: 11px;
+                          "
+                        >
+                          <svg
+                            width="11"
+                            height="11"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="#fff"
+                            stroke-width="2.5"
+                          >
+                            <path
+                              d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+                            />
+                            <line x1="12" y1="9" x2="12" y2="13" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                          </svg>
+                          Retracted
+                        </span>
+                      </h3>
+                      <div class="mock-article-authors">
+                        J. Researcher, A. Coauthor &mdash; 2005
+                      </div>
+                      <div
+                        style="
+                          margin-top: 16px;
+                          font-size: 11px;
+                          font-weight: 600;
+                          color: #5f6368;
+                          text-transform: uppercase;
+                          letter-spacing: 0.5px;
+                        "
+                      >
+                        References
+                      </div>
+                      <div
+                        style="
+                          font-size: 12.5px;
+                          color: #3c4043;
+                          line-height: 1.6;
+                          padding: 8px 0;
+                          border-bottom: 1px solid #eee;
+                        "
+                      >
+                        Kahneman, D., Knetsch, J. L., &amp; Thaler, R. (1990).
+                        Experimental tests of the endowment effect.
+                        <em>Journal of Political Economy</em>.
+                        <span
+                          class="anim-badge"
+                          style="
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 4px;
+                            vertical-align: middle;
+                            margin-left: 4px;
+                            font-size: 11px;
+                            font-weight: 500;
+                            color: #fff;
+                            background: #853953;
+                            opacity: 0.85;
+                            padding: 2px 9px;
+                            border-radius: 20px;
+                          "
+                        >
+                          DOI
+                          <svg
+                            width="11"
+                            height="11"
+                            viewBox="0 0 16 16"
+                            fill="white"
+                          >
+                            <path
+                              d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"
+                            />
+                          </svg>
+                          <span
+                            style="
+                              width: 1px;
+                              height: 11px;
+                              background: rgba(255, 255, 255, 0.4);
+                            "
+                          ></span>
+                          <span
+                            style="display: inline-flex; align-items: center; gap: 3px"
+                          >
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="#fff"
+                              stroke-width="2.2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                            >
+                              <rect
+                                x="3"
+                                y="11"
+                                width="18"
+                                height="11"
+                                rx="2"
+                                ry="2"
+                              />
+                              <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                            </svg>
+                            Free
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- Scanning toast — bottom-right, matches injector.ts output -->
+                  <div
+                    class="anim-badge"
+                    style="
+                      position: absolute;
+                      bottom: 14px;
+                      right: 14px;
+                      display: flex;
+                      align-items: center;
+                      gap: 8px;
+                      background: linear-gradient(135deg, #853953, #612d53);
+                      color: #fff;
+                      font-size: 12px;
+                      font-weight: 500;
+                      padding: 8px 12px;
+                      border-radius: 8px;
+                      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+                    "
+                  >
+                    <span
+                      style="
+                        width: 12px;
+                        height: 12px;
+                        border-radius: 50%;
+                        border: 2px solid rgba(255, 255, 255, 0.35);
+                        border-top-color: #fff;
+                      "
+                    ></span>
+                    FLoRA is scanning this page…
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- /step-5 -->
+
           <!-- ═══ NAVIGATION ═══ -->
           <div class="wt-nav">
             <button class="wt-nav-btn" id="prev-btn" disabled>
@@ -1339,6 +1807,8 @@
                 <button class="wt-dot" data-step="3"></button>
                 <div class="wt-dot-line"></div>
                 <button class="wt-dot" data-step="4"></button>
+                <div class="wt-dot-line"></div>
+                <button class="wt-dot" data-step="5"></button>
               </div>
             </div>
 

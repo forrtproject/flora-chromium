@@ -23,6 +23,50 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
 });
 
+// ── Toolbar icon: maroon "F" when FLoRA is active on a tab, gray when not.
+// Drawn on an OffscreenCanvas so no separate icon assets are needed.
+function drawFloraIcon(size: number, active: boolean): ImageData {
+    const canvas = new OffscreenCanvas(size, size);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d context");
+    const r = size * 0.22;
+    ctx.fillStyle = active ? "#853953" : "#9aa0a6";
+    ctx.beginPath();
+    ctx.roundRect(0.5, 0.5, size - 1, size - 1, r);
+    ctx.fill();
+    ctx.fillStyle = active ? "#ffffff" : "#eceff1";
+    ctx.font = `bold ${Math.round(size * 0.68)}px -apple-system, "Segoe UI", Roboto, Arial, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("F", size / 2, size * 0.56);
+    return ctx.getImageData(0, 0, size, size);
+}
+
+function setActionIcon(active: boolean, tabId?: number): void {
+    let imageData: Record<number, ImageData>;
+    try {
+        imageData = { 16: drawFloraIcon(16, active), 32: drawFloraIcon(32, active) };
+    } catch {
+        return; // OffscreenCanvas unavailable — leave the default icon
+    }
+    const details = tabId != null ? { tabId, imageData } : { imageData };
+    chrome.action.setIcon(details).catch(() => {});
+
+    const title = active
+        ? "FLoRA — active on this page"
+        : "FLoRA — inactive on this page";
+    chrome.action.setTitle(tabId != null ? { tabId, title } : { title }).catch(() => {});
+}
+
+// Default to inactive; an applicable page's content script flips it to active.
+setActionIcon(false);
+
+// Reset to inactive while a tab navigates — the content script re-activates it
+// if the new page is applicable (so leaving a site clears the active state).
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo.status === "loading") setActionIcon(false, tabId);
+});
+
 // Open the walkthrough on first install and seed retraction data immediately.
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === "install") {
@@ -41,7 +85,18 @@ chrome.runtime.onStartup.addListener(() => {
 const inflight = new Map<DoiString, Promise<ReplicationResult | null>>();
 
 chrome.runtime.onMessage.addListener(
-    (message: unknown, _sender, sendResponse) => {
+    (message: unknown, sender, sendResponse) => {
+        if (
+            typeof message === "object" &&
+            message !== null &&
+            (message as { type?: string }).type === "FLORA_ACTIVE_STATE"
+        ) {
+            const active = (message as { active?: boolean }).active === true;
+            const tabId = sender.tab?.id;
+            if (tabId != null) setActionIcon(active, tabId);
+            return false;
+        }
+
         if (isLookupRequest(message)) {
             handleLookup(message.dois)
                 .then(sendResponse)
