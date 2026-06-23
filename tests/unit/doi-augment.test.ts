@@ -432,4 +432,173 @@ describe("augmentDOIs", () => {
     // One setMany flush for both, not one chrome.storage.local.set per title.
     expect(setSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("cleans question marks before querying OpenAlex title.search", async () => {
+    server.use(
+      http.get(CROSSREF_URL, () => HttpResponse.json({ message: { items: [] } })),
+      http.get(OPENALEX_URL, ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("filter")).toBe("title.search:Is Attention All You Need");
+        return HttpResponse.json({
+          results: [
+            {
+              doi: "https://doi.org/10.1007/978-3-031-84300-6_13",
+              title: "Is Attention All You Need?",
+            },
+          ],
+        });
+      })
+    );
+
+    const results = await augmentDOIs(["Is Attention All You Need?"]);
+
+    expect(results.get("Is Attention All You Need?")).toBe(
+      "10.1007/978-3-031-84300-6_13"
+    );
+  });
+
+  it("uses year and first-author metadata to choose among same-score title candidates", async () => {
+    server.use(
+      http.get(CROSSREF_URL, () => HttpResponse.json({ message: { items: [] } })),
+      http.get(OPENALEX_URL, () =>
+        HttpResponse.json({
+          results: [
+            {
+              doi: "https://doi.org/10.1016/j.cell.2011.02.013",
+              title: "Hallmarks of Cancer: The Next Generation",
+              publication_year: 2011,
+              authorships: [{ author: { display_name: "Douglas Hanahan" } }],
+            },
+            {
+              doi: "https://doi.org/10.1016/s0092-8674(00)81683-9",
+              title: "The Hallmarks of Cancer",
+              publication_year: 2000,
+              authorships: [{ author: { display_name: "Douglas Hanahan" } }],
+            },
+            {
+              doi: "https://doi.org/10.1016/j.cmet.2015.12.006",
+              title: "The Emerging Hallmarks of Cancer Metabolism",
+              publication_year: 2016,
+              authorships: [{ author: { display_name: "Douglas Hanahan" } }],
+            },
+          ],
+        })
+      )
+    );
+
+    const title = "The Hallmarks of Cancer";
+    const results = await augmentDOIs([{ title, firstAuthor: "Hanahan", year: 2000 }]);
+
+    expect(results.get(title)).toBe("10.1016/s0092-8674(00)81683-9");
+  });
+
+  it("uses source URL location metadata to choose journal DOI over same-title preprint DOI", async () => {
+    server.use(
+      http.get(CROSSREF_URL, () =>
+        HttpResponse.json({
+          message: {
+            items: [
+              {
+                DOI: "10.31234/osf.io/ksfvq",
+                title: ["Replicability, Robustness, and Reproducibility in Psychological Science"],
+                author: [{ family: "Nosek" }],
+                issued: { "date-parts": [[2021]] },
+                URL: "https://doi.org/10.31234/osf.io/ksfvq",
+              },
+              {
+                DOI: "10.1146/annurev-psych-020821-114157",
+                title: ["Replicability, Robustness, and Reproducibility in Psychological Science"],
+                author: [{ family: "Nosek" }],
+                issued: { "date-parts": [[2022]] },
+                URL: "https://doi.org/10.1146/annurev-psych-020821-114157",
+              },
+            ],
+          },
+        })
+      ),
+      http.get(OPENALEX_URL, () =>
+        HttpResponse.json({
+          results: [
+            {
+              doi: "https://doi.org/10.1146/annurev-psych-020821-114157",
+              title: "Replicability, Robustness, and Reproducibility in Psychological Science",
+              publication_year: 2021,
+              authorships: [{ author: { display_name: "Brian A. Nosek" } }],
+              primary_location: {
+                landing_page_url: "https://doi.org/10.1146/annurev-psych-020821-114157",
+                pdf_url: "https://www.annualreviews.org/doi/pdf/10.1146/annurev-psych-020821-114157",
+              },
+              locations: [
+                {
+                  landing_page_url: "https://doi.org/10.1146/annurev-psych-020821-114157",
+                  pdf_url: "https://www.annualreviews.org/doi/pdf/10.1146/annurev-psych-020821-114157",
+                },
+              ],
+            },
+            {
+              doi: "https://doi.org/10.31234/osf.io/ksfvq",
+              title: "Replicability, Robustness, and Reproducibility in Psychological Science",
+              publication_year: 2021,
+              authorships: [{ author: { display_name: "Brian A. Nosek" } }],
+              primary_location: {
+                landing_page_url: "https://doi.org/10.31234/osf.io/ksfvq",
+                pdf_url: "https://psyarxiv.com/ksfvq/download",
+              },
+              locations: [
+                {
+                  landing_page_url: "https://osf.io/ksfvq",
+                  pdf_url: "https://psyarxiv.com/ksfvq/download",
+                },
+              ],
+            },
+          ],
+        })
+      )
+    );
+
+    const title = "Replicability, robustness, and reproducibility in psychological science";
+    const results = await augmentDOIs([{
+      title,
+      firstAuthor: "Nosek",
+      year: 2022,
+      sourceUrl: "https://www.annualreviews.org/content/journals/10.1146/annurev-psych-020821-114157",
+    }]);
+
+    expect(results.get(title)).toBe("10.1146/annurev-psych-020821-114157");
+  });
+
+  it("returns null for ambiguous same-score candidates when metadata cannot break the tie", async () => {
+    server.use(
+      http.get(CROSSREF_URL, () => HttpResponse.json({ message: { items: [] } })),
+      http.get(OPENALEX_URL, () =>
+        HttpResponse.json({
+          results: [
+            {
+              doi: "https://doi.org/10.65215/2q58a426",
+              title: "Attention Is All You Need",
+              publication_year: 2024,
+              authorships: [{ author: { display_name: "Unrelated Author" } }],
+            },
+            {
+              doi: "https://doi.org/10.1109/icassp39728.2021.9413901",
+              title: "Attention Is All You Need In Speech Separation",
+              publication_year: 2021,
+              authorships: [{ author: { display_name: "Subakan" } }],
+            },
+            {
+              doi: "https://doi.org/10.1609/aaai.v34i07.6693",
+              title: "Channel Attention Is All You Need for Video Frame Interpolation",
+              publication_year: 2020,
+              authorships: [{ author: { display_name: "Cheng" } }],
+            },
+          ],
+        })
+      )
+    );
+
+    const title = "Attention is all you need";
+    const results = await augmentDOIs([{ title, firstAuthor: "Vaswani", year: 2017 }]);
+
+    expect(results.get(title)).toBeNull();
+  });
 });

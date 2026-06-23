@@ -1,0 +1,374 @@
+{
+  "snapshotDate": "2026-06-23",
+  "source": "Google Scholar via real Chrome browser automation",
+  "snapshots": [
+    {
+      "query": "\"The FAIR Guiding Principles for scientific data management and stewardship\"",
+      "requestedUrl": "https://scholar.google.com/scholar?hl=en&q=%22The%20FAIR%20Guiding%20Principles%20for%20scientific%20data%20management%20and%20stewardship%22",
+      "finalUrl": "https://scholar.google.com/scholar?hl=en&q=%22The%20FAIR%20Guiding%20Principles%20for%20scientific%20data%20management%20and%20stewardship%22",
+      "file": "tests/fixtures/scholar-live/scholar-live-01.html",
+      "title": "\"The FAIR Guiding Principles for scientific data... - Google Scholar",
+      "blocked": false,
+      "htmlBytes": 175675,
+      "resultCount": 10,
+      "rows": [
+        {
+          "byline": "MD Wilkinson, M Dumontier, IJJ Aalbersberg… - Scientific data, 2016 - nature.com",
+          "extractedDoi": null,
+          "href": "https://www.nature.com/articles/sdata201618/metr",
+          "index": 1,
+          "snippet": "There is an urgent need to improve the infrastructure supporting the reuse of scholarly data. A diverse set of stakeholders—representing academia, industry, funding agencies, and …",
+          "title": "The FAIR Guiding Principles for scientific data management and stewardship"
+        },
+        {
+          "byline": "MD Wilkinson, M Dumontier, IJJ Aalbersberg… - Scientific …, 2016 - research.wur.nl",
+          "extractedDoi": null,
+          "href": "https://research.wur.nl/en/publications/the-fair-guiding-principles-for-scientific-data-management-and-st/",
+          "index": 2,
+          "snippet": "There is an urgent need to improve the infrastructure supporting the reuse of scholarly data. A diverse set of stakeholders-representing academia, industry, funding agencies, and …",
+          "title": "The FAIR Guiding Principles for scientific data management and stewardship: Comment"
+        },
+        {
+          "byline": "B Mons - 2018 - api.taylorfrancis.com",
+          "extractedDoi": "10.1201/9781315380711",
+          "href": "https://api.taylorfrancis.com/content/books/mono/download?identifierName=doi&identifierValue=10.1201/9781315380711&type=googlepdf",
+          "index": 3,
+          "snippet": "Data Stewardship for Open Science: Implementing FAIR Principles has been written with the intention of making scientists, funders, and innovators in all disciplines and stages of their …",
+          "title": "Data stewardship for open science: Implementing FAIR principles"
+        },
+        {
+          "byline": "MD Wilkinson, M Dumontier, IJJ Aalbersberg… - Scientific …, 2016 - pure.amsterdamumc.nl",
+          "extractedDoi": null,
+          "href": "https://pure.amsterdamumc.nl/en/publications/comment-the-fair-guiding-principles-for-scientific-data-managemen/",
+          "index": 4,
+          "snippet": "There is an urgent need to improve the infrastructure supporting the reuse of scholarly data. A diverse set of stakeholders-representing academia, industry, funding agencies, and …",
+          "title": "Comment: The FAIR Guiding Principles for scientific data management and stewardship"
+        },
+        {
+          "byline": "MD Wilkinson, M Dumontier, IJ Aalbersberg… - Scientific …, 2019 - pmc.ncbi.nlm.nih.gov",
+          "extractedDoi": null,
+          "href": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6427092/",
+          "index": 5,
+          "snippet": "Addendum: The FAIR Guiding Principles for scientific data management and stewardship - PMC … Addendum: The FAIR Guiding Principles for scientific data management and …",
+          "title": "Addendum: The FAIR Guiding Principles for scientific data management and stewardship"
+        },
+        {
+          "byline": "A Bhat, ZA Wani - IFLA journal, 2025 - journals.sagepub.com",
+          "extractedDoi": "10.1177/03400352241270692",
+          "href": "https://journals.sagepub.com/doi/abs/10.1177/03400352241270692",
+          "index": 6,
+          "snippet": "… Later, in 2016, Scientific Data published ‘The FAIR Guiding Principles for scientific data management and stewardship’, which has set the standard for the long-term management of …",
+          "title": "The FAIRification process for data stewardship: A comprehensive discourse on the implementation of the FAIR principles for data visibility, interoperability and …"
+        },
+        {
+          "byline": "ET Inau, J Sack, D Waltemath… - JMIR research …, 2021 - researchprotocols.org",
+          "extractedDoi": null,
+          "href": "https://www.researchprotocols.org/2021/2/e22505/",
+          "index": 7,
+          "snippet": "… The FAIR Guiding Principles for scientific data management and stewardship. Sci Data 2016 Mar 15;3:160018 [FREE Full text] [CrossRef] [Medline] …",
+          "title": "Initiatives, concepts, and implementation practices of FAIR (findable, accessible, interoperable, and reusable) data principles in health data stewardship …"
+        },
+        {
+          "byline": "M Wang, D Savard - Research Data Management …, 2023 - ecampusontario.pressbooks.pub",
+          "extractedDoi": "10.1038/sdata.2016.18",
+          "href": "https://ecampusontario.pressbooks.pub/canadardm/chapter/fair/",
+          "index": 8,
+          "snippet": "… The FAIR guiding principles for scientific data management and stewardship. Scientific Data, 3(1), 160018. https://doi.org/10.1038/sdata.2016.18 …",
+          "title": "The FAIR principles and research data management"
+        },
+        {
+          "byline": "B Sterner, S Elliott - Science as Culture, 2024 - Taylor & Francis",
+          "extractedDoi": "10.1080/09505431.2023.2214155",
+          "href": "https://www.tandfonline.com/doi/abs/10.1080/09505431.2023.2214155",
+          "index": 9,
+          "snippet": "Biodiversity science is in a pivotal period when diverse groups of actors – including researchers, businesses, national governments, and Indigenous Peoples – are negotiating wide-…",
+          "title": "How data governance principles influence participation in biodiversity science"
+        },
+        {
+          "byline": "D Kinkade, A Shepherd - Geoscience Data Journal, 2022 - Wiley Online Library",
+          "extractedDoi": "10.1002/gdj3.120",
+          "href": "https://rmets.onlinelibrary.wiley.com/doi/abs/10.1002/gdj3.120",
+          "index": 10,
+          "snippet": "… In 2016, Wilkinson et al. published The FAIR Guiding Principles for scientific data management and stewardship in an attempt to provide both clarity and guidance on the types of …",
+          "title": "Geoscience data publication: Practices and perspectives on enabling the FAIR guiding principles"
+        }
+      ]
+    },
+    {
+      "query": "\"Estimating the reproducibility of psychological science\"",
+      "requestedUrl": "https://scholar.google.com/scholar?hl=en&q=%22Estimating%20the%20reproducibility%20of%20psychological%20science%22",
+      "finalUrl": "https://scholar.google.com/scholar?hl=en&q=%22Estimating%20the%20reproducibility%20of%20psychological%20science%22",
+      "file": "tests/fixtures/scholar-live/scholar-live-02.html",
+      "title": "\"Estimating the reproducibility of psychological science\" - Google Scholar",
+      "blocked": false,
+      "htmlBytes": 200105,
+      "resultCount": 10,
+      "rows": [
+        {
+          "byline": "Open Science Collaboration - Science, 2015 - science.org",
+          "extractedDoi": "10.1126/science.aac4716",
+          "href": "https://www.science.org/doi/abs/10.1126/science.aac4716",
+          "index": 1,
+          "snippet": "INTRODUCTION Reproducibility is a defining feature of science, but the extent to which it characterizes current research is unknown. Scientific claims should not gain credence …",
+          "title": "Estimating the reproducibility of psychological science"
+        },
+        {
+          "byline": "CJ Anderson, Š Bahník, M Barnett-Cowan, FA Bosco… - Science, 2016 - science.org",
+          "extractedDoi": "10.1126/science.aad9163",
+          "href": "https://www.science.org/doi/abs/10.1126/science.aad9163",
+          "index": 2,
+          "snippet": "Gilbert et al. conclude that evidence from the Open Science Collaboration’s Reproducibility Project: Psychology indicates high reproducibility, given the study methodology. Their very …",
+          "title": "Response to comment on “Estimating the reproducibility of psychological science”"
+        },
+        {
+          "byline": "A Attwood, K Easey, I Penton-Voak… - …, 2015 - research-information.bris.ac.uk",
+          "extractedDoi": null,
+          "href": "https://research-information.bris.ac.uk/en/publications/estimating-the-reproducibility-of-psychological-science/",
+          "index": 3,
+          "snippet": "Reproducibility is a defining feature of science, but the extent to which it characterizes current research is unknown. We conducted replications of 100 experimental and correlational …",
+          "title": "Estimating the reproducibility of psychological science"
+        },
+        {
+          "byline": "VE Johnson, RD Payne, T Wang, A Asher… - Journal of the …, 2017 - Taylor & Francis",
+          "extractedDoi": "10.1080/01621459.2016.1240079",
+          "href": "https://www.tandfonline.com/doi/abs/10.1080/01621459.2016.1240079",
+          "index": 4,
+          "snippet": "Investigators from a large consortium of scientists recently performed a multi-year study in which they replicated 100 psychology experiments. Although statistically significant results …",
+          "title": "On the reproducibility of psychological science"
+        },
+        {
+          "byline": "BA Nosek, TE Hardwicke, H Moshontz… - Annual review of …, 2022 - annualreviews.org",
+          "extractedDoi": "10.1146/annurev-psych-020821-114157",
+          "href": "https://www.annualreviews.org/content/journals/10.1146/annurev-psych-020821-114157",
+          "index": 5,
+          "snippet": "… on “Estimating the reproducibility of psychological science … on “Estimating the reproducibility of psychological science … 2015 Estimating the reproducibility of psychological science …",
+          "title": "Replicability, robustness, and reproducibility in psychological science"
+        },
+        {
+          "byline": "SE Iso-Ahola - Frontiers in Psychology, 2017 - frontiersin.org",
+          "extractedDoi": "10.3389/fpsyg.2017.00879/full",
+          "href": "https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2017.00879/full",
+          "index": 6,
+          "snippet": "Scientific evidence has recently been used to assert that certain psychological phenomena do not exist. Such claims, however, cannot be made because (1) scientific method itself is …",
+          "title": "Reproducibility in psychological science: When do psychological phenomena exist?"
+        },
+        {
+          "byline": "DT Gilbert, G King, S Pettigrew, TD Wilson - Harvard University, 2016 - gking.harvard.edu",
+          "extractedDoi": null,
+          "href": "https://gking.harvard.edu/files/gkpw_response_to_osc_rebutal.pdf",
+          "index": 7,
+          "snippet": "… and his 43 colleagues for their thoughtful reply (hereafter referred to as OSCReply) to our Technical Comment on their article “Estimating the reproducibility of psychological science” …",
+          "title": "A response to the reply to our technical comment on 'Estimating the Reproducibility of Psychological Science'"
+        },
+        {
+          "byline": "DT Gilbert, G King, S Pettigrew… - Available at projects. iq …, 2016 - gking.harvard.edu",
+          "extractedDoi": null,
+          "href": "https://gking.harvard.edu/sites/scholar.harvard.edu/files/gking/files/gkpw_post_publication_response.pdf",
+          "index": 8,
+          "snippet": "Our​ Technical Comment​ on​ OSC2015​, the​ OSC’s reply​ to it, and our​ reply to the OSC​, have elicited lengthy responses from several colleagues. We were grateful to hear …",
+          "title": "More on “Estimating the Reproducibility of Psychological Science.”"
+        },
+        {
+          "byline": "AA Aarts, JE Anderson, CJ Anderson, PR Attridge… - Science, 2015 - osf.io",
+          "extractedDoi": null,
+          "href": "https://osf.io/download/c5sfb/",
+          "index": 9,
+          "snippet": "Estimating the reproducibility of psychological science … Estimating the reproducibility of psychological science … Estimating the Reproducibility of Psychological Science …",
+          "title": "Estimating the reproducibility of psychological science"
+        },
+        {
+          "byline": "M Lewis, D Santos, GB Sullivan - academia.edu",
+          "extractedDoi": null,
+          "href": "https://www.academia.edu/download/38739128/2015_Science_Estimating_the_reproducibility_of_psychological_science.pdf",
+          "index": 10,
+          "snippet": "Reproducibility is a defining feature of science, but the extent to which it characterizes current research is unknown. We conducted replications of 100 experimental and correlational …",
+          "title": "Estimating the reproducibility of psychological science"
+        }
+      ]
+    },
+    {
+      "query": "\"Attention is all you need\"",
+      "requestedUrl": "https://scholar.google.com/scholar?hl=en&q=%22Attention%20is%20all%20you%20need%22",
+      "finalUrl": "https://scholar.google.com/scholar?hl=en&q=%22Attention%20is%20all%20you%20need%22",
+      "file": "tests/fixtures/scholar-live/scholar-live-03.html",
+      "title": "\"Attention is all you need\" - Google Scholar",
+      "blocked": false,
+      "htmlBytes": 172884,
+      "resultCount": 10,
+      "rows": [
+        {
+          "byline": "A Vaswani, N Shazeer, N Parmar… - Advances in neural …, 2017 - proceedings.neurips.cc",
+          "extractedDoi": null,
+          "href": "https://proceedings.neurips.cc/paper/2017/hash/3f5ee243547dee91fbd053c1c4a845aa-Abstract.html",
+          "index": 1,
+          "snippet": "The dominant sequence transduction models are based on complex recurrent orconvolutional neural networks in an encoder and decoder configuration. The best performing such …",
+          "title": "Attention is all you need"
+        },
+        {
+          "byline": "P Mineault - From Human Attention to Computational Attention: A …, 2025 - Springer",
+          "extractedDoi": "10.1007/978-3-031-84300-6_13",
+          "href": "https://link.springer.com/chapter/10.1007/978-3-031-84300-6_13",
+          "index": 2,
+          "snippet": "… Attention is All You Need [61] introduced the transformer, a general-purpose architecture for … From the standpoint of neuroscience, Attention is All You Need represents a puzzle: is it …",
+          "title": "Is Attention All You Need?"
+        },
+        {
+          "byline": "AL Paul - ResearchGate, August, 2025 - researchgate.net",
+          "extractedDoi": null,
+          "href": "https://www.researchgate.net/profile/Anthony-Paul-2/publication/394854371_Revolutionizing_Vision_A_Deep_Dive_into_Attention_Is_All_You_Need_and_Its_Impact_on_AI_and_Machine_Learning/links/68a90aed1bee4d42a2421f20/Revolutionizing-Vision-A-Deep-Dive-into-Attention-Is-All-You-Need-and-Its-Impact-on-AI-and-Machine-Learning.pdf",
+          "index": 3,
+          "snippet": "… qualitative and analytical methods to examine the technical composition, evolution, and real-world implications of the Transformer architecture in the paper \"Attention Is All You Need\". …",
+          "title": "Revolutionizing Vision: A Deep Dive into “Attention Is All You Need” and Its Impact on AI and Machine Learning"
+        },
+        {
+          "byline": "Y Zhang, Y Liu, H Yuan, Z Qin… - Advances in Neural …, 2026 - proceedings.neurips.cc",
+          "extractedDoi": null,
+          "href": "https://proceedings.neurips.cc/paper_files/paper/2025/hash/a301ec7cb9e07dc050403e2eb11d0041-Abstract-Conference.html",
+          "index": 4,
+          "snippet": "Scaling language models to handle longer input sequences typically necessitates large key-value (KV) caches, resulting in substantial memory overhead during inference. In this paper, …",
+          "title": "Tensor product attention is all you need"
+        },
+        {
+          "byline": "F Meng, P Tang, X Tang, Z Yao, X Sun… - arXiv preprint arXiv …, 2025 - arxiv.org",
+          "extractedDoi": null,
+          "href": "https://arxiv.org/abs/2502.07864",
+          "index": 5,
+          "snippet": "In this paper, we present TransMLA, a framework that seamlessly converts any GQA-based pre-trained model into an MLA-based model. Our approach enables direct compatibility with …",
+          "title": "Transmla: Multi-head latent attention is all you need"
+        },
+        {
+          "byline": "J Maconochie - 2025 - jamesmaconochie.com",
+          "extractedDoi": null,
+          "href": "https://jamesmaconochie.com/assets/papers/Attention-Final.pdf",
+          "index": 6,
+          "snippet": "… In 2017, researchers at Google introduced the Transformer model in a paper titled Attention Is All You Need, demonstrating that artificial intelligence performance depends less on …",
+          "title": "Attention Is All We Have: What AI's Greatest Breakthrough Can Teach Us About Being Human"
+        },
+        {
+          "byline": "BO Obama - Available at SSRN 5276086, 2025 - papers.ssrn.com",
+          "extractedDoi": null,
+          "href": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5276086",
+          "index": 7,
+          "snippet": "… Inspired by the seminal \"Attention Is All You Need\" paper 17, AIAYH re-purposes the fundamental principles of the attention mechanism. Instead of facilitating sequence transduction (eg…",
+          "title": "Attention is all you have"
+        },
+        {
+          "byline": "MM Yaslioglu - arXiv preprint arXiv:2501.09166, 2025 - arxiv.org",
+          "extractedDoi": null,
+          "href": "https://arxiv.org/abs/2501.09166",
+          "index": 8,
+          "snippet": "… This section extends the “Attention Is All You Need” framework by adding a Retention Layer that stores and recalls patterns across time—akin to social learning concept of retention [19]. …",
+          "title": "Attention is all you need until you need retention"
+        },
+        {
+          "byline": "C Subakan, M Ravanelli, S Cornell… - ICASSP 2021-2021 …, 2021 - ieeexplore.ieee.org",
+          "extractedDoi": null,
+          "href": "https://ieeexplore.ieee.org/abstract/document/9413901/",
+          "index": 9,
+          "snippet": "Recurrent Neural Networks (RNNs) have long been the dominant architecture in sequence-to-sequence learning. RNNs, however, are inherently sequential models that do not allow …",
+          "title": "Attention is all you need in speech separation"
+        },
+        {
+          "byline": "Z Chen - arXiv preprint arXiv:2308.07661, 2023 - arxiv.org",
+          "extractedDoi": null,
+          "href": "https://arxiv.org/abs/2308.07661",
+          "index": 10,
+          "snippet": "In recent years, the popular Transformer architecture has achieved great success in many application areas, including natural language processing and computer vision. Many existing …",
+          "title": "Attention is not all you need anymore"
+        }
+      ]
+    },
+    {
+      "query": "\"The PRISMA 2020 statement\" \"updated guideline\"",
+      "requestedUrl": "https://scholar.google.com/scholar?hl=en&q=%22The%20PRISMA%202020%20statement%22%20%22updated%20guideline%22",
+      "finalUrl": "https://scholar.google.com/scholar?hl=en&q=%22The%20PRISMA%202020%20statement%22%20%22updated%20guideline%22",
+      "file": "tests/fixtures/scholar-live/scholar-live-04.html",
+      "title": "\"The PRISMA 2020 statement\" \"updated guideline\" - Google Scholar",
+      "blocked": false,
+      "htmlBytes": 176201,
+      "resultCount": 10,
+      "rows": [
+        {
+          "byline": "MJ Page, JE McKenzie, PM Bossuyt, I Boutron… - bmj, 2021 - bmj.com",
+          "extractedDoi": null,
+          "href": "https://www.bmj.com/content/372/bmj.n71.short",
+          "index": 1,
+          "snippet": "… We discussed proposed content and wording of the PRISMA 2020 statement, as informed by the review and survey results, at a 21-member, two-day, in-person meeting in September …",
+          "title": "The PRISMA 2020 statement: an updated guideline for reporting systematic reviews"
+        },
+        {
+          "byline": "K Dickson, CA Yeung - British dental journal, 2022 - nature.com",
+          "extractedDoi": null,
+          "href": "https://www.nature.com/articles/s41415-022-4359-7",
+          "index": 2,
+          "snippet": "… The PRISMA 2020 statement3 replaces the 2009 statement1 and was published in March 2021. It includes new reporting guidance for systematic reviews that reflects advances in …",
+          "title": "PRISMA 2020 updated guideline"
+        },
+        {
+          "byline": "MJ Page, JE McKenzie, PM Bossuyt… - … de salud publica, 2022 - pmc.ncbi.nlm.nih.gov",
+          "extractedDoi": null,
+          "href": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9798848/",
+          "index": 3,
+          "snippet": "… The PRISMA 2020 statement replaces the 2009 statement and includes new reporting guidance that reflects advances in methods to identify, select, appraise, and synthesise studies. …",
+          "title": "The PRISMA 2020 statement: an updated guideline for reporting systematic reviews"
+        },
+        {
+          "byline": "MK Swartz - Journal of Pediatric Health Care, 2021 - jpedhc.org",
+          "extractedDoi": null,
+          "href": "https://www.jpedhc.org/article/S0891-5245(21)00093-6/abstract",
+          "index": 4,
+          "snippet": "In this space, some 10 years ago, I wrote about the relatively new Preferred Reporting Items for Systematic Reviews and Meta-Analyses (PRISMA) statement, a set of guidelines that …",
+          "title": "PRISMA 2020: an update"
+        },
+        {
+          "byline": "J Tetzlaff, M Page, D Moher - Value in Health, 2020 - valueinhealthjournal.com",
+          "extractedDoi": null,
+          "href": "https://www.valueinhealthjournal.com/article/S1098-3015(20)31342-5/fulltext",
+          "index": 5,
+          "snippet": "… Results: The PRISMA 2020 Statement comprises updated guidance to facilitate transparent … Conclusions: The PRISMA 2020 Statement is intended to benefit researchers, policy makers, …",
+          "title": "PNS154 the PRISMA 2020 statement: development of and key changes in an updated guideline for reporting systematic reviews and meta-analyses"
+        },
+        {
+          "byline": "MJ Page, JE McKenzie, PM Bossuyt, I Boutron… - Journal of clinical …, 2021 - Elsevier",
+          "extractedDoi": null,
+          "href": "https://www.sciencedirect.com/science/article/pii/S0895435621000408",
+          "index": 6,
+          "snippet": "… Following the meeting, we drafted the PRISMA 2020 statement and refined it based on feedback from co-authors and a convenience sample of 15 systematic reviewers. …",
+          "title": "Updating guidance for reporting systematic reviews: development of the PRISMA 2020 statement"
+        },
+        {
+          "byline": "AL Dellinger, SO Obare - 2021 - prisma-statement.org",
+          "extractedDoi": null,
+          "href": "https://www.prisma-statement.org/s/PRISMA_2020_Arabic_Translation.pdf",
+          "index": 7,
+          "snippet": "… The PRISMA 2020 statement: an updated guideline for reporting systematic reviews … We anticipate that the PRISMA 2020 statement will benefit … Updating guidance for …",
+          "title": "The PRISMA 2020 statement: an updated guideline for reporting systematic reviews"
+        },
+        {
+          "byline": "R Sarkis-Onofre, F Catalá-López, E Aromataris… - Systematic reviews, 2021 - Springer",
+          "extractedDoi": "10.1186/s13643-021-01671-z",
+          "href": "https://link.springer.com/article/10.1186/s13643-021-01671-z",
+          "index": 8,
+          "snippet": "It has been more than a decade since the original publication of the Preferred Reporting Items for Systematic Reviews and Meta-Analyses (PRISMA) Statement [1], and it has become …",
+          "title": "How to properly use the PRISMA Statement"
+        },
+        {
+          "byline": "C Sohrabi, T Franchi, G Mathew, A Kerwan… - International Journal of …, 2021 - Elsevier",
+          "extractedDoi": null,
+          "href": "https://www.sciencedirect.com/science/article/pii/S1743919121000522",
+          "index": 9,
+          "snippet": "… The proposed modifications to the PRISMA 2020 statement … The PRISMA 2020 statement is applicable for systematic … been implemented in the PRISMA 2020 statement offer enhanced …",
+          "title": "PRISMA 2020 statement: What's new and the importance of reporting guidelines"
+        },
+        {
+          "byline": "EA Akl, J Khabsa, C Iannizzi, V Piechotta, LA Kahale… - bmj, 2024 - bmj.com",
+          "extractedDoi": null,
+          "href": "https://www.bmj.com/content/387/bmj-2024-079183.short",
+          "index": 10,
+          "snippet": "… PM, et al, The PRISMA 2020 statement: an updated guideline for reporting systematic reviews… , et al, The PRISMA 2020 statement: an updated guideline for reporting systematic reviews. …",
+          "title": "Extension of the PRISMA 2020 statement for living systematic reviews (PRISMA-LSR): checklist and explanation"
+        }
+      ]
+    }
+  ]
+}

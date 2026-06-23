@@ -1,5 +1,5 @@
 import {normaliseDOI} from "@shared/doi-normalise";
-import {augmentDOIs} from "@shared/doi-augment";
+import {augmentDOIs, type DoiAugmentRequest} from "@shared/doi-augment";
 import {injectRetractionInfo, retractionCheck} from "@shared/doi-retraction"
 import {validateDOI, validateDOIs} from "@shared/doi-validate";
 import type {DoiString, DoiSource} from "@shared/types";
@@ -56,6 +56,9 @@ export async function processScholarResults(doc: Document): Promise<void> {
     interface RowInfo {
         row: HTMLElement;
         title: string;
+        firstAuthor: string | null;
+        year: number | null;
+        sourceUrl: string | null;
         extractedDoi: DoiString | null;
         confident: boolean;
     }
@@ -74,6 +77,8 @@ export async function processScholarResults(doc: Document): Promise<void> {
 
         const extraction = extractDoiFromScholarRow(row);
         const title = row.querySelector(".gs_rt")?.textContent?.trim() ?? "";
+        const metadata = extractScholarRowMetadata(row);
+        const sourceUrl = row.querySelector<HTMLAnchorElement>(".gs_rt a")?.href ?? null;
 
         // Confident extractions (doi.org URLs, explicit text) → green immediately
         if (extraction?.confident) {
@@ -85,6 +90,9 @@ export async function processScholarResults(doc: Document): Promise<void> {
             rowInfos.push({
                 row,
                 title,
+                firstAuthor: metadata.firstAuthor,
+                year: metadata.year,
+                sourceUrl,
                 extractedDoi: extraction?.doi ?? null,
                 confident: false,
             });
@@ -129,11 +137,18 @@ export async function processScholarResults(doc: Document): Promise<void> {
 
         // Step 2: Augment only the remaining unresolved rows
         if (pendingInfos.length > 0) {
-            const titlesToAugment = pendingInfos.filter((r) => r.title).map((r) => r.title);
+            const requestsToAugment: DoiAugmentRequest[] = pendingInfos
+                .filter((r) => r.title)
+                .map((r) => ({
+                    title: r.title,
+                    firstAuthor: r.firstAuthor,
+                    year: r.year,
+                    sourceUrl: r.sourceUrl,
+                }));
             let augmented = new Map<string, DoiString | null>();
             try {
-                if (titlesToAugment.length > 0) {
-                    augmented = await augmentDOIs(titlesToAugment);
+                if (requestsToAugment.length > 0) {
+                    augmented = await augmentDOIs(requestsToAugment);
                 }
             } catch {
                 // Augmentation failed — fall through with empty map
@@ -273,6 +288,30 @@ interface ExtractionResult {
     doi: DoiString;
     /** true when the DOI comes from a doi.org URL (inherently trustworthy) */
     confident: boolean;
+}
+
+export interface ScholarRowMetadata {
+    firstAuthor: string | null;
+    year: number | null;
+}
+
+/**
+ * Pull a row's first-author surname and year from its `.gs_a` byline
+ * (e.g. "MD Wilkinson, M Dumontier… - Scientific data, 2016 - nature.com")
+ * so augmentDOIs can disambiguate between similarly-titled works.
+ */
+export function extractScholarRowMetadata(row: HTMLElement): ScholarRowMetadata {
+    const authorLine = row.querySelector(".gs_a")?.textContent ?? "";
+    const beforeSource = authorLine.split(" - ")[0] ?? "";
+    const firstAuthorText = beforeSource.split(",")[0]?.replace(/…/g, "").trim() ?? "";
+    const authorTokens = firstAuthorText
+        .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+        .split(/\s+/)
+        .filter((token) => token && !/^[A-Z]\.?$/i.test(token));
+    const firstAuthor = authorTokens[authorTokens.length - 1] ?? null;
+    const yearMatch = authorLine.match(/\b((?:19|20)\d{2})\b/);
+    const year = yearMatch ? Number(yearMatch[1]) : null;
+    return {firstAuthor, year};
 }
 
 function extractDoiFromScholarRow(row: HTMLElement): ExtractionResult | null {

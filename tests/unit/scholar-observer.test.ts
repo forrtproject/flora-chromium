@@ -64,3 +64,23 @@ describe("scholar observer", () => {
         if (call) expect(call.dois).toContain("10.1126/science.9999999");
     });
 });
+
+describe("Scholar row metadata extraction", () => {
+    it("extracts first author surname and year from the Scholar author line", async () => {
+        const dom = new JSDOM(`
+          <div class="gs_r gs_or gs_scl">
+            <div class="gs_ri">
+              <h3 class="gs_rt"><a href="#">The FAIR Guiding Principles</a></h3>
+              <div class="gs_a">MD Wilkinson, M Dumontier, IJJ Aalbersberg… - Scientific data, 2016 - nature.com</div>
+            </div>
+          </div>
+        `);
+        const {extractScholarRowMetadata} = await import("../../src/content-scholar/observer");
+        const row = dom.window.document.querySelector<HTMLElement>(".gs_r")!;
+
+        expect(extractScholarRowMetadata(row)).toEqual({
+            firstAuthor: "Wilkinson",
+            year: 2016,
+        });
+    });
+});
