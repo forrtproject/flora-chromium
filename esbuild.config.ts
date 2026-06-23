@@ -59,6 +59,9 @@ function copyStaticAssets() {
   copyFileSync("src/walkthrough/index.html", "dist/walkthrough.html");
   copyFileSync("src/walkthrough/walkthrough.css", "dist/walkthrough.css");
   copyFileSync("assets/forrt-logo.svg", "dist/forrt-logo.svg");
+  // The service worker fetches this at runtime as the retraction fallback, so
+  // it ships as a static asset instead of being bundled into any script.
+  copyFileSync("src/retractions.json", "dist/retractions.json");
 }
 
 async function build() {
