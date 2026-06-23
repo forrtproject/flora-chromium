@@ -9,6 +9,7 @@ vi.mock("../../src/shared/settings", () => ({
 }));
 
 import { normalizeTitle, similarity, tokenSetRatio, augmentDOIs, _resetAugmentCachesForTesting } from "../../src/shared/doi-augment";
+import { getSettings } from "../../src/shared/settings";
 
 const OPENALEX_URL = "https://api.openalex.org/works";
 const CROSSREF_URL = "https://api.crossref.org/works";
@@ -360,5 +361,75 @@ describe("augmentDOIs", () => {
     expect(results.get("First Paper Title")).toBe("10.1038/paper1");
     expect(results.get("Second Paper Title")).toBe("10.1126/paper2");
     expect(results.get("Third Unknown Title")).toBeNull();
+  });
+
+  it("does not query or cache a no-match when no email is configured", async () => {
+    // Regression: previously the no-email path still wrote {found:false} to the
+    // cache (30-day TTL), so a title visited before the user set their email
+    // stayed unresolved for 30 days even after they added it.
+    vi.mocked(getSettings).mockResolvedValueOnce({ email: "" } as any);
+
+    let crossrefHits = 0;
+    server.use(
+      http.get(CROSSREF_URL, () => {
+        crossrefHits++;
+        return HttpResponse.json({ message: { items: [] } });
+      }),
+      http.get(OPENALEX_URL, () => HttpResponse.json({ results: [] }))
+    );
+    const setSpy = chrome.storage.local.set as ReturnType<typeof vi.fn>;
+    setSpy.mockClear();
+
+    const results = await augmentDOIs(["A Paper Without Email"]);
+
+    expect(results.get("A Paper Without Email")).toBeNull();
+    expect(crossrefHits).toBe(0); // never queried — no email
+    expect(setSpy).not.toHaveBeenCalled(); // and crucially never poisoned the cache
+  });
+
+  it("deduplicates titles that share a normalized key", async () => {
+    let crossrefHits = 0;
+    server.use(
+      http.get(CROSSREF_URL, () => {
+        crossrefHits++;
+        return HttpResponse.json({
+          message: { items: [{ DOI: "10.1038/dedup", title: ["Shared Title"] }] },
+        });
+      }),
+      http.get(OPENALEX_URL, () => HttpResponse.json({ results: [] }))
+    );
+    const setSpy = chrome.storage.local.set as ReturnType<typeof vi.fn>;
+    setSpy.mockClear();
+
+    // Both titles normalise to "shared title" (trailing "!" is stripped).
+    const results = await augmentDOIs(["Shared Title", "Shared Title!"]);
+
+    expect(results.get("Shared Title")).toBe("10.1038/dedup");
+    expect(results.get("Shared Title!")).toBe("10.1038/dedup");
+    expect(crossrefHits).toBe(1); // queried once, not once per equivalent title
+    expect(setSpy).toHaveBeenCalledTimes(1); // single batched flush
+  });
+
+  it("flushes cache writes for multiple resolved titles in one batch", async () => {
+    server.use(
+      http.get(CROSSREF_URL, ({ request }) => {
+        const q = (new URL(request.url).searchParams.get("query.title") ?? "").toLowerCase();
+        if (q.includes("alpha"))
+          return HttpResponse.json({ message: { items: [{ DOI: "10.1038/alpha", title: ["Alpha Study"] }] } });
+        if (q.includes("beta"))
+          return HttpResponse.json({ message: { items: [{ DOI: "10.1126/beta", title: ["Beta Study"] }] } });
+        return HttpResponse.json({ message: { items: [] } });
+      }),
+      http.get(OPENALEX_URL, () => HttpResponse.json({ results: [] }))
+    );
+    const setSpy = chrome.storage.local.set as ReturnType<typeof vi.fn>;
+    setSpy.mockClear();
+
+    const results = await augmentDOIs(["Alpha Study", "Beta Study"]);
+
+    expect(results.get("Alpha Study")).toBe("10.1038/alpha");
+    expect(results.get("Beta Study")).toBe("10.1126/beta");
+    // One setMany flush for both, not one chrome.storage.local.set per title.
+    expect(setSpy).toHaveBeenCalledTimes(1);
   });
 });

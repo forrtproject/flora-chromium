@@ -63,6 +63,10 @@ export async function validateDOIs(
   // a possibly-valid DOI. (Marking it invalid here permanently strands the
   // reference: processReferenceDois sets its processed-marker before this
   // check, so a falsely-invalid DOI never gets a second chance at a pill.)
+  // Accumulate cache writes and flush the blob once at the end rather than once
+  // per resolved DOI (each VALIDATION_CACHE.set is a full chrome.storage.local
+  // write of the whole blob).
+  const updates: Array<[DoiString, { valid: boolean }]> = [];
   await Promise.allSettled(
     uncached.map(async (doi) => {
       try {
@@ -77,7 +81,7 @@ export async function validateDOIs(
           // Any other non-OK status (429, 5xx) is transient — leave unknown.
           if (response.status === 404) {
             results.set(doi, false);
-            cacheResult(doi, false);
+            updates.push([doi, { valid: false }]);
           }
           return;
         }
@@ -85,18 +89,16 @@ export async function validateDOIs(
         // responseCode 1 = success (handle exists)
         const valid = data.responseCode === 1;
         results.set(doi, valid);
-        cacheResult(doi, valid);
+        updates.push([doi, { valid }]);
         debugLog(`DOI validation: ${doi} → ${valid ? "valid" : "invalid"}`);
       } catch {
         // Network error — leave unknown (absent from map); don't cache.
       }
     })
   );
-  return results;
-}
 
-function cacheResult(doi: DoiString, valid: boolean): void {
-  void VALIDATION_CACHE.set(doi, { valid });
+  if (updates.length > 0) await VALIDATION_CACHE.setMany(updates);
+  return results;
 }
 
 /** Test-only: drop in-memory cache state so each case starts fresh. */

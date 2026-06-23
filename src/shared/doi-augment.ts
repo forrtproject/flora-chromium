@@ -115,9 +115,7 @@ export function tokenSetRatio(s1: string, s2: string): number {
 /**
  * Query Crossref for a single title, return the best-matching candidate.
  */
-async function queryCrossref(title: string): Promise<DoiCandidate | null> {
-    const email = await getUserEmail();
-    if (!email) return null;
+async function queryCrossref(title: string, email: string): Promise<DoiCandidate | null> {
     const cleaned = cleanTitleForSearch(title);
     const url = `${CROSSREF_BASE}?query.title=${encodeURIComponent(cleaned)}&rows=5&mailto=${encodeURIComponent(email)}`;
     const response = await fetch(url);
@@ -158,9 +156,7 @@ async function queryCrossref(title: string): Promise<DoiCandidate | null> {
 /**
  * Query OpenAlex for a single title, return the best-matching candidate.
  */
-async function queryOpenAlex(title: string): Promise<DoiCandidate | null> {
-    const email = await getUserEmail();
-    if (!email) return null;
+async function queryOpenAlex(title: string, email: string): Promise<DoiCandidate | null> {
     const cleaned = cleanTitleForSearch(title);
     const url = `${OPENALEX_BASE}?filter=title.search:${encodeURIComponent(cleaned)}&select=id,doi,title&per_page=5&mailto=${encodeURIComponent(email)}`;
 
@@ -202,26 +198,46 @@ export async function augmentDOIs(
     if (titles.length === 0) return results;
 
     // Check cache first — single-blob lookup keyed by normalized title.
-    const uncached: string[] = [];
     const keyByTitle = new Map(titles.map((t) => [t, normalizeTitle(t)] as const));
-    const cached = await DOI_AUGMENT_CACHE.getMany([...keyByTitle.values()]);
+    const cached = await DOI_AUGMENT_CACHE.getMany([...new Set(keyByTitle.values())]);
+
+    // Group cache misses by their normalized key so titles that only differ in
+    // punctuation/whitespace/case (same key) are queried once, not once each.
+    const uncachedByKey = new Map<string, string[]>();
     for (const title of titles) {
-        const entry = cached.get(keyByTitle.get(title)!);
+        const key = keyByTitle.get(title)!;
+        const entry = cached.get(key);
         if (entry) {
-            const doi = entry.found && entry.doi ? normaliseDOI(entry.doi) : null;
-            results.set(title, doi);
+            results.set(title, entry.found && entry.doi ? normaliseDOI(entry.doi) : null);
         } else {
-            uncached.push(title);
+            const group = uncachedByKey.get(key);
+            if (group) group.push(title);
+            else uncachedByKey.set(key, [title]);
         }
     }
 
-    if (uncached.length === 0) return results;
+    if (uncachedByKey.size === 0) return results;
 
-    // Process each uncached title with parallel Crossref + OpenAlex
-    const lookupPromises = uncached.map(async (title) => {
+    // No email means we can't query the APIs at all. Resolve every uncached
+    // title to null but DO NOT write the cache: a cached no-match would
+    // suppress these titles for the cache TTL (30 days) even after the user
+    // configures their email.
+    const email = await getUserEmail();
+    if (!email) {
+        for (const titlesForKey of uncachedByKey.values()) {
+            for (const title of titlesForKey) results.set(title, null);
+        }
+        return results;
+    }
+
+    // Query each distinct title once (Crossref + OpenAlex in parallel) and
+    // accumulate cache writes so the blob is flushed once at the end rather
+    // than once per resolved title.
+    const updates: Array<[string, CachedDoiResult]> = [];
+    const lookupPromises = [...uncachedByKey.entries()].map(async ([key, titlesForKey]) => {
         const [crossrefResult, openalexResult] = await Promise.allSettled([
-            queryCrossref(title),
-            queryOpenAlex(title),
+            queryCrossref(titlesForKey[0], email),
+            queryOpenAlex(titlesForKey[0], email),
         ]);
 
         const candidates: DoiCandidate[] = [];
@@ -250,20 +266,17 @@ export async function augmentDOIs(
         }
 
         const doi = best?.doi ?? null;
-        results.set(title, doi);
-
-        // Cache result — write into the shared blob.
-        const cacheEntry: CachedDoiResult = {found: doi !== null, doi};
-        void DOI_AUGMENT_CACHE.set(normalizeTitle(title), cacheEntry);
+        for (const title of titlesForKey) results.set(title, doi);
+        updates.push([key, {found: doi !== null, doi}]);
     });
 
     await Promise.allSettled(lookupPromises);
 
-    // Set null for any titles that weren't resolved
-    for (const title of uncached) {
-        if (!results.has(title)) {
-            results.set(title, null);
-        }
+    if (updates.length > 0) await DOI_AUGMENT_CACHE.setMany(updates);
+
+    // Defensive: set null for any titles a rejected lookup left unresolved.
+    for (const title of titles) {
+        if (!results.has(title)) results.set(title, null);
     }
 
     return results;
@@ -319,4 +332,5 @@ export async function fetchTitleByDoi(doi: string): Promise<string | null> {
 export function _resetAugmentCachesForTesting(): void {
     DOI_AUGMENT_CACHE.resetForTesting();
     TITLE_CACHE.resetForTesting();
+    _cachedEmail = null;
 }
