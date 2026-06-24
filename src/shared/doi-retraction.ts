@@ -1,7 +1,7 @@
 import {extractDoiFromHref} from "@shared/doi-extractor";
 import {FLORA_NOTICE_PILL_CLASS} from "@shared/doi-label";
 import type {DoiString, NoticeKind, RetractionResponse} from "@shared/types";
-import type {RetractionCheckResponse} from "@shared/messages";
+import {safeSendMessage, type RetractionCheckResponse} from "@shared/messages";
 
 export const FLORA_RET_CHECK_KEY = "flora-ret-checked";
 
@@ -99,10 +99,10 @@ export function noticePresentation(kind: NoticeKind): NoticePresentation {
  * so the multi-megabyte `retractions.json` never ships inside content bundles.
  */
 export async function retractionCheck(dois: DoiString[]): Promise<RetractionResponse[]> {
-    const response = await chrome.runtime.sendMessage({
+    const response = await safeSendMessage<RetractionCheckResponse>({
         type: "FLORA_RET_CHECK",
         dois,
-    }) as RetractionCheckResponse | undefined;
+    });
 
     return response?.type === "FLORA_RET_CHECK_RESULT" ? response.results : [];
 }
