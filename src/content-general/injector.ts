@@ -3,6 +3,7 @@ import type { PubPeerFeedback } from "../shared/pubpeer-api";
 import { extractDoiOccurrences, type DoiOccurrence } from "../shared/doi-extractor";
 import { debugLog } from "../shared/debug";
 import { getSettings } from "../shared/settings";
+import { safeSendMessage } from "../shared/messages";
 import styles from "./styles.css";
 import {RetractionResponse, noticePresentation} from "@shared/doi-retraction";
 
@@ -142,7 +143,7 @@ export async function renderSetupPrompt(): Promise<void> {
     });
 
     host.querySelector(".flora-setup-open")?.addEventListener("click", () => {
-        chrome.runtime.sendMessage({type: "FLORA_OPEN_OPTIONS"});
+        void safeSendMessage({type: "FLORA_OPEN_OPTIONS"});
         host.remove();
     });
 

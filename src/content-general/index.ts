@@ -9,11 +9,12 @@ import {
 import {augmentDOIs, fetchTitleByDoi} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
 import type {ClassifiedDois, DoiContext, DoiString, LookupState} from "@shared/types";
-import type {
-    LookupRequest,
-    LookupResponse,
-    SheetFetchRequest,
-    SheetFetchResponse
+import {
+    safeSendMessage,
+    type LookupRequest,
+    type LookupResponse,
+    type SheetFetchRequest,
+    type SheetFetchResponse
 } from "@shared/messages";
 import {
     beginWorkIndicator,
@@ -252,8 +253,11 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     beginWorkIndicator();
     try {
-        const response: LookupResponse =
-            await chrome.runtime.sendMessage(request);
+        const response = await safeSendMessage<LookupResponse>(request);
+        if (!response) {
+            // Extension context invalidated (reload/update) — stale script, stop quietly.
+            return;
+        }
         debugLog("Lookup response:", Object.keys(response.results).length, "results,", Object.keys(response.errors).length, "errors");
 
         for (const doi of newDois) {
@@ -366,7 +370,7 @@ async function augmentFromTitle(): Promise<void> {
                 type: "FLORA_LOOKUP",
                 dois: [resolvedDoi]
             };
-            await chrome.runtime.sendMessage(request);
+            await safeSendMessage(request);
 
             // Augmented DOI isn't in `dois` — check + pill it beside the title here.
             if (titleEl) {
@@ -501,7 +505,7 @@ async function fetchSheetDois(): Promise<void> {
     };
 
     try {
-        const response: SheetFetchResponse = await chrome.runtime.sendMessage(request);
+        const response = await safeSendMessage<SheetFetchResponse>(request);
         if (myGen !== sheetFetchGen) return; // stale response — tab changed while fetching
         if (!response || response.error || !response.csv) {
             console.warn("[FLoRA:Sheets] CSV fetch failed:", response?.error);

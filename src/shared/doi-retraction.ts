@@ -2,9 +2,8 @@ import {RET_MAP_KEY, RetractionMaps} from "@shared/data-extract"
 import {normaliseDOI} from "@shared/doi-normalise";
 import {extractDoiFromHref} from "@shared/doi-extractor";
 import {FLORA_NOTICE_PILL_CLASS} from "@shared/doi-label";
-import retractionData from '../retractions.json';
-import {DoiString} from "@shared/types";
-import { debugLog } from "./debug";
+import type {DoiString, NoticeKind, RetractionResponse} from "@shared/types";
+import {safeSendMessage, type RetractionCheckResponse} from "@shared/messages";
 
 export const FLORA_RET_CHECK_KEY = "flora-ret-checked";
 
@@ -154,21 +153,12 @@ async function getRetractionSource(): Promise<RetractionMaps> {
  */
 // @ts-ignore
 export async function retractionCheck(dois: DoiString[]): Promise<RetractionResponse[]> {
-    const source = await getRetractionSource();
-    const result: RetractionResponse[] = [];
-    for (const doi of dois) {
-        const retractionDOI = source.retractions[doi];
-        if (retractionDOI) {
-            result.push({ originDoi: doi, doi: retractionDOI, kind: "retraction" });
-            continue;
-        }
-        const concernDOI = source.concerns?.[doi];
-        if (concernDOI) {
-            result.push({ originDoi: doi, doi: concernDOI, kind: "concern" });
-        }
-    }
-    debugLog("Retraction check for DOIs", dois, "result", result);
-    return result;
+    const response = await safeSendMessage<RetractionCheckResponse>({
+        type: "FLORA_RET_CHECK",
+        dois,
+    });
+
+    return response?.type === "FLORA_RET_CHECK_RESULT" ? response.results : [];
 }
 
 // Retracted DOIs that already have a pill on the page — the "Retracted" pill
