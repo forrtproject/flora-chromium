@@ -6,7 +6,7 @@ import {
     extractDoiOccurrences,
     extractPrimaryDOI
 } from "@shared/doi-extractor";
-import {augmentDOIs, fetchTitleByDoi} from "@shared/doi-augment";
+import {augmentDOIs, fetchTitleByDoi, type DoiAugmentRequest} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
 import type {ClassifiedDois, DoiContext, DoiString, LookupState} from "@shared/types";
 import type {
@@ -357,7 +357,11 @@ async function augmentFromTitle(): Promise<void> {
     if (!pageTitle) return;
 
     try {
-        const augmented = await augmentDOIs([pageTitle]);
+        const augmented = await augmentDOIs([{
+            title: pageTitle,
+            sourceUrl: location.href,
+            ...extractPageAugmentationMetadata(document),
+        }]);
         const resolvedDoi = augmented.get(pageTitle);
         debugLog("Title augmentation:", resolvedDoi ? `resolved to ${resolvedDoi}` : "no match", `(title: "${pageTitle}")`);
         if (resolvedDoi) {
@@ -381,6 +385,88 @@ async function augmentFromTitle(): Promise<void> {
     } catch {
         // Augmentation failed silently
     }
+}
+
+function metaContent(doc: Document, selectors: string[]): string | null {
+    for (const selector of selectors) {
+        const value = doc.querySelector<HTMLMetaElement>(selector)?.content?.trim();
+        if (value) return value;
+    }
+    return null;
+}
+
+function parseYear(value: string | null): number | null {
+    const match = value?.match(/\b((?:19|20)\d{2})\b/);
+    return match ? Number(match[1]) : null;
+}
+
+function readJsonLdObjects(doc: Document): unknown[] {
+    const values: unknown[] = [];
+    for (const script of doc.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]')) {
+        try {
+            const parsed = JSON.parse(script.textContent ?? "");
+            if (Array.isArray(parsed)) values.push(...parsed);
+            else values.push(parsed);
+        } catch {
+            // Invalid publisher JSON-LD should not block title augmentation.
+        }
+    }
+    return values;
+}
+
+function firstJsonLdAuthorName(value: unknown): string | null {
+    if (!value || typeof value !== "object") return null;
+    const author = (value as {author?: unknown}).author;
+    const firstAuthor = Array.isArray(author) ? author[0] : author;
+    if (typeof firstAuthor === "string") return firstAuthor;
+    if (firstAuthor && typeof firstAuthor === "object") {
+        const {familyName, name} = firstAuthor as {familyName?: unknown; name?: unknown};
+        if (typeof familyName === "string") return familyName;
+        if (typeof name === "string") return name;
+    }
+    return null;
+}
+
+function jsonLdDate(value: unknown): string | null {
+    if (!value || typeof value !== "object") return null;
+    const item = value as {datePublished?: unknown; dateCreated?: unknown; dateModified?: unknown};
+    for (const date of [item.datePublished, item.dateCreated, item.dateModified]) {
+        if (typeof date === "string") return date;
+    }
+    return null;
+}
+
+/**
+ * Pull the article's first author and publication year from page metadata
+ * (citation_/dc. meta tags, then JSON-LD) so augmentDOIs can disambiguate
+ * between similarly-titled works.
+ */
+function extractPageAugmentationMetadata(doc: Document): Omit<DoiAugmentRequest, "title"> {
+    const firstAuthor =
+        metaContent(doc, [
+            'meta[name="citation_author"]',
+            'meta[name="dc.creator"]',
+            'meta[name="DC.creator"]',
+            'meta[name="author"]',
+        ]) ??
+        readJsonLdObjects(doc).map(firstJsonLdAuthorName).find((author): author is string => !!author) ??
+        null;
+
+    const date =
+        metaContent(doc, [
+            'meta[name="citation_publication_date"]',
+            'meta[name="citation_online_date"]',
+            'meta[name="dc.date"]',
+            'meta[name="DC.date"]',
+            'meta[property="article:published_time"]',
+        ]) ??
+        readJsonLdObjects(doc).map(jsonLdDate).find((value): value is string => !!value) ??
+        null;
+
+    return {
+        firstAuthor,
+        year: parseYear(date),
+    };
 }
 
 async function checkPubPeer(): Promise<void> {
