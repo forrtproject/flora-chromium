@@ -1,9 +1,9 @@
 import {LocalCache} from "@shared/cache";
 import {lookupDOIs} from "@shared/flora-api";
-import {RET_MAP_KEY, storageSync} from "@shared/data-extract";
-import type {DoiString, ReplicationResult} from "@shared/types";
-import {LookupResponse, SheetFetchResponse} from "@shared/messages";
-import {isLookupRequest, isSheetFetchRequest} from "@shared/messages";
+import {RET_MAP_KEY, storageSync, type RetractionMaps} from "@shared/data-extract";
+import type {DoiString, ReplicationResult, RetractionResponse} from "@shared/types";
+import {LookupResponse, RetractionCheckResponse, SheetFetchResponse} from "@shared/messages";
+import {isLookupRequest, isRetractionCheckRequest, isSheetFetchRequest} from "@shared/messages";
 import {getSettings, isSetupComplete} from "@shared/settings";
 
 const cache = new LocalCache<ReplicationResult>("flora");
@@ -13,13 +13,17 @@ getSettings().then(({ cacheQuotaMb }) => {
     cache.setQuota(cacheQuotaMb === 0 ? 0 : cacheQuotaMb * 1024 * 1024);
 }).catch();
 
-// Keep quota in sync when the user changes the setting.
+// Keep quota in sync when the user changes the setting; drop the cached
+// retraction source whenever a fresh map is synced into local storage.
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "sync" && "flora_settings" in changes) {
         const next = (changes["flora_settings"].newValue as { cacheQuotaMb?: number } | undefined);
         if (next?.cacheQuotaMb != null) {
             cache.setQuota(next.cacheQuotaMb === 0 ? 0 : next.cacheQuotaMb * 1024 * 1024);
         }
+    }
+    if (area === "local" && RET_MAP_KEY in changes) {
+        cachedRetractionSource = null;
     }
 });
 
@@ -108,6 +112,19 @@ chrome.runtime.onMessage.addListener(
                             message.dois.map((d) => [d, "Service worker error"])
                         ),
                     } satisfies LookupResponse)
+                );
+            return true;
+        }
+
+        if (isRetractionCheckRequest(message)) {
+            handleRetractionCheck(message.dois)
+                .then(sendResponse)
+                .catch(() =>
+                    sendResponse({
+                        type: "FLORA_RET_CHECK_RESULT",
+                        results: [],
+                        error: "Service worker error",
+                    } satisfies RetractionCheckResponse)
                 );
             return true;
         }
@@ -247,6 +264,106 @@ async function handleSheetFetch(
     }
 }
 
+// ── Retraction lookups ──────────────────────────────────────────────────────
+// Retraction data lives in the service worker so the multi-megabyte
+// `retractions.json` never ships inside content bundles. Content scripts ask
+// for a verdict via FLORA_RET_CHECK; the worker reads the synced map (falling
+// back to the bundled JSON), tags each hit as a retraction or concern, and
+// returns the notice DOIs.
+
+/**
+ * Retraction Watch publishes DOIs in their original publisher case (SICI-style
+ * Elsevier identifiers, NEJM, ASCE, etc. carry uppercase letters), but every
+ * DOI we look up has been through normaliseDOI() which lowercases it. Without
+ * normalising the source keys too, ~12.7k of the ~58.6k retractions would
+ * never match.
+ */
+function lowercaseKeys(obj: Record<string, string> | undefined): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (!obj) return out;
+    for (const k in obj) out[k.toLowerCase()] = obj[k];
+    return out;
+}
+
+// Normalised retraction source, cached so lowercaseKeys runs once per sync
+// rather than once per lookup. Invalidated by the storage.onChanged listener
+// above whenever a fresh map is written.
+let cachedRetractionSource: RetractionMaps | null = null;
+
+// The bundled fallback is fetched lazily (not statically imported) so it stays
+// out of the worker bundle until the very first install before any sync.
+let bundledRetractionMapPromise: Promise<RetractionMaps> | null = null;
+
+async function loadBundledRetractionMap(): Promise<RetractionMaps> {
+    if (!bundledRetractionMapPromise) {
+        bundledRetractionMapPromise = (async () => {
+            const response = await fetch(chrome.runtime.getURL("dist/retractions.json"));
+            if (!response.ok) {
+                throw new Error(`Failed to load bundled retractions: ${response.status}`);
+            }
+            const data = await response.json() as RetractionMaps;
+            return {
+                retractions: lowercaseKeys(data.retractions),
+                concerns: lowercaseKeys(data.concerns),
+            };
+        })();
+    }
+    try {
+        return await bundledRetractionMapPromise;
+    } catch (error) {
+        bundledRetractionMapPromise = null; // allow a retry on the next call
+        throw error;
+    }
+}
+
+async function getRetractionSource(): Promise<RetractionMaps> {
+    if (cachedRetractionSource) return cachedRetractionSource;
+
+    const storageResult = await chrome.storage.local.get([RET_MAP_KEY]);
+    const stored = storageResult[RET_MAP_KEY] as RetractionMaps | undefined;
+    const hasStoredData = !!stored && (
+        Object.keys(stored.retractions || {}).length > 0 ||
+        Object.keys(stored.concerns || {}).length > 0
+    );
+
+    if (hasStoredData) {
+        cachedRetractionSource = {
+            retractions: lowercaseKeys(stored!.retractions),
+            concerns: lowercaseKeys(stored!.concerns),
+        };
+        return cachedRetractionSource;
+    }
+
+    // Nothing synced yet: kick off a sync for next time and answer from the
+    // bundled JSON now. Don't cache the fallback — onChanged will pick up the
+    // synced map, but until then we re-read so an in-flight sync is noticed.
+    syncRetractionsInfo().then().catch();
+    return loadBundledRetractionMap();
+}
+
+async function handleRetractionCheck(dois: DoiString[]): Promise<RetractionCheckResponse> {
+    let source: RetractionMaps;
+    try {
+        source = await getRetractionSource();
+    } catch {
+        return {type: "FLORA_RET_CHECK_RESULT", results: [], error: "Retraction data unavailable"};
+    }
+
+    const results: RetractionResponse[] = [];
+    for (const doi of dois) {
+        const retractionDoi = source.retractions[doi];
+        if (retractionDoi) {
+            results.push({originDoi: doi, doi: retractionDoi, kind: "retraction"});
+            continue;
+        }
+        const concernDoi = source.concerns?.[doi];
+        if (concernDoi) {
+            results.push({originDoi: doi, doi: concernDoi, kind: "concern"});
+        }
+    }
+    return {type: "FLORA_RET_CHECK_RESULT", results};
+}
+
 export async function syncRetractionsInfo() {
     const minInterval = 1000 * 60 * 60 * 24 * 7; // weekly
     const currentTime = Date.now();
@@ -254,8 +371,13 @@ export async function syncRetractionsInfo() {
     const lastSync = previous.synctime || 0;
     const nextUpdate = lastSync + minInterval;
     const storageResult = await chrome.storage.local.get(RET_MAP_KEY);
-    if (Object.keys(storageResult).length === 0 || currentTime > nextUpdate) {
-        await storageSync();
-        await chrome.storage.local.set({synctime: currentTime});
+    const map = storageResult[RET_MAP_KEY] as RetractionMaps | undefined;
+    const isEmpty = !map || (
+        Object.keys(map.retractions || {}).length === 0 &&
+        Object.keys(map.concerns || {}).length === 0
+    );
+    if (isEmpty || currentTime > nextUpdate) {
+        const synced = await storageSync();
+        if (synced) await chrome.storage.local.set({synctime: currentTime});
     }
 }

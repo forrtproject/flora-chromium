@@ -36,8 +36,9 @@ export async function fetchRetractionMap(): Promise<RetractionMaps | undefined> 
     }
 }
 
-export async function storageSync() {
+export async function storageSync(): Promise<boolean> {
     const map = await fetchRetractionMap();
-    if (!map) return;
+    if (!map) return false;
     await chrome.storage.local.set({[RET_MAP_KEY]: map});
+    return true;
 }
