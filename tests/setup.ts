@@ -29,6 +29,7 @@ Object.defineProperty(globalThis, "chrome", {
     },
     runtime: {
       id: "test-extension-id",
+      getURL: vi.fn((path: string) => `chrome-extension://test-extension-id/${path}`),
       sendMessage: vi.fn().mockResolvedValue({
         type: "FLORA_LOOKUP_RESULT",
         results: {},

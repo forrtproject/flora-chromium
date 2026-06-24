@@ -102,6 +102,16 @@ export interface CachedEntry<T> {
 /** How a DOI was classified on the page */
 export type DoiContext = "article" | "reference" | "other" | "retracted";
 
+/** Whether a notice is a retraction or an expression of concern */
+export type NoticeKind = "retraction" | "concern";
+
+/** A matched retraction/concern notice for an original paper's DOI */
+export interface RetractionResponse {
+  originDoi: DoiString;
+  doi: string;
+  kind: NoticeKind;
+}
+
 /** What kind of page we're on */
 export type PageType = "article" | "listing" | "unknown";
 

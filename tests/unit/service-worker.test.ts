@@ -1,5 +1,11 @@
 import {describe, it, expect, vi, beforeEach} from "vitest";
-import type {LookupRequest, LookupResponse} from "../../src/shared/messages";
+import type {
+    LookupRequest,
+    LookupResponse,
+    RetractionCheckResponse,
+} from "../../src/shared/messages";
+import type {RetractionMaps} from "../../src/shared/data-extract";
+import {RET_MAP_KEY} from "../../src/shared/data-extract";
 import {doi, mockResult} from "../helpers";
 
 
@@ -46,12 +52,13 @@ describe("service-worker", () => {
     let messageHandler: (
         message: unknown,
         sender: unknown,
-        sendResponse: (response: LookupResponse) => void
+        sendResponse: (response: unknown) => void
     ) => boolean | undefined;
 
     beforeEach(async () => {
         cacheStore.clear();
         mockLookupDOIs.mockReset();
+        (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
 
         const addListenerMock = vi.fn();
@@ -66,8 +73,29 @@ describe("service-worker", () => {
 
     function sendMessage(request: LookupRequest): Promise<LookupResponse> {
         return new Promise((resolve) => {
-            messageHandler(request, {}, resolve);
+            messageHandler(request, {}, resolve as (r: unknown) => void);
         });
+    }
+
+    function sendRetractionCheck(dois: string[]): Promise<RetractionCheckResponse> {
+        return new Promise((resolve) => {
+            messageHandler(
+                {type: "FLORA_RET_CHECK", dois},
+                {},
+                resolve as (r: unknown) => void
+            );
+        });
+    }
+
+    function storeRetractionMap(map: RetractionMaps): void {
+        (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockImplementation(
+            async (keys: unknown) => {
+                const wants = (key: string) =>
+                    keys === key || (Array.isArray(keys) && keys.includes(key));
+                if (wants(RET_MAP_KEY)) return {[RET_MAP_KEY]: map};
+                return {};
+            }
+        );
     }
 
     it("returns results for matched DOIs", async () => {
@@ -153,6 +181,121 @@ describe("service-worker", () => {
     it("ignores non-lookup messages", () => {
         const result = messageHandler({type: "UNKNOWN"}, {}, vi.fn());
         expect(result).toBe(false);
+    });
+
+    describe("retraction checks", () => {
+        it("returns the notice DOI for a retracted paper in the synced map", async () => {
+            storeRetractionMap({
+                retractions: {"10.1234/paper": "10.1234/notice"},
+                concerns: {},
+            });
+
+            const response = await sendRetractionCheck([doi("10.1234/paper")]);
+            expect(response.type).toBe("FLORA_RET_CHECK_RESULT");
+            expect(response.results).toEqual([
+                {originDoi: "10.1234/paper", doi: "10.1234/notice", kind: "retraction"},
+            ]);
+        });
+
+        it("tags expressions of concern as 'concern'", async () => {
+            storeRetractionMap({
+                retractions: {},
+                concerns: {"10.5678/eoc-paper": "10.5678/eoc-notice"},
+            });
+
+            const response = await sendRetractionCheck([doi("10.5678/eoc-paper")]);
+            expect(response.results).toEqual([
+                {originDoi: "10.5678/eoc-paper", doi: "10.5678/eoc-notice", kind: "concern"},
+            ]);
+        });
+
+        it("prefers retraction over concern when a DOI is in both maps", async () => {
+            storeRetractionMap({
+                retractions: {"10.1234/dual": "10.1234/dual-retraction"},
+                concerns: {"10.1234/dual": "10.1234/dual-concern"},
+            });
+
+            const response = await sendRetractionCheck([doi("10.1234/dual")]);
+            expect(response.results).toEqual([
+                {originDoi: "10.1234/dual", doi: "10.1234/dual-retraction", kind: "retraction"},
+            ]);
+        });
+
+        it("matches mixed-case source keys against lowercased DOI input", async () => {
+            // Retraction Watch publishes DOIs in publisher case; normaliseDOI
+            // lowercases lookups, so the worker must lowercase the source keys.
+            storeRetractionMap({
+                retractions: {"10.1016/S0140-6736(20)32656-8": "10.1016/S0140-6736(22)02370-4"},
+                concerns: {"10.1056/NEJMicm2518379": "10.1056/NEJMicm9999999"},
+            });
+
+            // Lookups arrive already lowercased (normaliseDOI runs before the
+            // message is sent); the source keys are in publisher case.
+            const retracted = await sendRetractionCheck([doi("10.1016/s0140-6736(20)32656-8")]);
+            expect(retracted.results).toEqual([
+                {
+                    originDoi: "10.1016/s0140-6736(20)32656-8",
+                    doi: "10.1016/S0140-6736(22)02370-4",
+                    kind: "retraction",
+                },
+            ]);
+
+            const concerned = await sendRetractionCheck([doi("10.1056/nejmicm2518379")]);
+            expect(concerned.results).toEqual([
+                {
+                    originDoi: "10.1056/nejmicm2518379",
+                    doi: "10.1056/NEJMicm9999999",
+                    kind: "concern",
+                },
+            ]);
+        });
+
+        it("returns nothing for a DOI in neither map", async () => {
+            storeRetractionMap({
+                retractions: {"10.1234/keep": "10.1234/retraction"},
+                concerns: {},
+            });
+
+            const response = await sendRetractionCheck([doi("10.9999/not-there")]);
+            expect(response.results).toEqual([]);
+        });
+
+        it("falls back to the bundled JSON when storage is empty", async () => {
+            // Storage empty (default mock); the worker fetches the packaged
+            // dist/retractions.json and lowercases its keys.
+            const bundled: RetractionMaps = {
+                retractions: {"10.1000/Bundled": "10.1000/bundled-notice"},
+                concerns: {},
+            };
+            const fetchMock = vi.fn(async (url: string) => ({
+                ok: true,
+                status: 200,
+                json: async () =>
+                    String(url).includes("retractions.json")
+                        ? bundled
+                        : {retractions: {}, concerns: {}},
+            }));
+            vi.stubGlobal("fetch", fetchMock);
+
+            const response = await sendRetractionCheck([doi("10.1000/bundled")]);
+            expect(response.results).toEqual([
+                {originDoi: "10.1000/bundled", doi: "10.1000/bundled-notice", kind: "retraction"},
+            ]);
+            expect(fetchMock).toHaveBeenCalledWith(
+                "chrome-extension://test-extension-id/dist/retractions.json"
+            );
+            vi.unstubAllGlobals();
+        });
+
+        it("reports an error when no data source is available", async () => {
+            const fetchMock = vi.fn(async () => ({ok: false, status: 404, json: async () => ({})}));
+            vi.stubGlobal("fetch", fetchMock);
+
+            const response = await sendRetractionCheck([doi("10.1234/paper")]);
+            expect(response.results).toEqual([]);
+            expect(response.error).toBeTruthy();
+            vi.unstubAllGlobals();
+        });
     });
 
     it("splits cached and uncached DOIs in one request", async () => {
