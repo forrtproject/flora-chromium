@@ -1,4 +1,4 @@
-import type {DoiString, ReplicationResult} from "./types";
+import type {DoiString, ReplicationResult, RetractionResponse} from "./types";
 
 /** Content script → service worker: request DOI lookups */
 export interface LookupRequest {
@@ -11,6 +11,19 @@ export interface LookupResponse {
     type: "FLORA_LOOKUP_RESULT";
     results: Record<string, ReplicationResult>;
     errors: Record<string, string>;
+}
+
+/** Content script → service worker: request retraction status for DOI(s) */
+export interface RetractionCheckRequest {
+    type: "FLORA_RET_CHECK";
+    dois: DoiString[];
+}
+
+/** Service worker → content script: retraction lookup results */
+export interface RetractionCheckResponse {
+    type: "FLORA_RET_CHECK_RESULT";
+    results: RetractionResponse[];
+    error?: string;
 }
 
 /** Content script → service worker: fetch Google Sheet CSV for DOI extraction */
@@ -57,6 +70,14 @@ export function isLookupRequest(msg: unknown): msg is LookupRequest {
         typeof msg === "object" &&
         msg !== null &&
         (msg as Record<string, unknown>).type === "FLORA_LOOKUP"
+    );
+}
+
+export function isRetractionCheckRequest(msg: unknown): msg is RetractionCheckRequest {
+    return (
+        typeof msg === "object" &&
+        msg !== null &&
+        (msg as Record<string, unknown>).type === "FLORA_RET_CHECK"
     );
 }
 

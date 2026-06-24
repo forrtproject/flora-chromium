@@ -24,14 +24,36 @@ const DEFAULTS: FloraSettings = {
   cacheQuotaMb: 500,
 };
 
+let cachedSettings: FloraSettings | null = null;
+let settingsListenerInstalled = false;
+
+function installSettingsInvalidation(): void {
+  if (settingsListenerInstalled) return;
+  settingsListenerInstalled = true;
+  try {
+    chrome.storage.onChanged?.addListener((changes, area) => {
+      if (area === "sync" && changes[STORAGE_KEY]) {
+        const stored = changes[STORAGE_KEY].newValue as Partial<FloraSettings> | undefined;
+        cachedSettings = { ...DEFAULTS, ...stored };
+      }
+    });
+  } catch {
+    // Storage change events are unavailable in tests and some non-extension contexts.
+  }
+}
+
 /** Read current settings (returns defaults for any missing keys). */
 export async function getSettings(): Promise<FloraSettings> {
+  installSettingsInvalidation();
+  if (cachedSettings) return cachedSettings;
   try {
     const raw = await chrome.storage.sync.get(STORAGE_KEY);
     const stored = raw[STORAGE_KEY] as Partial<FloraSettings> | undefined;
-    return { ...DEFAULTS, ...stored };
+    cachedSettings = { ...DEFAULTS, ...stored };
+    return cachedSettings;
   } catch {
-    return { ...DEFAULTS };
+    cachedSettings = { ...DEFAULTS };
+    return cachedSettings;
   }
 }
 
@@ -40,7 +62,8 @@ export async function saveSettings(
   partial: Partial<FloraSettings>
 ): Promise<void> {
   const current = await getSettings();
-  await chrome.storage.sync.set({ [STORAGE_KEY]: { ...current, ...partial } });
+  cachedSettings = { ...current, ...partial };
+  await chrome.storage.sync.set({ [STORAGE_KEY]: cachedSettings });
 }
 
 /** Returns true if the user has completed initial setup (email provided). */

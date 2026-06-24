@@ -116,6 +116,18 @@ describe("validateDOI", () => {
     );
   });
 
+  it("flushes cache writes for a batch in a single storage write", async () => {
+    server.use(
+      http.get(HANDLE_PATTERN, () => HttpResponse.json({ responseCode: 1 }))
+    );
+    (chrome.storage.local.set as ReturnType<typeof vi.fn>).mockClear();
+
+    await validateDOIs([doi("10.1038/one"), doi("10.1126/two")]);
+
+    // One setMany flush for the whole batch, not one write per resolved DOI.
+    expect(chrome.storage.local.set).toHaveBeenCalledTimes(1);
+  });
+
   it("uses cached result on second call", async () => {
     (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       flora_doival_blob: {

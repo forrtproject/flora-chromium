@@ -7,19 +7,40 @@
  */
 
 const BLACKLIST_KEY = "flora_blocked_domains";
+let cachedBlockedDomains: string[] | null = null;
+let domainListenerInstalled = false;
+
+function installDomainInvalidation(): void {
+  if (domainListenerInstalled) return;
+  domainListenerInstalled = true;
+  try {
+    chrome.storage.onChanged?.addListener((changes, area) => {
+      if (area === "sync" && changes[BLACKLIST_KEY]) {
+        cachedBlockedDomains = (changes[BLACKLIST_KEY].newValue as string[] | undefined) ?? [];
+      }
+    });
+  } catch {
+    // Storage change events are unavailable in tests and some non-extension contexts.
+  }
+}
 
 /** Read the blocked-domain list from chrome.storage.sync. */
 export async function getBlockedDomains(): Promise<string[]> {
+  installDomainInvalidation();
+  if (cachedBlockedDomains) return cachedBlockedDomains;
   try {
     const raw = await chrome.storage.sync.get(BLACKLIST_KEY);
-    return (raw[BLACKLIST_KEY] as string[] | undefined) ?? [];
+    cachedBlockedDomains = (raw[BLACKLIST_KEY] as string[] | undefined) ?? [];
+    return cachedBlockedDomains;
   } catch {
-    return [];
+    cachedBlockedDomains = [];
+    return cachedBlockedDomains;
   }
 }
 
 /** Persist the blocked-domain list. */
 export async function saveBlockedDomains(domains: string[]): Promise<void> {
+  cachedBlockedDomains = domains;
   await chrome.storage.sync.set({ [BLACKLIST_KEY]: domains });
 }
 

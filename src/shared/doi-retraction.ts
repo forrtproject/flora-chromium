@@ -1,5 +1,3 @@
-import {RET_MAP_KEY, RetractionMaps} from "@shared/data-extract"
-import {normaliseDOI} from "@shared/doi-normalise";
 import {extractDoiFromHref} from "@shared/doi-extractor";
 import {FLORA_NOTICE_PILL_CLASS} from "@shared/doi-label";
 import type {DoiString, NoticeKind, RetractionResponse} from "@shared/types";
@@ -7,7 +5,9 @@ import {safeSendMessage, type RetractionCheckResponse} from "@shared/messages";
 
 export const FLORA_RET_CHECK_KEY = "flora-ret-checked";
 
-export type NoticeKind = "retraction" | "concern";
+// Re-exported so existing content imports (injector, references, index, the
+// Scholar observer) keep importing notice types from here.
+export type {NoticeKind, RetractionResponse} from "@shared/types";
 
 // Warning-triangle artwork for the "Concern" pill and the EoC banner —
 // same path as the existing banner triangle, exported once so the pill
@@ -93,65 +93,11 @@ export function noticePresentation(kind: NoticeKind): NoticePresentation {
     };
 }
 
-export interface RetractionResponse {
-    originDoi: DoiString;
-    doi: string;
-    kind: NoticeKind;
-}
-
 /**
- * Retraction Watch publishes DOIs in their original publisher case (SICI-style
- * Elsevier identifiers, NEJM, ASCE, etc. carry uppercase letters), but every
- * DOI we look up has been through normaliseDOI() which lowercases it. Without
- * normalising the source keys too, ~12.7k of the ~58.6k bundled retractions
- * would never match.
+ * Request retraction status from the background service worker. The worker
+ * owns the retraction data (storage, weekly sync, and the bundled fallback)
+ * so the multi-megabyte `retractions.json` never ships inside content bundles.
  */
-function lowercaseKeys(obj: Record<string, string> | undefined): Record<string, string> {
-    const out: Record<string, string> = {};
-    if (!obj) return out;
-    for (const k in obj) out[k.toLowerCase()] = obj[k];
-    return out;
-}
-
-// Bundled data is imported at module load and never changes — normalise once.
-const NORMALISED_BUNDLED: RetractionMaps = {
-    retractions: lowercaseKeys((retractionData as RetractionMaps).retractions),
-    concerns: lowercaseKeys((retractionData as RetractionMaps).concerns),
-};
-
-// Normalized retraction source, cached so lowercaseKeys runs once per sync,
-// not once per retractionCheck call. Invalidated when storage changes.
-let cachedSource: RetractionMaps | null = null;
-
-chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && RET_MAP_KEY in changes) {
-        cachedSource = null;
-    }
-});
-
-async function getRetractionSource(): Promise<RetractionMaps> {
-    if (cachedSource) return cachedSource;
-
-    const storageResult = await chrome.storage.local.get([RET_MAP_KEY]);
-    const stored = storageResult[RET_MAP_KEY] as RetractionMaps | undefined;
-
-    const hasCachedData = !!stored && (
-        Object.keys(stored.retractions || {}).length > 0 ||
-        Object.keys(stored.concerns || {}).length > 0
-    );
-
-    cachedSource = hasCachedData
-        ? { retractions: lowercaseKeys(stored!.retractions), concerns: lowercaseKeys(stored!.concerns) }
-        : NORMALISED_BUNDLED;
-
-    return cachedSource;
-}
-
-/**
- * Request retraction status. Due to CORS policies, the request
- * must execute in the background context.
- */
-// @ts-ignore
 export async function retractionCheck(dois: DoiString[]): Promise<RetractionResponse[]> {
     const response = await safeSendMessage<RetractionCheckResponse>({
         type: "FLORA_RET_CHECK",
@@ -168,11 +114,6 @@ const pilledRetractionDois = new Set<string>();
 /** Clear per-DOI retraction-pill tracking — call on SPA navigation. */
 export function resetRetractionPills(): void {
     pilledRetractionDois.clear();
-}
-
-/** Reset the in-memory retraction source cache — for use in tests only. */
-export function resetRetractionCache(): void {
-    cachedSource = null;
 }
 
 export interface InjectRetractionOptions {
