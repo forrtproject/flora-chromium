@@ -1,4 +1,4 @@
-1111// Shared inline "DOI" pill — a small rounded label that reveals the resolved
+// Shared inline "DOI" pill — a small rounded label that reveals the resolved
 // DOI (plus a copy button) on hover. Used by Google Scholar result rows and by
 // reference-list entries on article pages.
 
