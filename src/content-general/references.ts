@@ -12,7 +12,7 @@
 // `showDoiPillsOnAllReferences`.
 
 import {findReferenceEntries, extractDoiFromHref, type ReferenceEntry} from "@shared/doi-extractor";
-import {augmentDOIs} from "@shared/doi-augment";
+import {augmentDOIsViaWorker} from "@shared/messages";
 import {validateDOIs} from "@shared/doi-validate";
 import {injectRetractionInfo, type RetractionResponse} from "@shared/doi-retraction";
 import {createDoiPill} from "@shared/doi-label";
@@ -169,7 +169,7 @@ export async function resolveReferenceDois(): Promise<ResolvedReference[]> {
     let augmented = new Map<string, DoiString | null>();
     if (augmentTargets.length > 0) {
         try {
-            augmented = await augmentDOIs(augmentTargets.map((p) => p.entry.text));
+            augmented = await augmentDOIsViaWorker(augmentTargets.map((p) => p.entry.text));
         } catch {
             // continue with what we have — hidden DOIs still render
         }

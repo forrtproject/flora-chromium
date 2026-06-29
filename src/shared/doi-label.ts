@@ -277,6 +277,8 @@ export function createDoiPill(
     popover.appendChild(contentRow);
 
     let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+    let pinned = false;
+    let docClickHandler: ((e: MouseEvent) => void) | null = null;
 
     const show = () => {
         if (hideTimeout) {
@@ -328,15 +330,55 @@ export function createDoiPill(
         popover.style.bottom = "auto";
     };
     const hide = () => {
+        if (pinned) return;
         hideTimeout = setTimeout(() => {
             popover.style.display = "none";
         }, 200);
     };
 
-    pill.addEventListener("mouseenter", show);
-    pill.addEventListener("mouseleave", hide);
-    popover.addEventListener("mouseenter", show);
-    popover.addEventListener("mouseleave", hide);
+    const unpin = () => {
+        if (!pinned) return;
+        pinned = false;
+        pill.style.outline = "";
+        pill.style.outlineOffset = "";
+        if (docClickHandler) {
+            document.removeEventListener("click", docClickHandler, { capture: true });
+            docClickHandler = null;
+        }
+        hide();
+    };
+
+    pill.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (pinned) {
+            unpin();
+            return;
+        }
+        pinned = true;
+        pill.style.outline = `2px solid ${color}60`;
+        pill.style.outlineOffset = "1px";
+        show();
+        // Defer so this same click doesn't immediately trigger the doc handler.
+        setTimeout(() => {
+            docClickHandler = (ev: MouseEvent) => {
+                if (!wrapper.contains(ev.target as Node)) unpin();
+            };
+            document.addEventListener("click", docClickHandler, { capture: true });
+        }, 0);
+    });
+
+    pill.addEventListener("mouseenter", () => {
+        pill.style.opacity = "1";
+        pill.style.boxShadow = "0 1px 2px rgba(27,31,36,0.12), 0 2px 6px rgba(66,74,83,0.14)";
+        pill.style.transform = "translateY(-1px)";
+    });
+    pill.addEventListener("mouseleave", () => {
+        if (!pinned) {
+            pill.style.opacity = "0.75";
+            pill.style.boxShadow = "0 0 0 0 rgba(0,0,0,0)";
+            pill.style.transform = "translateY(0)";
+        }
+    });
 
     wrapper.appendChild(pill);
     wrapper.appendChild(popover);

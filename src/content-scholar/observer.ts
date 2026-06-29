@@ -1,11 +1,13 @@
 import {normaliseDOI} from "@shared/doi-normalise";
-import {augmentDOIs, type DoiAugmentRequest} from "@shared/doi-augment";
+import {type DoiAugmentRequest} from "@shared/doi-augment";
+import {augmentDOIsViaWorker} from "@shared/messages";
 import {injectRetractionInfo, retractionCheck} from "@shared/doi-retraction"
 import {validateDOI, validateDOIs} from "@shared/doi-validate";
 import type {DoiString, DoiSource} from "@shared/types";
 import type {LookupRequest, LookupResponse} from "@shared/messages";
 import {renderScholarBadge} from "./badge";
 import {createDoiPill} from "@shared/doi-label";
+import {fetchOpenAccess} from "@shared/openaccess";
 import {debugLog} from "@shared/debug";
 
 const RESULT_CONTAINER = "#gs_res_ccl";
@@ -148,7 +150,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
             let augmented = new Map<string, DoiString | null>();
             try {
                 if (requestsToAugment.length > 0) {
-                    augmented = await augmentDOIs(requestsToAugment);
+                    augmented = await augmentDOIsViaWorker(requestsToAugment);
                 }
             } catch {
                 // Augmentation failed — fall through with empty map
@@ -281,7 +283,7 @@ function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmente
         row.insertBefore(target, gsRi);
     }
 
-    target.appendChild(createDoiPill(doi, color, isAugmented));
+    target.appendChild(createDoiPill(doi, color, isAugmented, fetchOpenAccess(doi)));
 }
 
 interface ExtractionResult {

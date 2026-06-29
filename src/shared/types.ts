@@ -112,6 +112,14 @@ export interface RetractionResponse {
   kind: NoticeKind;
 }
 
+/** Input to the DOI-augmentation title search */
+export interface DoiAugmentRequest {
+    title: string;
+    firstAuthor?: string | null;
+    year?: number | null;
+    sourceUrl?: string | null;
+}
+
 /** What kind of page we're on */
 export type PageType = "article" | "listing" | "unknown";
 

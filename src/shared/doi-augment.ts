@@ -1,4 +1,4 @@
-import type {DoiString} from "./types";
+import type {DoiString, DoiAugmentRequest} from "./types";
 import {normaliseDOI} from "./doi-normalise";
 import {getSettings} from "./settings";
 import {BlobCache} from "./blob-cache";
@@ -24,17 +24,9 @@ interface CachedDoiResult {
     doi: string | null;
 }
 
-/**
- * A title to resolve, plus any context the page can offer about it. The extra
- * fields are used only to disambiguate between similarly-titled works (preprint
- * vs journal vs book chapter); the title is still the primary match signal.
- */
-export interface DoiAugmentRequest {
-    title: string;
-    firstAuthor?: string | null;
-    year?: number | null;
-    sourceUrl?: string | null;
-}
+// DoiAugmentRequest is defined in types.ts and re-exported for callers that
+// import it from this module (preserves the public API surface).
+export type { DoiAugmentRequest } from "./types";
 
 interface DoiCandidate {
     doi: DoiString;
@@ -319,6 +311,11 @@ async function queryOpenAlex(request: DoiAugmentRequest, email: string): Promise
     const url = `${OPENALEX_BASE}?filter=title.search:${encodeURIComponent(cleaned)}&select=id,doi,title,publication_year,authorships,primary_location,locations&per_page=5&mailto=${encodeURIComponent(email)}`;
 
     const response = await fetch(url);
+    if (response.status === 429) {
+        // Rate-limited — throw so Promise.allSettled marks this as rejected and
+        // the caller falls back to Crossref results.
+        throw new Error("OpenAlex rate limited (429)");
+    }
     if (!response.ok) return [];
 
     const data = (await response.json()) as {
