@@ -371,6 +371,7 @@ export function createDoiPill(
         pill.style.opacity = "1";
         pill.style.boxShadow = "0 1px 2px rgba(27,31,36,0.12), 0 2px 6px rgba(66,74,83,0.14)";
         pill.style.transform = "translateY(-1px)";
+        show();
     });
     pill.addEventListener("mouseleave", () => {
         if (!pinned) {
@@ -378,7 +379,10 @@ export function createDoiPill(
             pill.style.boxShadow = "0 0 0 0 rgba(0,0,0,0)";
             pill.style.transform = "translateY(0)";
         }
+        hide();
     });
+    popover.addEventListener("mouseenter", show);
+    popover.addEventListener("mouseleave", hide);
 
     wrapper.appendChild(pill);
     wrapper.appendChild(popover);
