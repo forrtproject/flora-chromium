@@ -6,11 +6,12 @@ import {
     extractDoiOccurrences,
     extractPrimaryDOI
 } from "@shared/doi-extractor";
-import {augmentDOIs, fetchTitleByDoi, type DoiAugmentRequest} from "@shared/doi-augment";
+import {fetchTitleByDoi, type DoiAugmentRequest} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
 import type {ClassifiedDois, DoiContext, DoiString, LookupState} from "@shared/types";
 import {
     safeSendMessage,
+    augmentDOIsViaWorker,
     type LookupRequest,
     type LookupResponse,
     type SheetFetchRequest,
@@ -36,6 +37,12 @@ import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
 import {resolveReferenceDois, renderResolvedReferences, type ResolvedReference} from "./references";
+
+// PubPeer commenter IDs whose comments are hidden in the embedded iframe.
+// Add any bot/org account ID here to suppress its annotations from the panel.
+const HIDDEN_PUBPEER_COMMENTER_IDS = new Set([
+    "FORRT",
+]);
 
 const pageState = new Map<DoiString, LookupState>();
 let redacts: RetractionResponse[] = [];
@@ -361,7 +368,7 @@ async function augmentFromTitle(): Promise<void> {
     if (!pageTitle) return;
 
     try {
-        const augmented = await augmentDOIs([{
+        const augmented = await augmentDOIsViaWorker([{
             title: pageTitle,
             sourceUrl: location.href,
             ...extractPageAugmentationMetadata(document),
@@ -665,13 +672,29 @@ function startDomListener(callback: () => void) {
                     }
                 }
             };
+
+            const hideTaggedComments = (root: Node = document.body): void => {
+                const el = root instanceof Element ? root : root.parentElement;
+                if (!el) return;
+                for (const strong of el.querySelectorAll<HTMLElement>("strong.inner-id[id]")) {
+                    if (!HIDDEN_PUBPEER_COMMENTER_IDS.has(strong.id)) continue;
+                    // .vertical-timeline-content is the full comment block (header + body + footer).
+                    const commentBlock = strong.closest(".vertical-timeline-content");
+                    if (commentBlock) (commentBlock as HTMLElement).style.display = "none";
+                }
+            };
+
             const observer = new MutationObserver((mutations) => {
                 for (const m of mutations) {
-                    for (const n of m.addedNodes) stripCommentAccepted(n);
+                    for (const n of m.addedNodes) {
+                        stripCommentAccepted(n);
+                        hideTaggedComments(n);
+                    }
                 }
             });
             const startStripping = (): void => {
                 stripCommentAccepted();
+                hideTaggedComments();
                 observer.observe(document.body, {childList: true, subtree: true});
             };
             if (document.readyState === "loading") {

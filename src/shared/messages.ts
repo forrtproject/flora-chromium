@@ -1,4 +1,4 @@
-import type {DoiString, ReplicationResult, RetractionResponse} from "./types";
+import type {DoiString, DoiAugmentRequest, ReplicationResult, RetractionResponse} from "./types";
 
 /** Content script → service worker: request DOI lookups */
 export interface LookupRequest {
@@ -38,6 +38,47 @@ export interface SheetFetchResponse {
     type: "FLORA_SHEET_FETCH_RESULT";
     csv: string | null;
     error: string | null;
+}
+
+/** Content script → service worker: resolve DOIs from article titles */
+export interface AugmentRequest {
+    type: "FLORA_AUGMENT";
+    requests: DoiAugmentRequest[];
+}
+
+/** Service worker → content script: title → resolved DOI (or null) */
+export interface AugmentResponse {
+    type: "FLORA_AUGMENT_RESULT";
+    results: Record<string, string | null>;
+}
+
+export function isAugmentRequest(msg: unknown): msg is AugmentRequest {
+    return (
+        typeof msg === "object" &&
+        msg !== null &&
+        (msg as Record<string, unknown>).type === "FLORA_AUGMENT"
+    );
+}
+
+/**
+ * Ask the service worker to run augmentDOIs, routing all Crossref/OpenAlex
+ * fetches through the extension background context (no CORS restrictions).
+ */
+export async function augmentDOIsViaWorker(
+    inputs: Array<string | DoiAugmentRequest>
+): Promise<Map<string, DoiString | null>> {
+    const requests: DoiAugmentRequest[] = inputs.map((input) =>
+        typeof input === "string" ? { title: input } : input
+    );
+    const response = await safeSendMessage<AugmentResponse>({
+        type: "FLORA_AUGMENT",
+        requests,
+    });
+    const result = new Map<string, DoiString | null>();
+    for (const [title, doi] of Object.entries(response?.results ?? {})) {
+        result.set(title, doi as DoiString | null);
+    }
+    return result;
 }
 
 /**

@@ -2,8 +2,9 @@ import {LocalCache} from "@shared/cache";
 import {lookupDOIs} from "@shared/flora-api";
 import {RET_MAP_KEY, storageSync, type RetractionMaps} from "@shared/data-extract";
 import type {DoiString, ReplicationResult, RetractionResponse} from "@shared/types";
-import {LookupResponse, RetractionCheckResponse, SheetFetchResponse} from "@shared/messages";
-import {isLookupRequest, isRetractionCheckRequest, isSheetFetchRequest} from "@shared/messages";
+import {LookupResponse, RetractionCheckResponse, SheetFetchResponse, AugmentResponse, AugmentRequest} from "@shared/messages";
+import {isLookupRequest, isRetractionCheckRequest, isSheetFetchRequest, isAugmentRequest} from "@shared/messages";
+import {augmentDOIs} from "@shared/doi-augment";
 import {getSettings, isSetupComplete} from "@shared/settings";
 
 const cache = new LocalCache<ReplicationResult>("flora");
@@ -172,6 +173,18 @@ chrome.runtime.onMessage.addListener(
             return true;
         }
 
+        if (isAugmentRequest(message)) {
+            handleAugment(message.requests)
+                .then(sendResponse)
+                .catch(() =>
+                    sendResponse({
+                        type: "FLORA_AUGMENT_RESULT",
+                        results: {},
+                    } satisfies AugmentResponse)
+                );
+            return true;
+        }
+
         return false;
     }
 );
@@ -237,6 +250,15 @@ async function handleLookup(dois: DoiString[]): Promise<LookupResponse> {
     }
 
     return {type: "FLORA_LOOKUP_RESULT", results, errors};
+}
+
+async function handleAugment(
+    requests: AugmentRequest["requests"]
+): Promise<AugmentResponse> {
+    const resultMap = await augmentDOIs(requests);
+    const results: Record<string, string | null> = {};
+    for (const [title, doi] of resultMap) results[title] = doi ?? null;
+    return { type: "FLORA_AUGMENT_RESULT", results };
 }
 
 async function handleSheetFetch(
