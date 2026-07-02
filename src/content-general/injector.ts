@@ -884,7 +884,7 @@ function setupTabPositioning(tab: HTMLElement): void {
   window.addEventListener("resize", reposition, { passive: true });
 }
 
-export function renderPubPeerPanel(
+export function renderSidePanel(
   articleFeedbacks: PubPeerFeedback[],
   references: { doi: DoiString; title: string }[],
   pageState: Map<DoiString, LookupState>,
@@ -948,7 +948,7 @@ export function renderPubPeerPanel(
   // shows the article title and the "No PubPeer comments" empty state, so the
   // reader can see FLoRA ran and found nothing rather than seeing no UI at all.
   debugLog(
-    "renderPubPeerPanel:",
+    "renderSidePanel:",
     `articleComments=${withComments.length}`,
     `replicationData=${hasReplicationData}`,
     `articleNotice=${articleNotice?.kind ?? "none"}`,
@@ -1071,7 +1071,9 @@ export function renderPubPeerPanel(
     : null;
 
   const articleTitleEl = document.createElement("div");
-  articleTitleEl.style.cssText = "display:flex;align-items:center;gap:8px;padding:12px 16px;";
+  articleTitleEl.style.cssText = "display:flex;flex-direction:column;padding:12px 16px 8px;gap:6px;";
+  const titleRow = document.createElement("div");
+  titleRow.style.cssText = "display:flex;align-items:flex-start;gap:8px;";
   // OA placeholder for the main article — filled in by the Unpaywall lookup below.
   // Kept as a sibling of the title (not a child of titleLink) to avoid nested <a>.
   let articleOaPlaceholder: HTMLElement | undefined;
@@ -1088,19 +1090,62 @@ export function renderPubPeerPanel(
     titleSpan.style.cssText = "text-transform:capitalize;";
     titleSpan.textContent = articleTitleText;
     titleLink.appendChild(titleSpan);
-    articleTitleEl.appendChild(titleLink);
+    titleRow.appendChild(titleLink);
   } else {
     const titleSpan = document.createElement("span");
     titleSpan.style.cssText =
       "color:#853953;font-weight:600;font-size:18px;line-height:1.4;word-break:break-word;flex:1;min-width:0;";
     titleSpan.textContent = articleTitleText;
-    articleTitleEl.appendChild(titleSpan);
+    titleRow.appendChild(titleSpan);
   }
   if (articleDois.length > 0) {
     articleOaPlaceholder = document.createElement("span");
     articleOaPlaceholder.style.cssText = "flex-shrink:0;";
-    articleTitleEl.appendChild(articleOaPlaceholder);
+    titleRow.appendChild(articleOaPlaceholder);
   }
+  articleTitleEl.appendChild(titleRow);
+
+  // Authors and year subtitle — FORRT API data first, then page metadata fallback
+  let subtitleAuthors: string | null = null;
+  let subtitleYear: number | null = null;
+  for (const doi of articleDois) {
+    const state = pageState.get(doi);
+    if (state?.status === "matched") {
+      const { authors, year } = state.result;
+      if (authors?.length) {
+        const first = authors[0];
+        const name = first.family ?? first.given ?? null;
+        if (name) subtitleAuthors = authors.length > 1 ? `${name} et al.` : name;
+      }
+      if (year) subtitleYear = year;
+      break;
+    }
+  }
+  if (!subtitleAuthors) {
+    const metaAuthor = document.querySelector<HTMLMetaElement>(
+      'meta[name="citation_author"], meta[name="dc.creator"]'
+    )?.content?.trim() ?? null;
+    if (metaAuthor) subtitleAuthors = metaAuthor;
+  }
+  if (!subtitleYear) {
+    const metaDate = document.querySelector<HTMLMetaElement>(
+      'meta[name="citation_publication_date"], meta[name="citation_online_date"], meta[name="dc.date"]'
+    )?.content?.trim() ?? null;
+    if (metaDate) {
+      const yearMatch = metaDate.match(/\b((?:19|20)\d{2})\b/);
+      if (yearMatch) subtitleYear = Number(yearMatch[1]);
+    }
+  }
+  if (subtitleAuthors !== null || subtitleYear !== null) {
+    const subtitleParts: string[] = [];
+    if (subtitleAuthors) subtitleParts.push(subtitleAuthors);
+    if (subtitleYear) subtitleParts.push(String(subtitleYear));
+    const subtitleEl = document.createElement("div");
+    subtitleEl.style.cssText = "font-size:13px;color:#5f6368;line-height:1.4;";
+    subtitleEl.textContent = subtitleParts.join(" · ");
+    articleTitleEl.appendChild(subtitleEl);
+  }
+
   summary.appendChild(articleTitleEl);
 
   // Notice alert — shown when the article's DOI carries a retraction or an
@@ -1623,7 +1668,7 @@ export function renderPubPeerPanel(
   host.appendChild(tab);
   host.appendChild(panel);
   document.body.appendChild(host);
-  debugLog(`renderPubPeerPanel: panel rendered (${references.length} reference row(s), reopened=${wasOpen})`);
+  debugLog(`renderSidePanel: panel rendered (${references.length} reference row(s), reopened=${wasOpen})`);
 
   setupTabPositioning(tab);
 
@@ -1643,7 +1688,7 @@ export function renderPubPeerPanel(
   }
 }
 
-export function removePubPeerPanel(): void {
+export function removeSidePanel(): void {
   cleanupTabPositioning();
   document.getElementById(PUBPEER_PANEL_ID)?.remove();
 }
