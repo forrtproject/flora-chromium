@@ -21,11 +21,11 @@ import {
     beginWorkIndicator,
     endWorkIndicator,
     hideAllFloraUI,
-    removePubPeerPanel,
+    removeSidePanel,
     removeSheetsModal,
     renderErrorBanner,
     renderInlineBadges,
-    renderPubPeerPanel,
+    renderSidePanel,
     renderSetupPrompt,
     renderSheetsModal,
     type SheetsModalCallbacks,
@@ -125,7 +125,7 @@ async function pageRenderChangeHandler(): Promise<void> {
         if (isSheets) {
             removeSheetsModal();
         } else {
-            removePubPeerPanel();
+            removeSidePanel();
         }
     }
     // Fresh DOM scan pass — resets the per-pass findReferenceContainers memo.
@@ -542,7 +542,7 @@ async function checkPubPeer(): Promise<void> {
         }));
 
         lastRenderedPageStateVersion = pageStateVersion;
-        renderPubPeerPanel(articleFeedbacks, panelRefs, pageState, doiContext, refFeedbackByDoi, redacts);
+        renderSidePanel(articleFeedbacks, panelRefs, pageState, doiContext, refFeedbackByDoi, redacts);
     } catch {
         // PubPeer is supplementary — fail silently
     }
