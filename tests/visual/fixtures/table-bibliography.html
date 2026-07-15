@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Table-based bibliography</title>
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+      color: #1a1a1a;
+      background: #ffffff;
+      font-size: 15px;
+      line-height: 1.5;
+      padding: 32px 48px;
+    }
+    h1 { font-size: 22px; margin: 0 0 24px; }
+    table.references {
+      border-collapse: collapse;
+      width: 100%;
+      max-width: 960px;
+    }
+    table.references th, table.references td {
+      border: 1px solid #dcdcdc;
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    table.references th { background: #f3f3f3; font-weight: 600; }
+    td.doi { color: #555; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <h1>Cited works (tabular layout)</h1>
+  <table class="references">
+    <thead>
+      <tr><th>#</th><th>Citation</th><th>DOI</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>Author, A. (2015). A highly replicated finding. Journal of Mock Studies.</td>
+        <td class="doi">10.5555/flora.repl.0001</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>Author, C. (2016). A computationally reproduced analysis. Journal of Mock Studies.</td>
+        <td class="doi">10.5555/flora.repro.0002</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>Author, D. (2017). A now-retracted intervention study. Journal of Mock Studies.</td>
+        <td class="doi">10.5555/flora.retr.0003</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>Author, G. (2019). An ordinary paper with no replication record. Journal of Mock Studies.</td>
+        <td class="doi">10.5555/flora.none.0005</td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>

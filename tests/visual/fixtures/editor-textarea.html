@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Editor + textarea with DOIs</title>
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+      color: #1a1a1a;
+      background: #ffffff;
+      font-size: 15px;
+      line-height: 1.5;
+      padding: 32px 48px;
+    }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    h2 { font-size: 16px; margin: 24px 0 8px; color: #333; }
+    .editor {
+      border: 1px solid #cfcfcf;
+      border-radius: 8px;
+      padding: 14px 16px;
+      min-height: 90px;
+      max-width: 820px;
+      background: #fdfdfd;
+    }
+    textarea {
+      display: block;
+      width: 820px;
+      max-width: 100%;
+      height: 110px;
+      box-sizing: border-box;
+      padding: 12px 14px;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 13px;
+      border: 1px solid #cfcfcf;
+      border-radius: 8px;
+      resize: none;
+    }
+    p.note { max-width: 820px; color: #444; }
+  </style>
+</head>
+<body>
+  <h1>Draft manuscript editor</h1>
+  <p class="note">A DOI mentioned in prose: 10.5555/flora.repl.0001 should be recognised in the running text.</p>
+
+  <h2>Contenteditable body</h2>
+  <div class="editor" contenteditable="true" spellcheck="false">Paste citations here. This draft cites 10.5555/flora.conc.0004 which carries an expression of concern, and also 10.5555/flora.repro.0002.</div>
+
+  <h2>Raw reference textarea</h2>
+  <textarea readonly>Bibliography (plain text):
+1. Author D (2017). Retracted intervention study. 10.5555/flora.retr.0003
+2. Author G (2019). Ordinary paper. 10.5555/flora.none.0005</textarea>
+</body>
+</html>
