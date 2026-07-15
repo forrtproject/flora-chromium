@@ -3,6 +3,7 @@
 
 import { getSettings } from "./settings";
 import { BlobCache } from "./blob-cache";
+import { isWorkerContext, proxyFetch } from "./messages";
 
 export interface OpenAccessStatus {
     /** True when Unpaywall reports a free full-text location. */
@@ -37,23 +38,40 @@ export async function fetchOpenAccess(doi: string): Promise<OpenAccessStatus | n
     if (!email) return null;
 
     try {
-        const resp = await fetch(
-            `https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`
-        );
-        if (!resp.ok) return null;
-        const data = (await resp.json()) as {
-            is_oa?: boolean;
-            best_oa_location?: { url_for_pdf?: string | null; url?: string | null } | null;
-        };
-        const status: OpenAccessStatus = {
-            isOa: !!data.is_oa,
-            url: data.best_oa_location?.url_for_pdf ?? data.best_oa_location?.url ?? null,
-        };
-        void OA_CACHE.set(doi, status);
+        // Direct fetch in the worker; proxy through it from content scripts,
+        // where a page-context cross-origin request has no CORS bypass (and is
+        // dropped by Opera's built-in ad/tracker blocker).
+        const status = isWorkerContext()
+            ? await fetchOpenAccessRaw(doi, email)
+            : await proxyFetch<OpenAccessStatus | null>("openAccess", [doi, email]);
+        if (status) void OA_CACHE.set(doi, status);
         return status;
     } catch {
         return null;
     }
+}
+
+/**
+ * Perform the Unpaywall network request (no caching). Runs in the service
+ * worker — either directly for worker-side callers or via the proxy handler on
+ * behalf of a content script. Returns null when the lookup fails.
+ */
+export async function fetchOpenAccessRaw(
+    doi: string,
+    email: string
+): Promise<OpenAccessStatus | null> {
+    const resp = await fetch(
+        `https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`
+    );
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as {
+        is_oa?: boolean;
+        best_oa_location?: { url_for_pdf?: string | null; url?: string | null } | null;
+    };
+    return {
+        isOa: !!data.is_oa,
+        url: data.best_oa_location?.url_for_pdf ?? data.best_oa_location?.url ?? null,
+    };
 }
 
 /** Test-only: drop in-memory cache state so each case starts fresh. */

@@ -17,6 +17,7 @@
     "https://api.openalex.org/*",
     "https://api.crossref.org/*",
     "https://api.unpaywall.org/*",
+    "https://doi.org/*",
     "https://docs.google.com/*",
     "https://pubpeer.com/*",
     "https://raw.githubusercontent.com/*"

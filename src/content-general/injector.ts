@@ -4,6 +4,7 @@ import { extractDoiOccurrences, type DoiOccurrence } from "../shared/doi-extract
 import { debugLog } from "../shared/debug";
 import { getSettings } from "../shared/settings";
 import { safeSendMessage } from "../shared/messages";
+import { fetchOpenAccess } from "../shared/openaccess";
 import styles from "./styles.css";
 import {RetractionResponse, noticePresentation} from "@shared/doi-retraction";
 
@@ -1279,16 +1280,12 @@ export function renderSidePanel(
     if (!email) return;
     for (const [doi, placeholder] of oaPlaceholders) {
       try {
-        const resp = await fetch(
-          `https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`
-        );
-        if (!resp.ok) continue;
-        const data = await resp.json() as {
-          is_oa?: boolean;
-          best_oa_location?: { url_for_pdf?: string | null; url?: string | null } | null;
-        };
-        if (!data.is_oa) continue;
-        const oaUrl = data.best_oa_location?.url_for_pdf ?? data.best_oa_location?.url;
+        // Open Access status is fetched via fetchOpenAccess, which proxies the
+        // Unpaywall request through the service worker (content-script
+        // cross-origin fetches have no CORS bypass).
+        const status = await fetchOpenAccess(doi);
+        if (!status?.isOa) continue;
+        const oaUrl = status.url;
         if (!oaUrl) continue;
         const icon = document.createElement("a");
         icon.href = oaUrl;

@@ -3,8 +3,9 @@ import {lookupDOIs} from "@shared/flora-api";
 import {RET_MAP_KEY, storageSync, type RetractionMaps} from "@shared/data-extract";
 import type {DoiString, ReplicationResult, RetractionResponse} from "@shared/types";
 import {LookupResponse, RetractionCheckResponse, SheetFetchResponse, AugmentResponse, AugmentRequest} from "@shared/messages";
-import {isLookupRequest, isRetractionCheckRequest, isSheetFetchRequest, isAugmentRequest} from "@shared/messages";
+import {isLookupRequest, isRetractionCheckRequest, isSheetFetchRequest, isAugmentRequest, isProxyFetchRequest} from "@shared/messages";
 import {augmentDOIs} from "@shared/doi-augment";
+import {handleProxyFetch} from "./proxy-fetch";
 import {getSettings, isSetupComplete} from "@shared/settings";
 
 const cache = new LocalCache<ReplicationResult>("flora");
@@ -181,6 +182,19 @@ chrome.runtime.onMessage.addListener(
                         type: "FLORA_AUGMENT_RESULT",
                         results: {},
                     } satisfies AugmentResponse)
+                );
+            return true;
+        }
+
+        if (isProxyFetchRequest(message)) {
+            handleProxyFetch(message)
+                .then(sendResponse)
+                .catch(() =>
+                    sendResponse({
+                        type: "FLORA_PROXY_FETCH_RESULT",
+                        ok: false,
+                        error: "Service worker error",
+                    })
                 );
             return true;
         }

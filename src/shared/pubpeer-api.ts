@@ -1,5 +1,6 @@
 import { debugLog } from "./debug";
 import { BlobCache } from "./blob-cache";
+import { isWorkerContext, proxyFetch, ProxyFetchError } from "./messages";
 
 export interface PubPeerFeedback {
   id: string;
@@ -18,6 +19,31 @@ export class PubPeerRateLimitError extends Error {
 }
 
 export async function lookupPubPeer(
+  dois: string[],
+  urls: string[]
+): Promise<PubPeerFeedback[]> {
+  // Direct fetch in the worker; proxy through it from content scripts. The
+  // /v3/publications call is a POST with a JSON content-type (a preflighted
+  // cross-origin request) — it has no CORS bypass in page context and is
+  // dropped by Opera's built-in ad/tracker blocker.
+  if (isWorkerContext()) return lookupPubPeerRaw(dois, urls);
+  try {
+    return await proxyFetch<PubPeerFeedback[]>("pubpeer", [dois, urls]);
+  } catch (err) {
+    // Re-materialise the worker's 429 back-off as a rate-limit error so
+    // lookupPubPeerForDois's existing handling applies unchanged.
+    if (err instanceof ProxyFetchError && err.rateLimitMs != null) {
+      throw new PubPeerRateLimitError(err.rateLimitMs);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Perform the PubPeer network request (no caching). Runs in the service worker.
+ * Throws PubPeerRateLimitError on 429 so callers can back off.
+ */
+export async function lookupPubPeerRaw(
   dois: string[],
   urls: string[]
 ): Promise<PubPeerFeedback[]> {

@@ -2,6 +2,7 @@ import type {DoiString, DoiAugmentRequest} from "./types";
 import {normaliseDOI} from "./doi-normalise";
 import {getSettings} from "./settings";
 import {BlobCache} from "./blob-cache";
+import {isWorkerContext, proxyFetch} from "./messages";
 
 const OPENALEX_BASE = "https://api.openalex.org/works";
 const CROSSREF_BASE = "https://api.crossref.org/works";
@@ -477,6 +478,28 @@ export async function fetchTitleByDoi(doi: string): Promise<string | null> {
     const cached = await TITLE_CACHE.get(doi);
     if (cached) return cached.title;
 
+    // Direct fetch in the worker; proxy through it from content scripts, where
+    // the Crossref/OpenAlex requests have no CORS bypass. A proxy failure
+    // (e.g. an invalidated extension context) is transient — return null
+    // without caching so a later call can retry.
+    let title: string | null;
+    try {
+        title = isWorkerContext()
+            ? await fetchTitleByDoiRaw(doi)
+            : await proxyFetch<string | null>("titleByDoi", [doi]);
+    } catch {
+        return null;
+    }
+
+    void TITLE_CACHE.set(doi, {title});
+    return title;
+}
+
+/**
+ * Resolve a title from Crossref (then OpenAlex) with no caching. Runs in the
+ * service worker. Returns null when neither service has the DOI.
+ */
+export async function fetchTitleByDoiRaw(doi: string): Promise<string | null> {
     let title: string | null = null;
 
     try {
@@ -503,7 +526,6 @@ export async function fetchTitleByDoi(doi: string): Promise<string | null> {
         }
     }
 
-    void TITLE_CACHE.set(doi, {title});
     return title;
 }
 

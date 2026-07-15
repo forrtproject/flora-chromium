@@ -52,6 +52,79 @@ export interface AugmentResponse {
     results: Record<string, string | null>;
 }
 
+/**
+ * Identifies which cross-origin fetch a proxy request should perform in the
+ * service worker. MV3 content scripts get no host-permission CORS bypass, so
+ * every remote fetch below runs in the background context (see proxy-fetch.ts).
+ */
+export type ProxyFetcherId = "openAccess" | "pubpeer" | "validateDois" | "titleByDoi";
+
+/** Content script → service worker: run a cross-origin fetch in the worker. */
+export interface ProxyFetchRequest {
+    type: "FLORA_PROXY_FETCH";
+    fetcher: ProxyFetcherId;
+    /** Fetcher-specific arguments, forwarded verbatim to the worker handler. */
+    args: unknown[];
+}
+
+/** Service worker → content script: proxied fetch result (structured-clone-safe). */
+export interface ProxyFetchResponse {
+    type: "FLORA_PROXY_FETCH_RESULT";
+    ok: boolean;
+    /** Serializable payload on success. */
+    data?: unknown;
+    /** Human-readable error on failure. */
+    error?: string;
+    /** PubPeer 429 back-off signal, propagated so the caller can re-throw. */
+    rateLimitMs?: number;
+}
+
+export function isProxyFetchRequest(msg: unknown): msg is ProxyFetchRequest {
+    return (
+        typeof msg === "object" &&
+        msg !== null &&
+        (msg as Record<string, unknown>).type === "FLORA_PROXY_FETCH"
+    );
+}
+
+/**
+ * True when running in the extension service worker (no DOM / `window`).
+ * Shared modules bundled into both content scripts and the worker use this to
+ * decide whether to fetch directly (worker) or proxy through the worker
+ * (content script), where cross-origin fetches would otherwise be CORS-bound.
+ */
+export function isWorkerContext(): boolean {
+    return typeof window === "undefined";
+}
+
+/** Error thrown by {@link proxyFetch}; carries a rate-limit hint when present. */
+export class ProxyFetchError extends Error {
+    constructor(message: string, public rateLimitMs?: number) {
+        super(message);
+    }
+}
+
+/**
+ * Content-script side: ask the service worker to perform a cross-origin fetch
+ * and return its serializable result. Throws {@link ProxyFetchError} on
+ * failure (including when the extension context has been invalidated).
+ */
+export async function proxyFetch<R>(fetcher: ProxyFetcherId, args: unknown[]): Promise<R> {
+    const resp = await safeSendMessage<ProxyFetchResponse>({
+        type: "FLORA_PROXY_FETCH",
+        fetcher,
+        args,
+    });
+    if (!resp) {
+        // safeSendMessage swallowed an "Extension context invalidated" reject.
+        throw new ProxyFetchError("Extension context invalidated");
+    }
+    if (!resp.ok) {
+        throw new ProxyFetchError(resp.error ?? `proxy fetch (${fetcher}) failed`, resp.rateLimitMs);
+    }
+    return resp.data as R;
+}
+
 export function isAugmentRequest(msg: unknown): msg is AugmentRequest {
     return (
         typeof msg === "object" &&
