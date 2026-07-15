@@ -238,6 +238,9 @@ async function captureFixture(
     // Determinism CSS injected as a plain string (no function serialization):
     // kills animations/transitions/carets and hides the transient scanning toast.
     await page.addStyleTag({ content: DETERMINISM_CSS });
+    // All fonts fully loaded before capture — a late font swap re-rasterises
+    // every glyph on the page.
+    await page.evaluate(() => (document as Document).fonts.ready.then(() => undefined));
     await waitForSettle(page);
 
     if (process.env.VR_DEBUG) {
@@ -332,6 +335,15 @@ async function main(): Promise<void> {
       "--hide-scrollbars",
       "--disable-lcd-text",
       "--font-render-hinting=none",
+      // One deterministic raster path. Without --disable-gpu, macOS headful
+      // Chrome flaps between GPU and software rasterisation across page loads,
+      // shifting anti-aliasing on every glyph (whole-page pixel drift).
+      "--disable-gpu",
+      "--disable-gpu-compositing",
+      "--force-device-scale-factor=1",
+      "--disable-font-subpixel-positioning",
+      "--disable-partial-raster",
+      "--disable-skia-runtime-opts",
       "--disable-features=DisableLoadExtensionCommandLineSwitch",
       "--no-first-run",
       "--no-default-browser-check",

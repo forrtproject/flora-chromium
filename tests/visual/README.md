@@ -93,16 +93,28 @@ insurance against a stray install-time sync.
 
 ## Determinism
 
-- Launch flags: `--force-color-profile=srgb --hide-scrollbars --disable-lcd-text
-  --font-render-hinting=none`.
+- **One raster path.** Headful macOS Chrome flaps between GPU and software
+  rasterisation across page loads, which shifts the anti-aliasing of *every
+  glyph* on the page — runs would pass or fail different fixtures at random
+  with whole-page text diffs (~0.2–2 % of pixels). The launch flags pin a
+  single software raster path: `--disable-gpu` (the primary fix) plus
+  `--disable-gpu-compositing --force-device-scale-factor=1
+  --disable-font-subpixel-positioning --disable-partial-raster
+  --disable-skia-runtime-opts`.
+- Rendering flags: `--force-color-profile=srgb --hide-scrollbars
+  --disable-lcd-text --font-render-hinting=none`.
 - A stylesheet injected after load disables all animations/transitions, hides the
   caret, and removes the transient "scanning" toast.
 - Fixtures use an explicit system font stack and load no external
-  fonts/images/scripts.
+  fonts/images/scripts; `document.fonts.ready` is awaited before capture.
 - After navigation the harness polls the injected FLoRA selectors
   (`.flora-inline-badge, .flora-doi-label, .flora-notice-pill, #flora-pubpeer-panel`)
   until their count is stable for 700 ms, then waits a short settle before
   capturing.
+
+Stability bar: after regenerating baselines, `npm run test:visual` must report
+**0 px difference on every fixture across five consecutive runs** before the
+baselines are committed.
 
 Comparison uses `pixelmatch` at a per-pixel threshold of `0.1`; a fixture fails
 if more than **0.1 %** of pixels differ. On failure the actual and diff images
