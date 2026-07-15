@@ -1,4 +1,5 @@
 import type { CachedEntry } from "./types";
+import { debugLog } from "./debug";
 
 export const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -33,13 +34,18 @@ export class LocalCache<T> {
     const result = await chrome.storage.local.get(storageKey);
     const entry = result[storageKey] as CachedEntry<T> | undefined;
 
-    if (!entry) return undefined;
+    if (!entry) {
+      debugLog(`Cache miss: ${storageKey}`);
+      return undefined;
+    }
 
     if (entry.expiresAt !== null && Date.now() > entry.expiresAt) {
+      debugLog(`Cache expired: ${storageKey}`);
       await chrome.storage.local.remove(storageKey);
       return undefined;
     }
 
+    debugLog(`Cache hit: ${storageKey}`, entry.data === null ? "(negative)" : "");
     return entry.data;
   }
 
@@ -51,6 +57,11 @@ export class LocalCache<T> {
     await this.sweepIfOverQuota();
     const expiresAt = ttlMs === null ? null : Date.now() + ttlMs;
     const entry: CachedEntry<T> = { data, expiresAt };
+    debugLog(
+      `Cache set: ${this.storageKey(key)}`,
+      data === null ? "(negative)" : "",
+      expiresAt === null ? "(no expiry)" : `(expires ${new Date(expiresAt).toISOString()})`
+    );
     await chrome.storage.local.set({ [this.storageKey(key)]: entry });
   }
 
@@ -70,6 +81,7 @@ export class LocalCache<T> {
       });
 
     if (expired.length > 0) {
+      debugLog(`Cache sweep: quota exceeded (${used} bytes) — evicting ${expired.length} expired entr(ies)`);
       await chrome.storage.local.remove(expired);
     }
   }

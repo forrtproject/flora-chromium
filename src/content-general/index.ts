@@ -32,11 +32,18 @@ import {
     showAllFloraUI
 } from "./injector";
 import {lookupPubPeer, lookupPubPeerForDois, type PubPeerFeedback} from "@shared/pubpeer-api";
-import {debugLog} from "@shared/debug";
+import {debugLog, setDebugContext} from "@shared/debug";
 import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
 import {resolveReferenceDois, renderResolvedReferences, type ResolvedReference} from "./references";
+
+setDebugContext("general");
+debugLog(
+    "Content script loaded on", location.href,
+    window === window.top ? "(top frame)" : "(iframe)",
+    "— readyState:", document.readyState
+);
 
 // PubPeer commenter IDs whose comments are hidden in the embedded iframe.
 // Add any bot/org account ID here to suppress its annotations from the panel.

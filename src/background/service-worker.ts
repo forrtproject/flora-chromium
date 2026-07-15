@@ -6,11 +6,17 @@ import {LookupResponse, RetractionCheckResponse, SheetFetchResponse, AugmentResp
 import {isLookupRequest, isRetractionCheckRequest, isSheetFetchRequest, isAugmentRequest} from "@shared/messages";
 import {augmentDOIs} from "@shared/doi-augment";
 import {getSettings, isSetupComplete} from "@shared/settings";
+import {debugLog, debugError, setDebugContext} from "@shared/debug";
+
+setDebugContext("worker");
+// Optional call — vitest's chrome mock has no getManifest.
+debugLog("Service worker loaded — version", chrome.runtime.getManifest?.().version);
 
 const cache = new LocalCache<ReplicationResult>("flora");
 
 // Initialise cache quota from persisted settings (service worker may restart).
 getSettings().then(({ cacheQuotaMb }) => {
+    debugLog("Cache quota initialised:", cacheQuotaMb === 0 ? "unlimited" : `${cacheQuotaMb} MB`);
     cache.setQuota(cacheQuotaMb === 0 ? 0 : cacheQuotaMb * 1024 * 1024);
 }).catch();
 
@@ -20,10 +26,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "sync" && "flora_settings" in changes) {
         const next = (changes["flora_settings"].newValue as { cacheQuotaMb?: number } | undefined);
         if (next?.cacheQuotaMb != null) {
+            debugLog("Cache quota changed:", next.cacheQuotaMb === 0 ? "unlimited" : `${next.cacheQuotaMb} MB`);
             cache.setQuota(next.cacheQuotaMb === 0 ? 0 : next.cacheQuotaMb * 1024 * 1024);
         }
     }
     if (area === "local" && RET_MAP_KEY in changes) {
+        debugLog("Retraction map updated in storage — dropping cached source");
         cachedRetractionSource = null;
     }
 });
@@ -74,6 +82,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 
 // Open the walkthrough on first install and seed retraction data immediately.
 chrome.runtime.onInstalled.addListener((details) => {
+    debugLog("onInstalled:", details.reason, details.previousVersion ? `(previous version ${details.previousVersion})` : "");
     if (details.reason === "install") {
         chrome.tabs.create({ url: chrome.runtime.getURL("dist/walkthrough.html") });
     }
@@ -82,6 +91,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // Refresh retraction data once per browser session (weekly interval enforced inside).
 chrome.runtime.onStartup.addListener(() => {
+    debugLog("onStartup: browser session started");
     syncRetractionsInfo().then().catch();
 });
 
@@ -91,6 +101,11 @@ const inflight = new Map<DoiString, Promise<ReplicationResult | null>>();
 
 chrome.runtime.onMessage.addListener(
     (message: unknown, sender, sendResponse) => {
+        debugLog(
+            "Message received:",
+            (message as { type?: string } | null)?.type ?? "(untyped)",
+            "from", sender.tab ? `tab ${sender.tab.id} (${sender.tab.url})` : (sender.url ?? "extension")
+        );
         if (
             typeof message === "object" &&
             message !== null &&
@@ -209,6 +224,10 @@ async function handleLookup(dois: DoiString[]): Promise<LookupResponse> {
         }
     }
 
+    debugLog(
+        `Lookup: ${dois.length} DOI(s) — ${Object.keys(results).length} from cache/in-flight, ${toFetch.length} to fetch`
+    );
+
     if (toFetch.length === 0) {
         return {type: "FLORA_LOOKUP_RESULT", results, errors};
     }
@@ -240,6 +259,7 @@ async function handleLookup(dois: DoiString[]): Promise<LookupResponse> {
         }
     } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
+        debugError("Lookup: batch fetch failed:", msg);
         for (const doi of toFetch) {
             errors[doi] = msg;
         }
@@ -257,7 +277,12 @@ async function handleAugment(
 ): Promise<AugmentResponse> {
     const resultMap = await augmentDOIs(requests);
     const results: Record<string, string | null> = {};
-    for (const [title, doi] of resultMap) results[title] = doi ?? null;
+    let resolvedCount = 0;
+    for (const [title, doi] of resultMap) {
+        results[title] = doi ?? null;
+        if (doi) resolvedCount++;
+    }
+    debugLog(`Augment: resolved ${resolvedCount}/${requests.length} title(s) to DOIs`);
     return { type: "FLORA_AUGMENT_RESULT", results };
 }
 
@@ -276,6 +301,7 @@ async function handleSheetFetch(
             };
         }
         const csv = await resp.text();
+        debugLog(`Sheet fetch: ${csv.length} chars of CSV for spreadsheet ${spreadsheetId} (gid ${gid})`);
         return {type: "FLORA_SHEET_FETCH_RESULT", csv, error: null};
     } catch (err) {
         return {
@@ -353,12 +379,18 @@ async function getRetractionSource(): Promise<RetractionMaps> {
             retractions: lowercaseKeys(stored!.retractions),
             concerns: lowercaseKeys(stored!.concerns),
         };
+        debugLog(
+            "Retraction source: synced map —",
+            Object.keys(cachedRetractionSource.retractions).length, "retractions,",
+            Object.keys(cachedRetractionSource.concerns).length, "concerns"
+        );
         return cachedRetractionSource;
     }
 
     // Nothing synced yet: kick off a sync for next time and answer from the
     // bundled JSON now. Don't cache the fallback — onChanged will pick up the
     // synced map, but until then we re-read so an in-flight sync is noticed.
+    debugLog("Retraction source: nothing synced yet — falling back to bundled retractions.json");
     syncRetractionsInfo().then().catch();
     return loadBundledRetractionMap();
 }
@@ -383,6 +415,7 @@ async function handleRetractionCheck(dois: DoiString[]): Promise<RetractionCheck
             results.push({originDoi: doi, doi: concernDoi, kind: "concern"});
         }
     }
+    debugLog(`Retraction check: ${dois.length} DOI(s) → ${results.length} notice(s)`);
     return {type: "FLORA_RET_CHECK_RESULT", results};
 }
 
@@ -399,7 +432,17 @@ export async function syncRetractionsInfo() {
         Object.keys(map.concerns || {}).length === 0
     );
     if (isEmpty || currentTime > nextUpdate) {
+        debugLog(
+            "Retraction sync: starting —",
+            isEmpty ? "no local map yet" : `last sync ${new Date(lastSync).toISOString()} is older than a week`
+        );
         const synced = await storageSync();
+        debugLog("Retraction sync:", synced ? "completed and persisted" : "failed (will retry next trigger)");
         if (synced) await chrome.storage.local.set({synctime: currentTime});
+    } else {
+        debugLog(
+            "Retraction sync: skipped — fresh map from",
+            new Date(lastSync).toISOString(), "— next due", new Date(nextUpdate).toISOString()
+        );
     }
 }

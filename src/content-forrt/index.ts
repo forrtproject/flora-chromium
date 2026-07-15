@@ -1,3 +1,8 @@
+import { debugLog, setDebugContext } from "@shared/debug";
+
+setDebugContext("forrt");
+debugLog("Content script loaded on", location.href);
+
 // The special key to identify an installation banner
 export const INSTALL_BANNER_UUID = "#flora-plugin-install-banner-aa93b13084f7";
 
@@ -6,7 +11,10 @@ export const INSTALL_BANNER_UUID = "#flora-plugin-install-banner-aa93b13084f7";
  */
 function clearInstallBanner(): void {
     const target = document.querySelector(INSTALL_BANNER_UUID);
-    if (target) target.remove();
+    if (target) {
+        debugLog("Removing install-encouragement banner");
+        target.remove();
+    }
 }
 
 export function main() {

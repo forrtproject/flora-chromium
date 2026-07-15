@@ -1,4 +1,5 @@
 import type {DoiString, DoiAugmentRequest, ReplicationResult, RetractionResponse} from "./types";
+import {debugLog, debugError} from "./debug";
 
 /** Content script → service worker: request DOI lookups */
 export interface LookupRequest {
@@ -98,10 +99,18 @@ export function isContextInvalidated(err: unknown): boolean {
  * errors still reject so genuine failures stay visible.
  */
 export async function safeSendMessage<T = unknown>(message: unknown): Promise<T | undefined> {
+    const type = (message as { type?: string } | null)?.type ?? "(untyped)";
+    debugLog("sendMessage →", type, message);
     try {
-        return (await chrome.runtime.sendMessage(message)) as T;
+        const response = (await chrome.runtime.sendMessage(message)) as T;
+        debugLog("sendMessage ←", type, response);
+        return response;
     } catch (err) {
-        if (isContextInvalidated(err)) return undefined;
+        if (isContextInvalidated(err)) {
+            debugLog("sendMessage ✗", type, "— extension context invalidated");
+            return undefined;
+        }
+        debugError("sendMessage ✗", type, err);
         throw err;
     }
 }

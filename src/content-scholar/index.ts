@@ -1,8 +1,11 @@
 import { observeScholarResults, processScholarResults } from "./observer";
-import { debugLog } from "@shared/debug";
+import { debugLog, setDebugContext } from "@shared/debug";
 import { isSetupComplete } from "@shared/settings";
 import { isDomainBlocked } from "@shared/domains";
 import { renderSetupPrompt, hideAllFloraUI, showAllFloraUI } from "../content-general/injector";
+
+setDebugContext("scholar");
+debugLog("Content script loaded on", location.href, "— readyState:", document.readyState);
 
 // Tell the service worker whether FLoRA is active on this tab (toolbar icon).
 function reportActiveState(active: boolean): void {

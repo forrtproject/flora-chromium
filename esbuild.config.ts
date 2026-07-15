@@ -2,14 +2,20 @@ import * as esbuild from "esbuild";
 import { copyFileSync, mkdirSync } from "fs";
 
 const isWatch = process.argv.includes("--watch");
+const isDebug = process.argv.includes("--debug");
 
 const sharedOptions: esbuild.BuildOptions = {
   bundle: true,
-  minify: !isWatch,
-  sourcemap: isWatch ? "inline" : false,
+  minify: !isWatch && !isDebug,
+  sourcemap: isWatch || isDebug ? "inline" : false,
   target: "chrome116",
   logLevel: "info",
   loader: { ".css": "text" },
+  define: {
+    // Force-enables the debug logger (and fetch/lifecycle tracing) in
+    // debug/watch builds; production builds keep it storage-gated.
+    __FLORA_DEBUG__: JSON.stringify(isWatch || isDebug),
+  },
 };
 
 const configs: esbuild.BuildOptions[] = [

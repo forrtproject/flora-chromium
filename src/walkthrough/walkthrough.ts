@@ -1,3 +1,8 @@
+import { debugLog, setDebugContext } from "../shared/debug";
+
+setDebugContext("walkthrough");
+debugLog("Walkthrough page loaded");
+
 const TOTAL = 6;
 let current = 0;
 

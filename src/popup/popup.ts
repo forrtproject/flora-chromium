@@ -1,4 +1,8 @@
 import { getBlockedDomains, saveBlockedDomains, isDomainBlocked } from "../shared/domains";
+import { debugLog, setDebugContext } from "../shared/debug";
+
+setDebugContext("popup");
+debugLog("Popup opened");
 
 const domainEl = document.getElementById("current-domain")!;
 const blockBtn = document.getElementById("block-btn")!;
@@ -86,6 +90,7 @@ async function init(): Promise<void> {
       // Content script not running on this page — that's fine
     }
   }
+  debugLog("Popup init: tab", activeTabId, "— domain:", currentDomain, "— blocked:", blocked, "— UI hidden:", hidden);
 }
 
 // Block / unblock the current domain

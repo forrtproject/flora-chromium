@@ -1,5 +1,9 @@
 import { getSettings, saveSettings } from "../shared/settings";
 import { getBlockedDomains, saveBlockedDomains } from "../shared/domains";
+import { debugLog, setDebugContext } from "../shared/debug";
+
+setDebugContext("options");
+debugLog("Options page loaded");
 
 // ── Email form ──────────────────────────────────────────────────────
 
