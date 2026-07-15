@@ -31,11 +31,16 @@ import type {DoiString} from "@shared/types";
  * right after the entry's last link so it sits inline with that row. Falls
  * back to the entry end only when the entry has no links at all.
  */
+// textContent throughout (never innerText): these run per reference entry on
+// every mutation pass, and innerText forces a layout reflow for every
+// descendant of every entry. textContent yields the same relative lengths for
+// selecting the container, without the reflow.
 function findSmallestTextContainer(root: HTMLElement, needle: string): HTMLElement | null {
     let best: HTMLElement | null = null;
     let bestLen = Infinity;
     for (const el of root.querySelectorAll<HTMLElement>("*")) {
-        const t = el.innerText ?? el.textContent ?? "";
+        const t = el.textContent ?? "";
+        // Cheap bound: skip descendants that cannot host the needle.
         if (!t.includes(needle)) continue;
         if (t.length < bestLen) {
             best = el;
@@ -48,13 +53,17 @@ function findSmallestTextContainer(root: HTMLElement, needle: string): HTMLEleme
 // Descendant with ≥50% but <100% of the entry's text — the citation body,
 // excluding trailing action-link rows ("Article | Google Scholar").
 function findCitationBody(entry: HTMLElement): HTMLElement | null {
-    const entryText = (entry.innerText ?? entry.textContent ?? "").trim();
+    const entryText = (entry.textContent ?? "").trim();
     if (entryText.length < 40) return null;
     const floor = Math.floor(entryText.length * 0.5);
     let best: HTMLElement | null = null;
     let bestLen = 0;
     for (const el of entry.querySelectorAll<HTMLElement>("*")) {
-        const t = (el.innerText ?? el.textContent ?? "").trim();
+        const raw = el.textContent ?? "";
+        // Cheap bound: an element shorter than the floor (untrimmed length is an
+        // upper bound after trimming) can never qualify — skip before trimming.
+        if (raw.length < floor) continue;
+        const t = raw.trim();
         if (t.length >= floor && t.length < entryText.length && t.length > bestLen) {
             best = el;
             bestLen = t.length;

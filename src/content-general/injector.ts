@@ -237,17 +237,44 @@ function ensureBannerHost(): HTMLElement {
     return host;
 }
 
-// Track elements we've modified so we can restore them on removal
-const modifiedElements = new Set<HTMLElement>();
+// Track elements we've modified, remembering each one's ORIGINAL inline top /
+// padding-top so removeBanner can restore them exactly. `null` = the property
+// was not set inline before we touched it (must be removed, not zeroed).
+interface OriginalInline {
+    top: string | null;
+    paddingTop: string | null;
+}
+const modifiedElements = new Map<HTMLElement, OriginalInline>();
+
+/** Remember an element's original inline top/padding-top once, before writing. */
+function rememberOriginal(el: HTMLElement): void {
+    if (modifiedElements.has(el)) return;
+    modifiedElements.set(el, {
+        top: el.style.getPropertyValue("top") || null,
+        paddingTop: el.style.getPropertyValue("padding-top") || null,
+    });
+}
+
+/** Restore one saved inline property, removing it if it had no inline value. */
+function restoreInline(el: HTMLElement, prop: "top" | "padding-top", saved: string | null): void {
+    if (saved === null || saved === "") {
+        el.style.removeProperty(prop);
+    } else {
+        el.style.setProperty(prop, saved);
+    }
+}
 
 export function removeBanner(): void {
     const host = document.getElementById(BANNER_HOST_ID);
     if (host) {
         host.remove();
-        document.body.style.removeProperty("padding-top");
-        for (const el of modifiedElements) {
-            el.style.removeProperty("padding-top");
-            el.style.removeProperty("top");
+        // Restore every modified element (incl. <body>) to its ORIGINAL inline
+        // values instead of blindly removing them — blind removeProperty
+        // destroyed page-authored inline top/padding-top and left the layout
+        // corrupted after the banner closed.
+        for (const [el, saved] of modifiedElements) {
+            restoreInline(el, "top", saved.top);
+            restoreInline(el, "padding-top", saved.paddingTop);
         }
         modifiedElements.clear();
     }
@@ -258,46 +285,46 @@ function adjustPageForBanner(): void {
     if (!banner) return;
     const inner = banner.firstElementChild as HTMLElement | null;
     const bannerHeight = inner?.offsetHeight || 35;
+    const setupPrompt = document.getElementById(SETUP_HOST_ID);
 
-    // Make space for the banner at the top of the body
+    // The body padding-top must be applied BEFORE measuring sticky elements:
+    // their getBoundingClientRect().top depends on it (fixed-element writes,
+    // below, do not — fixed boxes are out of flow). So we write body padding
+    // first, then do a single batched READ pass, then a single batched WRITE
+    // pass. This yields two layout flushes total instead of the per-element
+    // read/write thrash the old sticky loop caused.
+    rememberOriginal(document.body);
     document.body.style.setProperty("padding-top", `${bannerHeight}px`, "important");
 
-    // Gather fixed elements and push them down (skip our own UI elements)
-    const setupPrompt = document.getElementById(SETUP_HOST_ID);
-    const fixedElements = Array.from(document.querySelectorAll<HTMLElement>("*")).filter(
-        (el) =>
-            el !== banner &&
-            el !== inner &&
-            !setupPrompt?.contains(el) &&
-            window.getComputedStyle(el).position === "fixed"
-    );
-    for (const el of fixedElements) {
-        if (isSheets) {
-            // Only shift top-anchored elements; skip bottom-anchored ones (sheet tabs bar)
-            const cs = window.getComputedStyle(el);
-            const hasBottom = cs.bottom !== "auto" && parseInt(cs.bottom) >= 0;
-            if (hasBottom && parseInt(cs.bottom) < 50) continue;
-            const currentTop = parseInt(cs.top) || 0;
-            el.style.setProperty("top", `${currentTop + bannerHeight}px`, "important");
-        } else {
-            el.style.setProperty("padding-top", `${bannerHeight}px`, "important");
+    // ── READ phase: one querySelectorAll("*"); classify + measure, no writes. ──
+    interface Adjustment { el: HTMLElement; prop: "top" | "padding-top"; value: string; }
+    const adjustments: Adjustment[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>("*")) {
+        if (el === banner || el === inner || setupPrompt?.contains(el)) continue;
+        const cs = window.getComputedStyle(el);
+        const position = cs.position;
+        if (position === "fixed") {
+            if (isSheets) {
+                // Only shift top-anchored elements; skip bottom-anchored ones (sheet tabs bar)
+                const hasBottom = cs.bottom !== "auto" && parseInt(cs.bottom) >= 0;
+                if (hasBottom && parseInt(cs.bottom) < 50) continue;
+                const currentTop = parseInt(cs.top) || 0;
+                adjustments.push({ el, prop: "top", value: `${currentTop + bannerHeight}px` });
+            } else {
+                adjustments.push({ el, prop: "padding-top", value: `${bannerHeight}px` });
+            }
+        } else if (position === "sticky") {
+            const top = el.getBoundingClientRect().top;
+            const threshold = parseInt(cs.top);
+            const value = (top < bannerHeight || top <= threshold) ? `${bannerHeight}px` : "0px";
+            adjustments.push({ el, prop: "padding-top", value });
         }
-        modifiedElements.add(el);
     }
 
-    // Gather sticky elements and conditionally push them down
-    const stickyElements = Array.from(document.querySelectorAll<HTMLElement>("*")).filter(
-        (el) => el !== banner && el !== inner && window.getComputedStyle(el).position === "sticky"
-    );
-    for (const el of stickyElements) {
-        const position = el.getBoundingClientRect().top;
-        const threshold = parseInt(window.getComputedStyle(el).top);
-        if (position < bannerHeight || position <= threshold) {
-            el.style.setProperty("padding-top", `${bannerHeight}px`, "important");
-        } else {
-            el.style.setProperty("padding-top", "0px", "important");
-        }
-        modifiedElements.add(el);
+    // ── WRITE phase: remember originals, then apply. No interleaved reads. ──────
+    for (const { el, prop, value } of adjustments) {
+        rememberOriginal(el);
+        el.style.setProperty(prop, value, "important");
     }
 }
 
@@ -872,6 +899,17 @@ function attachTabDrag(tab: HTMLElement): void {
   };
 }
 
+/** A node FLoRA itself injected (badge, pill, panel, tab, …) — id/class flora-*. */
+function isFloraOwnedNode(node: Node): boolean {
+  if (node.nodeType !== Node.ELEMENT_NODE) return true; // text/comment — not layout-relevant here
+  const el = node as Element;
+  if (el.id.startsWith("flora-")) return true;
+  for (const c of el.classList) {
+    if (c.startsWith("flora-")) return true;
+  }
+  return false;
+}
+
 function setupTabPositioning(tab: HTMLElement): void {
   cleanupTabPositioning();
   positionTabOnRightEdge(tab);
@@ -884,8 +922,27 @@ function setupTabPositioning(tab: HTMLElement): void {
     debounceTimer = setTimeout(() => positionTabOnRightEdge(tab), 200);
   };
 
+  // The reposition sweep (querySelectorAll("*") + geometry per element) is
+  // expensive, so only run it for mutations that can actually change the
+  // right-edge layout: EXTERNAL, non-FLoRA nodes being added/removed. Without
+  // this filter every FLoRA injection (and our own badge churn) retriggered the
+  // whole sweep. Placement is idempotent, so running it less often yields the
+  // identical final position.
+  const onMutations = (mutations: MutationRecord[]): void => {
+    if (_customTabTop !== null) return;
+    if (!tab.isConnected) return;
+    const relevant = mutations.some((m) => {
+      // Ignore mutations that happen inside a FLoRA container.
+      if ((m.target as Element).closest?.('[id^="flora-"]')) return false;
+      for (const n of m.addedNodes) if (!isFloraOwnedNode(n)) return true;
+      for (const n of m.removedNodes) if (!isFloraOwnedNode(n)) return true;
+      return false;
+    });
+    if (relevant) reposition();
+  };
+
   // subtree:true catches plugins that inject into nested containers
-  _tabPositionObserver = new MutationObserver(reposition);
+  _tabPositionObserver = new MutationObserver(onMutations);
   _tabPositionObserver.observe(document.body, { childList: true, subtree: true });
 
   _tabResizeHandler = reposition;

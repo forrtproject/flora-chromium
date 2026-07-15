@@ -10,6 +10,7 @@
     "test:watch": "vitest",
     "test:visual": "tsx tests/visual/run.ts",
     "test:visual:update": "tsx tests/visual/run.ts --update",
+    "bench:scan-gating": "tsx scripts/bench-scan-gating.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

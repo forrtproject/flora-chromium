@@ -37,6 +37,7 @@ import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
 import {resolveReferenceDois, renderResolvedReferences, type ResolvedReference} from "./references";
+import {couldNodeIntroduceDoi, scanFingerprint} from "./scan-gate";
 
 // PubPeer commenter IDs whose comments are hidden in the embedded iframe.
 // Add any bot/org account ID here to suppress its annotations from the panel.
@@ -58,6 +59,14 @@ let lastRefFeedbackByDoi: Map<DoiString, PubPeerFeedback> = new Map();
 // Monotonically increments when FORRT lookup results land in pageState.
 let pageStateVersion = 0;
 let lastRenderedPageStateVersion = -1;
+// Perf gating (see startDomListener / pageRenderChangeHandler):
+//  - `everYieldedDoi` latches true the first time this page URL surfaces ANY
+//    DOI. Until then, an irrelevant, non-scholarly page is scanned only by a
+//    cheap per-mutation probe rather than the full pipeline.
+//  - `lastScanFingerprint` memoises the last-scanned page state so a pass whose
+//    inputs are unchanged skips the full pipeline entirely.
+let everYieldedDoi = false;
+let lastScanFingerprint: string | null = null;
 // In-flight reference resolution, shared across one render pass.
 let resolvedRefsPromise: Promise<ResolvedReference[]> | null = null;
 
@@ -106,7 +115,32 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     }
 });
 
-async function pageRenderChangeHandler(): Promise<void> {
+// Benchmark-only instrumentation, inert in normal use. When the page carries
+// `data-flora-perf` on <html>, each render pass dispatches a `flora-perf-pass`
+// DOM event with its duration and how the pass resolved (a content script and
+// the page share the DOM but not JS globals, so a DOM event is how timing
+// crosses out). See scripts/bench-scan-gating.ts.
+function perfEnabled(): boolean {
+    return document.documentElement?.hasAttribute?.("data-flora-perf") ?? false;
+}
+
+let _lastPassKind = "";
+async function pageRenderChangeHandler(hint?: ScanHint): Promise<void> {
+    if (!perfEnabled()) return runRenderPass(hint);
+    const t0 = performance.now();
+    _lastPassKind = "full";
+    try {
+        await runRenderPass(hint);
+    } finally {
+        document.dispatchEvent(
+            new CustomEvent("flora-perf-pass", {
+                detail: { ms: performance.now() - t0, kind: _lastPassKind },
+            }),
+        );
+    }
+}
+
+async function runRenderPass(hint?: ScanHint): Promise<void> {
     // Detect full URL change (SPA navigation) — clear state
     const currentUrl = location.href;
     if (currentUrl !== lastUrl) {
@@ -121,6 +155,9 @@ async function pageRenderChangeHandler(): Promise<void> {
         resolvedRefsPromise = null;
         pageState.clear();
         augmentAttempted = false;
+        // New page — reset the relevance latch and the skip-unchanged memo.
+        everYieldedDoi = false;
+        lastScanFingerprint = null;
         resetRetractionPills();
         if (isSheets) {
             removeSheetsModal();
@@ -128,13 +165,61 @@ async function pageRenderChangeHandler(): Promise<void> {
             removeSidePanel();
         }
     }
+
+    // ── Cheap gating before any full-DOM scan (non-Sheets only). ──────────────
+    // Sheets uses a canvas-backed grid + CSV export and its own paths, so these
+    // DOM-text gates don't apply there.
+    if (!isSheets) {
+        // (1) Relevance pre-gate. A page that has never yielded a DOI and is not
+        // a scholarly article gets only a cheap probe: `hint.couldBeRelevant` is
+        // true iff a node added in THIS mutation batch contains the literal
+        // "10.<4+ digits>" registrant that begins every serialised DOI (in text,
+        // an href, or a meta value — see startDomListener). If nothing DOI-like
+        // was added, this pass cannot surface a new DOI, so bail without reading
+        // the DOM. Invariant preserved: (a) DOIs present at the initial full scan
+        // are caught by it (that pass carries no hint); (b) any DOI introduced
+        // later arrives inside an added subtree whose markup contains that
+        // registrant substring, flipping couldBeRelevant true; (c) once ANY DOI
+        // is found, `everYieldedDoi` latches and this gate is disabled for the
+        // rest of the page's life; (d) a tab re-show re-runs with no hint (full
+        // scan). So no DOI-bearing content can permanently escape detection.
+        if (hint && !hint.couldBeRelevant && !everYieldedDoi && !isScholarlyArticlePage()) {
+            debugLog("General: pre-gate skip — no DOI-like content added to an irrelevant page");
+            _lastPassKind = "pregate-bail";
+            return;
+        }
+
+        // (2) Skip-unchanged memo. If the scanned text (and our own placed-UI
+        // count) is identical to the last pass, nothing to do. textContent does
+        // NOT force layout (unlike innerText), so this fingerprint is cheap
+        // relative to the full pipeline it guards.
+        const fp = scanFingerprint();
+        if (fp === lastScanFingerprint) {
+            debugLog("General: fingerprint unchanged — skipping full scan");
+            _lastPassKind = "fingerprint-skip";
+            return;
+        }
+        lastScanFingerprint = fp;
+    }
+
     // Fresh DOM scan pass — resets the per-pass findReferenceContainers memo.
     beginDomScanPass();
 
     // Resolve reference-list DOIs in parallel with the FORRT lookup below.
     resolvedRefsPromise = resolveReferenceDois();
+    // A page whose only DOIs come from reference augmentation (entries with no
+    // on-page DOI) still counts as relevant — latch the pre-gate open so later
+    // mutations (e.g. more citations streaming in) keep getting full scans.
+    resolvedRefsPromise.then((refs) => {
+        if (refs.length > 0) everYieldedDoi = true;
+    }).catch(() => {});
 
-    // Non-Sheets: one classification scan (allDois). Sheets: canvas extractDOIs + CSV.
+    // Single position-aware scan for this pass — reused for classification,
+    // badge placement, and the post-lookup "still in DOM" recheck.
+    const occurrences = extractDoiOccurrences(document);
+
+    // Non-Sheets: one classification scan (allDois), reusing `occurrences` so no
+    // extra a[href] sweep or body-text read. Sheets: canvas extractDOIs + CSV.
     let dois: DoiString[];
     let classified: ClassifiedDois | null = null;
     if (isSheets) {
@@ -143,12 +228,12 @@ async function pageRenderChangeHandler(): Promise<void> {
             dois = [...new Set([...dois, ...sheetCsvDois])];
         }
     } else {
-        classified = classifyPageDois(document);
+        classified = classifyPageDois(document, occurrences);
         dois = classified.allDois;
     }
 
-    // DOI occurrences with source + anchor, so badges place without re-scanning.
-    const occurrences = extractDoiOccurrences(document);
+    // Latch the relevance gate open the moment this page surfaces any DOI.
+    if (dois.length > 0) everYieldedDoi = true;
 
     const hasDoiChange = processedDois.size !== dois.length ||
         !dois.every(doi => processedDois.has(doi));
@@ -285,9 +370,20 @@ async function pageRenderChangeHandler(): Promise<void> {
         }
         pageStateVersion++; // signal that replication data is now available
 
-        // Collect matched DOIs for display
-        // On Sheets, skip the "still in DOM" re-check — the canvas DOM is unreliable
-        const currentDois = isSheets ? null : new Set(extractDOIs(document));
+        // Collect matched DOIs for display.
+        // "Still in DOM" recheck WITHOUT a second full scan: reuse this pass's
+        // shared artifact. Authoritative DOIs (URL/meta/JSON-LD) never leave via
+        // a DOM mutation; every other DOI is "still present" iff one of its
+        // occurrence anchors is still connected to the live document (an anchor
+        // wiped by a concurrent SPA re-render reports isConnected === false).
+        // On Sheets, skip the recheck — the canvas DOM is unreliable.
+        const currentDois = isSheets ? null : (() => {
+            const present = new Set<DoiString>(classified!.articleDois);
+            for (const occ of occurrences) {
+                if (occ.anchor.isConnected) present.add(occ.doi);
+            }
+            return present;
+        })();
         const matched = [...pageState.entries()]
             .filter(([doi, s]) => {
                 if (s.status !== "matched") return false;
@@ -376,6 +472,7 @@ async function augmentFromTitle(): Promise<void> {
         const resolvedDoi = augmented.get(pageTitle);
         debugLog("Title augmentation:", resolvedDoi ? `resolved to ${resolvedDoi}` : "no match", `(title: "${pageTitle}")`);
         if (resolvedDoi) {
+            everYieldedDoi = true; // page produced a DOI — disable the relevance pre-gate
             processedDois.add(resolvedDoi);
             const request: LookupRequest = {
                 type: "FLORA_LOOKUP",
@@ -625,29 +722,51 @@ function isFloraOwnedNode(node: Node): boolean {
     return false;
 }
 
-function startDomListener(callback: () => void) {
+/** Hint passed from the mutation observer to the render handler. */
+interface ScanHint {
+    /**
+     * True when a node added in this mutation batch could carry a DOI — used by
+     * the relevance pre-gate to cheaply skip passes on irrelevant pages. Absent
+     * hint (initial run, tab re-show) always forces a full scan.
+     */
+    couldBeRelevant: boolean;
+}
+
+function startDomListener(callback: (hint?: ScanHint) => void) {
     let debounceTimer: number;
+    // Whether any external node added since the last fired callback could carry
+    // a DOI. Accumulated across debounced mutation batches, reset when fired.
+    let pendingCouldBeRelevant = false;
     const observer = new MutationObserver((mutations) => {
         // Do no work while this tab is in the background.
         if (document.hidden) return;
-        const hasExternalChange = mutations.some(m => {
-            if (m.addedNodes.length === 0) return false;
+        let hasExternalChange = false;
+        for (const m of mutations) {
+            if (m.addedNodes.length === 0) continue;
             // Skip mutations inside FLoRA's own injected containers.
-            if ((m.target as Element).closest?.('[id^="flora-"]')) return false;
-            // Skip if every added node is a FLoRA-owned element (badges, pills, panel, etc.).
+            if ((m.target as Element).closest?.('[id^="flora-"]')) continue;
             for (const node of m.addedNodes) {
-                if (!isFloraOwnedNode(node)) return true;
+                // Skip FLoRA-owned elements (badges, pills, panel, etc.).
+                if (isFloraOwnedNode(node)) continue;
+                hasExternalChange = true;
+                if (!pendingCouldBeRelevant && couldNodeIntroduceDoi(node)) {
+                    pendingCouldBeRelevant = true;
+                }
             }
-            return false;
-        });
+        }
         if (hasExternalChange) {
             clearTimeout(debounceTimer);
-            debounceTimer = window.setTimeout(callback, 300);
+            debounceTimer = window.setTimeout(() => {
+                const couldBeRelevant = pendingCouldBeRelevant;
+                pendingCouldBeRelevant = false;
+                callback({ couldBeRelevant });
+            }, 300);
         }
     });
     observer.observe(document.body, { childList: true, subtree: true });
     // Re-scan when the tab becomes active again — mutations that happened while
-    // it was hidden were ignored above.
+    // it was hidden were ignored above. No hint → full scan (can't localise what
+    // changed while hidden).
     document.addEventListener("visibilitychange", () => {
         if (!document.hidden) callback();
     });

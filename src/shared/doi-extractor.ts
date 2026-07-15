@@ -14,9 +14,9 @@ const SUFFIX_CHARS = `[^\\s,/\\]}>'"<#?&\\\\]`;
 const EXTRA_SLASH = `(?:\\/(?![a-zA-Z-]+(?:[/\\s,#?&<>{}\\[\\]]|$))${SUFFIX_CHARS}+)*`;
 const DOI_REGEX = new RegExp(`(10\\.\\d{4,}(?:\\.\\d+)*\\/${SUFFIX_CHARS}+${EXTRA_SLASH})`, "g");
 
-// For visible body text only — innerText contains no HTML tags, so < and >
-// appear as literal characters (e.g. SICI DOIs decoded from &lt; / &gt; HTML
-// entities). We allow them here so that DOIs like
+// For rendered body text only (textContent/innerText) — such text contains no
+// HTML tags, so < and > appear as literal characters (e.g. SICI DOIs decoded
+// from &lt; / &gt; HTML entities). We allow them here so that DOIs like
 // 10.1002/(SICI)...18:4<303::AID-SMJ869>3.0.CO;2-G are not truncated at '<'.
 const TEXT_SUFFIX_CHARS = `[^\\s,/\\]'"#?&\\\\]`;
 const TEXT_EXTRA_SLASH = `(?:\\/(?![a-zA-Z-]+(?:[/\\s,#?&<>{}\\[\\]]|$))${TEXT_SUFFIX_CHARS}+)*`;
@@ -369,7 +369,10 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
     // there would serialize FLoRA markup into the user's saved document.
     if (isEditableContext(link)) continue;
     const textDois = new Set<DoiString>();
-    const linkText = link.innerText || link.textContent || "";
+    // textContent (not innerText) — innerText forces a synchronous layout
+    // reflow; a link's text has no block-boundary whitespace concerns, so
+    // textContent yields the same DOI tokens without the reflow cost.
+    const linkText = link.textContent || "";
     const cleaned = decodeEncodedDois(linkText.replace(WORD_BREAK_CHARS, ""));
     for (const match of cleaned.matchAll(DOI_TEXT_REGEX)) {
       const raw = cleanDoiTrailing(match[1]);
@@ -432,7 +435,13 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
 }
 
 function extractFromVisibleText(doc: Document, found: Set<DoiString>): void {
-  const rawText = doc.body?.innerText || doc.body?.textContent || "";
+  // textContent, NOT innerText: innerText forces a full synchronous layout
+  // reflow of the whole page (the headline per-mutation cost). textContent is
+  // a superset that also includes visually-hidden text — but this set only
+  // decides which DOIs to *look up*, never where UI is placed. Badge/pill
+  // placement is gated by isVisible() at render time, so surfacing a hidden
+  // DOI here cannot make a badge appear on hidden text.
+  const rawText = doc.body?.textContent || "";
   // Strip invisible word-break characters that sites insert for overflow-wrap/break-word
   // and decode any percent-encoded DOIs
   const bodyText = decodeEncodedDois(rawText.replace(WORD_BREAK_CHARS, ""));
@@ -571,7 +580,7 @@ function extractDoiFromEntry(
   // buttons ("View", "Cite", "Add to favorites") that point at the current
   // article, not the cited/citing paper — using them first caused every
   // Wiley cited-by row to resolve to the host article's own DOI.
-  const text = entry.innerText ?? entry.textContent ?? "";
+  const text = entry.textContent ?? "";
   const cleaned = decodeEncodedDois(text.replace(WORD_BREAK_CHARS, ""));
   for (const match of cleaned.matchAll(DOI_TEXT_REGEX)) {
     const raw = cleanDoiTrailing(match[1]);
@@ -673,7 +682,7 @@ export function findReferenceEntries(doc: Document): ReferenceEntry[] {
       element,
       doi,
       doiInText: inText,
-      text: cleanReferenceText(element.innerText ?? element.textContent ?? ""),
+      text: cleanReferenceText(element.textContent ?? ""),
     };
   });
 }
@@ -686,8 +695,9 @@ function extractFromReferenceContainers(doc: Document, found: Set<DoiString>): v
       const doi = extractDoiFromHref(link.href);
       if (doi) found.add(doi);
     }
-    // Visible text inside the container
-    const text = (container as HTMLElement).innerText ?? container.textContent ?? "";
+    // Visible text inside the container (textContent, not innerText — avoids a
+    // layout reflow; placement stays visibility-gated at render time).
+    const text = container.textContent ?? "";
     const cleaned = decodeEncodedDois(text.replace(WORD_BREAK_CHARS, ""));
     for (const match of cleaned.matchAll(DOI_TEXT_REGEX)) {
       const raw = cleanDoiTrailing(match[1]);
@@ -729,7 +739,7 @@ function pageTypeFromPath(doc: Document): PageType {
  *
  * Also returns the detected page type.
  */
-export function classifyPageDois(doc: Document): ClassifiedDois {
+export function classifyPageDois(doc: Document, occurrences?: DoiOccurrence[]): ClassifiedDois {
   // Article DOIs (authoritative sources) — scanned once, reused below.
   const articleFound = new Set<DoiString>();
   extractFromUrl(doc, articleFound);
@@ -743,8 +753,19 @@ export function classifyPageDois(doc: Document): ClassifiedDois {
 
   // Remaining page-wide DOIs — seed from the article set to avoid re-scanning.
   const pageWide = new Set<DoiString>(articleFound);
-  extractFromDoiLinks(doc, pageWide);
-  extractFromVisibleText(doc, pageWide);
+  if (occurrences) {
+    // Single-scan path: reuse the position-aware occurrences already computed
+    // for this pass instead of a second a[href] sweep + a full body-text read.
+    // Occurrences capture every DOI that can be located on the page (link text,
+    // doi.org/embedded hrefs, and prose text nodes), which is exactly the set
+    // that drives lookup + placement. DOIs that occurrences deliberately skip
+    // (editable regions, or a DOI split across sibling text nodes) are ones we
+    // never render anyway, so omitting them from the lookup set is safe.
+    for (const occ of occurrences) pageWide.add(occ.doi);
+  } else {
+    extractFromDoiLinks(doc, pageWide);
+    extractFromVisibleText(doc, pageWide);
+  }
 
   // Other = everything not already classified
   const otherFound = new Set<DoiString>();
