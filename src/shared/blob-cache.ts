@@ -2,6 +2,8 @@
 // Cross-context concurrent writes are last-writer-wins on the whole blob —
 // acceptable for a cache (lost write = re-fetch).
 
+import {debugLog} from "./debug";
+
 interface CacheEntry<T> {
     v: T;
     t: number;
@@ -108,7 +110,27 @@ export class BlobCache<T> {
         try {
             await chrome.storage.local.set({[this.opts.storageKey]: this.mem});
         } catch {
-            // non-fatal
+            // Likely storage quota. Attempt one recovery: evict the oldest half
+            // of this blob's entries (by timestamp) and retry the write once.
+            this.evictOldestHalf();
+            try {
+                await chrome.storage.local.set({[this.opts.storageKey]: this.mem});
+            } catch {
+                debugLog(
+                    `BlobCache(${this.opts.storageKey}): write failed after evicting oldest half; keeping in-memory copy only`
+                );
+            }
+        }
+    }
+
+    private evictOldestHalf(): void {
+        if (!this.mem) return;
+        const keys = Object.keys(this.mem);
+        if (keys.length <= 1) return;
+        keys.sort((a, b) => this.mem![a].t - this.mem![b].t);
+        const dropCount = Math.floor(keys.length / 2);
+        for (let i = 0; i < dropCount; i++) {
+            delete this.mem[keys[i]];
         }
     }
 
