@@ -93,6 +93,53 @@ function cleanDoiTrailing(raw: string): string {
 }
 
 /**
+ * True when `el` (or any ancestor) is a place where injecting FLoRA's
+ * pill/badge markup would corrupt user data — i.e. content the user can edit
+ * and whose serialized HTML gets saved. If a DOI is typed or pasted into a
+ * rich-text editor (Notion, a CMS, webmail compose, a wiki) and we inject a
+ * span next to it, that span is serialized into the user's saved document.
+ *
+ * Editable contexts detected:
+ *  - `contenteditable` regions — via `isContentEditable`, which resolves
+ *    inheritance correctly (a `contenteditable="false"` island inside an
+ *    editable region reports `false`, unlike a bare `closest("[contenteditable]")`).
+ *  - form fields: TEXTAREA / INPUT / SELECT, or any element inside one.
+ *  - `document.designMode === "on"` — the whole document is editable.
+ */
+export function isEditableContext(el: Element | null): boolean {
+  if (!el) return false;
+
+  const doc = el.ownerDocument;
+  if (doc && doc.designMode === "on") return true;
+
+  // Primary: isContentEditable resolves contenteditable inheritance (including
+  // the "false" re-disable case) in real browsers. Only HTMLElements expose it.
+  if (typeof (el as HTMLElement).isContentEditable === "boolean") {
+    if ((el as HTMLElement).isContentEditable) return true;
+  } else {
+    // Fallback for environments without live isContentEditable (e.g. jsdom):
+    // walk to the nearest ancestor that sets contenteditable and honour its
+    // value — contenteditable="false" re-disables an editable region.
+    for (let cur: Element | null = el; cur; cur = cur.parentElement) {
+      const attr = cur.getAttribute("contenteditable");
+      if (attr === null) continue;
+      const v = attr.toLowerCase();
+      if (v === "false") break;
+      if (v === "" || v === "true" || v === "plaintext-only") return true;
+      // "inherit" or other values: keep looking up.
+    }
+  }
+
+  // Form fields — TEXTAREA / INPUT / SELECT, or any element inside one.
+  for (let cur: Element | null = el; cur; cur = cur.parentElement) {
+    const tag = cur.tagName;
+    if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return true;
+  }
+
+  return false;
+}
+
+/**
  * Pull a DOI out of an anchor href. Tries (in order):
  *  1. doi.org / dx.doi.org / doi: prefix → {@link normaliseDOI}
  *  2. DOI passed in a query parameter (?doi=…, ?identifierName=doi&identifierValue=…)
@@ -318,6 +365,9 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
 
   // 1. Links — text match wins over href; embedded URLs are last resort.
   for (const link of doc.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    // Skip links inside editable regions — anchoring (and later injecting)
+    // there would serialize FLoRA markup into the user's saved document.
+    if (isEditableContext(link)) continue;
     const textDois = new Set<DoiString>();
     const linkText = link.innerText || link.textContent || "";
     const cleaned = decodeEncodedDois(linkText.replace(WORD_BREAK_CHARS, ""));
@@ -351,6 +401,9 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
       if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT") {
         return NodeFilter.FILTER_REJECT;
       }
+      // Editable content (contenteditable, form fields, designMode) — anchoring
+      // here would let injected markup be serialized into the user's document.
+      if (isEditableContext(parent)) return NodeFilter.FILTER_REJECT;
       // Anchor descendants are covered by the link pass above.
       if (parent.closest("a")) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;

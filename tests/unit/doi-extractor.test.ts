@@ -5,6 +5,8 @@ import { JSDOM } from "jsdom";
 import {
   extractDOIs,
   extractDOIsFromText,
+  extractDoiOccurrences,
+  isEditableContext,
   findReferenceContainers,
   findReferenceEntries,
 } from "../../src/shared/doi-extractor";
@@ -268,6 +270,78 @@ describe("extractDOIs", () => {
     expect(dois).toContain("10.1371/journal.pone.0033423");
     expect(dois).toHaveLength(4);
     expect(dois.some(d => /[,;.)]+$/.test(d))).toBe(false);
+  });
+});
+
+describe("isEditableContext", () => {
+  function el(html: string, selector: string): Element {
+    const doc = new JSDOM(`<body>${html}</body>`).window.document;
+    return doc.querySelector(selector)!;
+  }
+
+  it("returns false for plain prose", () => {
+    expect(isEditableContext(el(`<p id="x">10.1/y</p>`, "#x"))).toBe(false);
+  });
+
+  it("returns true inside a contenteditable region", () => {
+    expect(isEditableContext(el(`<div contenteditable="true"><span id="x">10.1/y</span></div>`, "#x"))).toBe(true);
+  });
+
+  it("treats bare contenteditable (no value) as editable", () => {
+    expect(isEditableContext(el(`<div contenteditable><span id="x">z</span></div>`, "#x"))).toBe(true);
+  });
+
+  it("respects contenteditable=false re-disabling an editable region", () => {
+    const html = `<div contenteditable="true"><div contenteditable="false"><span id="x">z</span></div></div>`;
+    expect(isEditableContext(el(html, "#x"))).toBe(false);
+  });
+
+  it("returns true for TEXTAREA and its descendants", () => {
+    expect(isEditableContext(el(`<textarea id="x">10.1/y</textarea>`, "#x"))).toBe(true);
+  });
+
+  it("returns true inside INPUT / SELECT", () => {
+    expect(isEditableContext(el(`<select id="x"><option>10.1/y</option></select>`, "#x"))).toBe(true);
+  });
+
+  it("returns true when document.designMode is on", () => {
+    const doc = new JSDOM(`<body><p id="x">10.1/y</p></body>`).window.document;
+    doc.designMode = "on";
+    expect(isEditableContext(doc.querySelector("#x"))).toBe(true);
+  });
+
+  it("returns false for null", () => {
+    expect(isEditableContext(null)).toBe(false);
+  });
+});
+
+describe("extractDoiOccurrences editable-context filtering", () => {
+  function docFrom(html: string): Document {
+    return new JSDOM(`<body>${html}</body>`).window.document;
+  }
+
+  it("does not anchor prose DOIs inside a contenteditable editor", () => {
+    const doc = docFrom(`<div contenteditable="true">See 10.1038/nature12373 for details.</div>`);
+    const occ = extractDoiOccurrences(doc);
+    expect(occ).toHaveLength(0);
+  });
+
+  it("does not anchor DOI links inside a contenteditable editor", () => {
+    const doc = docFrom(`<div contenteditable="true"><a href="https://doi.org/10.1038/nature12373">link</a></div>`);
+    const occ = extractDoiOccurrences(doc);
+    expect(occ).toHaveLength(0);
+  });
+
+  it("does not anchor DOIs inside a textarea", () => {
+    const doc = docFrom(`<textarea>Please cite 10.1038/nature12373 here.</textarea>`);
+    const occ = extractDoiOccurrences(doc);
+    expect(occ).toHaveLength(0);
+  });
+
+  it("still anchors the same DOI in ordinary prose", () => {
+    const doc = docFrom(`<p>See 10.1038/nature12373 for details.</p>`);
+    const occ = extractDoiOccurrences(doc);
+    expect(occ.map((o) => o.doi)).toContain("10.1038/nature12373");
   });
 });
 

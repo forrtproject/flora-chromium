@@ -11,7 +11,7 @@
 // their DOI as visible text only get one when the user opts into
 // `showDoiPillsOnAllReferences`.
 
-import {findReferenceEntries, extractDoiFromHref, type ReferenceEntry} from "@shared/doi-extractor";
+import {findReferenceEntries, extractDoiFromHref, isEditableContext, type ReferenceEntry} from "@shared/doi-extractor";
 import {augmentDOIsViaWorker} from "@shared/messages";
 import {validateDOIs} from "@shared/doi-validate";
 import {injectRetractionInfo, type RetractionResponse} from "@shared/doi-retraction";
@@ -69,6 +69,14 @@ function placeReferencePill(
     mode: "augment" | "hidden",
     pill: HTMLElement
 ): void {
+    // Defence in depth: reference augmentation can reach placement with an
+    // entry inside an editable region (e.g. a citation pasted into a wiki or
+    // CMS editor). Never inject there — the pill would be serialized into the
+    // user's saved document.
+    if (isEditableContext(entry)) {
+        debugLog("placeReferencePill: skipped — entry is in an editable context");
+        return;
+    }
     if (mode === "hidden") {
         for (const link of entry.querySelectorAll<HTMLAnchorElement>("a[href]")) {
             if (extractDoiFromHref(link.href) === doi) {

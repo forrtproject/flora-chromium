@@ -1,7 +1,8 @@
-import {extractDoiFromHref} from "@shared/doi-extractor";
+import {extractDoiFromHref, isEditableContext} from "@shared/doi-extractor";
 import {FLORA_NOTICE_PILL_CLASS} from "@shared/doi-label";
 import type {DoiString, NoticeKind, RetractionResponse} from "@shared/types";
 import {safeSendMessage, type RetractionCheckResponse} from "@shared/messages";
+import {debugLog} from "@shared/debug";
 
 export const FLORA_RET_CHECK_KEY = "flora-ret-checked";
 
@@ -138,6 +139,15 @@ export function injectRetractionInfo(
     info: RetractionResponse,
     options: InjectRetractionOptions = {},
 ): void {
+    // Defence in depth: never inject a notice pill into user-editable content
+    // (contenteditable, form fields, designMode). Mutation-driven re-runs and
+    // augmented references can reach placement via paths that bypass the
+    // extraction-time filter; the injected pill would otherwise be serialized
+    // into the user's saved document.
+    if (isEditableContext(target)) {
+        debugLog("injectRetractionInfo: skipped — target is in an editable context");
+        return;
+    }
     // Idempotent per anchor (re-runs from DOM mutations must not stack pills)
     // and shown once per DOI — the first occurrence wins, later mentions of
     // the same retracted DOI are skipped.

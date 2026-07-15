@@ -54,3 +54,41 @@ describe("doi retraction content helper", () => {
         await expect(retractionCheck([doi("10.1038/nature12373")])).resolves.toEqual([]);
     });
 });
+
+// Defence-in-depth: even if a retracted DOI is somehow anchored to an editable
+// target, the placement layer must refuse to inject the notice pill so the
+// markup is never serialized into the user's saved document.
+describe("injectRetractionInfo editable-context guard", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        document.body.innerHTML = "";
+    });
+
+    const info = {
+        originDoi: doi("10.1038/nature12373"),
+        doi: doi("10.1038/retraction"),
+        kind: "retraction" as const,
+    };
+
+    it("injects a notice pill for an ordinary target", async () => {
+        document.body.innerHTML = `<p id="t">10.1038/nature12373</p>`;
+        const {injectRetractionInfo} = await import("../../src/shared/doi-retraction");
+        injectRetractionInfo(document.getElementById("t")!, info);
+        expect(document.querySelector(".flora-notice-pill")).not.toBeNull();
+    });
+
+    it("refuses a contenteditable target", async () => {
+        document.body.innerHTML = `<div contenteditable="true"><span id="t">10.1038/nature12373</span></div>`;
+        const {injectRetractionInfo} = await import("../../src/shared/doi-retraction");
+        injectRetractionInfo(document.getElementById("t")!, info);
+        expect(document.querySelector(".flora-notice-pill")).toBeNull();
+    });
+
+    it("refuses a target inside a textarea", async () => {
+        document.body.innerHTML = `<textarea><span id="t">x</span></textarea>`;
+        const {injectRetractionInfo} = await import("../../src/shared/doi-retraction");
+        const target = document.getElementById("t") ?? document.querySelector("textarea")!;
+        injectRetractionInfo(target, info);
+        expect(document.querySelector(".flora-notice-pill")).toBeNull();
+    });
+});

@@ -242,6 +242,42 @@ describe("injector", () => {
       expect(document.querySelector(".flora-inline-badge")).not.toBeNull();
     });
 
+    it("does not badge a DOI link inside a contenteditable editor", () => {
+      document.body.innerHTML = `
+        <div contenteditable="true">
+          <a href="https://doi.org/10.1038/nature12373">Paper link</a>
+        </div>
+      `;
+
+      const state = new Map<DoiString, LookupState>();
+      state.set(doi("10.1038/nature12373"), {
+        status: "matched",
+        result: MOCK_RESULT,
+        source: "extracted",
+      });
+
+      renderInlineBadges(state);
+
+      expect(document.querySelector(".flora-inline-badge")).toBeNull();
+    });
+
+    it("does not badge a DOI typed as prose inside a contenteditable editor", () => {
+      document.body.innerHTML = `
+        <div contenteditable="true">See 10.1038/nature12373 for details.</div>
+      `;
+
+      const state = new Map<DoiString, LookupState>();
+      state.set(doi("10.1038/nature12373"), {
+        status: "matched",
+        result: MOCK_RESULT,
+        source: "extracted",
+      });
+
+      renderInlineBadges(state);
+
+      expect(document.querySelector(".flora-inline-badge")).toBeNull();
+    });
+
     it("injects badge next to a SICI DOI non-doi.org link whose text contains the full DOI", () => {
       document.body.innerHTML = `
         <a href="https://onlinelibrary.wiley.com/doi/10.1002/(SICI)1097-0266(199704)18:4%3C303::AID-SMJ869%3E3.0.CO;2-G">

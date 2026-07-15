@@ -1,6 +1,6 @@
 import type { DoiString, LookupState, ReplicationResult, ReplicationEntry, OriginalEntry, DoiContext } from "../shared/types";
 import type { PubPeerFeedback } from "../shared/pubpeer-api";
-import { extractDoiOccurrences, type DoiOccurrence } from "../shared/doi-extractor";
+import { extractDoiOccurrences, isEditableContext, type DoiOccurrence } from "../shared/doi-extractor";
 import { debugLog } from "../shared/debug";
 import { getSettings } from "../shared/settings";
 import { safeSendMessage } from "../shared/messages";
@@ -393,6 +393,14 @@ export function renderInlineBadges(
 /** Place a badge relative to its anchor: after the anchor for links, inside
  *  for everything else (reference entries, paragraphs). */
 function placeBadge(anchor: HTMLElement, badge: HTMLElement): void {
+    // Defence in depth: mutation-driven re-runs can reach placement with an
+    // anchor in an editable region even though extraction filters those out.
+    // Never inject into user-editable content — the markup would be serialized
+    // into their saved document.
+    if (isEditableContext(anchor)) {
+        debugLog("placeBadge: skipped — anchor is in an editable context");
+        return;
+    }
     if (anchor.tagName === "A") {
         anchor.insertAdjacentElement("afterend", badge);
     } else {
