@@ -278,6 +278,59 @@ describe("injector", () => {
       expect(document.querySelector(".flora-inline-badge")).toBeNull();
     });
 
+    it("does not add a second badge when a host node is wedged between the anchor and its badge", () => {
+      // Positional dedupe (nextElementSibling) is defeated when a site inserts a
+      // tooltip/pill between the anchor and FLoRA's badge; DOI-identity dedupe is not.
+      document.body.innerHTML = `
+        <p><a href="https://doi.org/10.1038/nature12373">Paper link</a></p>
+      `;
+      const state = new Map<DoiString, LookupState>();
+      state.set(doi("10.1038/nature12373"), { status: "matched", result: MOCK_RESULT, source: "extracted" });
+
+      renderInlineBadges(state);
+      expect(document.querySelectorAll(".flora-inline-badge")).toHaveLength(1);
+
+      // A host inserts a node right after the anchor — now anchor → span → badge.
+      const anchor = document.querySelector("a")!;
+      const intruder = document.createElement("span");
+      intruder.textContent = "tooltip";
+      anchor.insertAdjacentElement("afterend", intruder);
+
+      renderInlineBadges(state);
+      expect(document.querySelectorAll(".flora-inline-badge")).toHaveLength(1);
+    });
+
+    it("tags each badge host with its DOI", () => {
+      document.body.innerHTML = `<a href="https://doi.org/10.1038/nature12373">Paper link</a>`;
+      const state = new Map<DoiString, LookupState>();
+      state.set(doi("10.1038/nature12373"), { status: "matched", result: MOCK_RESULT, source: "extracted" });
+
+      renderInlineBadges(state);
+      const badge = document.querySelector<HTMLElement>(".flora-inline-badge");
+      expect(badge?.dataset.floraDoi).toBe("10.1038/nature12373");
+    });
+
+    it("replaces a stale badge for a different DOI on a reused anchor", () => {
+      // React reuses an <a> node but swaps its href/DOI — the old badge is stale.
+      document.body.innerHTML = `<a href="https://doi.org/10.1038/nature12373">Paper link</a>`;
+      const stateA = new Map<DoiString, LookupState>();
+      stateA.set(doi("10.1038/nature12373"), { status: "matched", result: MOCK_RESULT, source: "extracted" });
+      renderInlineBadges(stateA);
+      expect(document.querySelector<HTMLElement>(".flora-inline-badge")?.dataset.floraDoi)
+        .toBe("10.1038/nature12373");
+
+      // Reuse the anchor for a new DOI.
+      const anchor = document.querySelector("a")!;
+      anchor.href = "https://doi.org/10.1016/j.cell.2020.01.001";
+      const stateB = new Map<DoiString, LookupState>();
+      stateB.set(doi("10.1016/j.cell.2020.01.001"), { status: "matched", result: MOCK_RESULT, source: "extracted" });
+      renderInlineBadges(stateB);
+
+      const badges = document.querySelectorAll<HTMLElement>(".flora-inline-badge");
+      expect(badges).toHaveLength(1);
+      expect(badges[0].dataset.floraDoi).toBe("10.1016/j.cell.2020.01.001");
+    });
+
     it("injects badge next to a SICI DOI non-doi.org link whose text contains the full DOI", () => {
       document.body.innerHTML = `
         <a href="https://onlinelibrary.wiley.com/doi/10.1002/(SICI)1097-0266(199704)18:4%3C303::AID-SMJ869%3E3.0.CO;2-G">

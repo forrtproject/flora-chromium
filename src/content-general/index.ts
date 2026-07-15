@@ -4,7 +4,8 @@ import {
     extractDOIs,
     extractDOIsFromText,
     extractDoiOccurrences,
-    extractPrimaryDOI
+    extractPrimaryDOI,
+    type DoiOccurrence
 } from "@shared/doi-extractor";
 import {fetchTitleByDoi, type DoiAugmentRequest} from "@shared/doi-augment";
 import {validateDOIs} from "@shared/doi-validate";
@@ -35,9 +36,18 @@ import {lookupPubPeer, lookupPubPeerForDois, type PubPeerFeedback} from "@shared
 import {debugLog} from "@shared/debug";
 import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
-import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
+import {
+    FLORA_RET_CHECK_KEY,
+    hasConnectedNoticePill,
+    injectRetractionInfo,
+    resetRetractionPillDoi,
+    resetRetractionPills,
+    retractionCheck,
+    RetractionResponse,
+} from "@shared/doi-retraction"
 import {resolveReferenceDois, renderResolvedReferences, type ResolvedReference} from "./references";
 import {couldNodeIntroduceDoi, scanFingerprint} from "./scan-gate";
+import {createPassScheduler, registerStuckRetry, type ScanHint} from "./pass-scheduler";
 
 // PubPeer commenter IDs whose comments are hidden in the embedded iframe.
 // Add any bot/org account ID here to suppress its annotations from the panel.
@@ -67,8 +77,22 @@ let lastRenderedPageStateVersion = -1;
 //    inputs are unchanged skips the full pipeline entirely.
 let everYieldedDoi = false;
 let lastScanFingerprint: string | null = null;
-// In-flight reference resolution, shared across one render pass.
-let resolvedRefsPromise: Promise<ResolvedReference[]> | null = null;
+
+// ── Concurrency control (see pageRenderChangeHandler / runRenderPass). ────────
+// The scheduler serializes passes (one at a time, at most one coalesced re-run)
+// and owns the generation token: incremented the instant an SPA URL change is
+// observed, so a pass begun on page A can never commit its results (state
+// writes, pill injection, panel render) after navigation to page B. Every pass
+// captures `scheduler.capture()` at its start and re-checks `scheduler.isStale`
+// after each await.
+const scheduler = createPassScheduler(runInstrumentedPass);
+
+// Per-page retry budget for DOIs whose lookup came back empty because the
+// service worker was restarting (safeSendMessage → null, common in Opera). Such
+// DOIs are rolled out of `processedDois` so a later pass retries them; the cap
+// stops a permanently-dead worker from looping forever. Cleared on SPA nav.
+const doiRetryCount = new Map<DoiString, number>();
+const MAX_DOI_RETRIES = 3;
 
 /** Monotonic counter — incremented on each sheet tab switch to discard stale CSV responses. */
 let sheetFetchGen = 0;
@@ -125,7 +149,7 @@ function perfEnabled(): boolean {
 }
 
 let _lastPassKind = "";
-async function pageRenderChangeHandler(hint?: ScanHint): Promise<void> {
+async function runInstrumentedPass(hint?: ScanHint): Promise<void> {
     if (!perfEnabled()) return runRenderPass(hint);
     const t0 = performance.now();
     _lastPassKind = "full";
@@ -140,6 +164,20 @@ async function pageRenderChangeHandler(hint?: ScanHint): Promise<void> {
     }
 }
 
+/**
+ * Entry point for every trigger (initial run, mutation observer, visibility
+ * change, Sheets CSV fetch). Bumps the generation token the instant SPA
+ * navigation is observed — BEFORE the scheduler's serialization check, so a
+ * navigation is never masked by a coalesced re-run — then hands off to the
+ * scheduler, which serializes and coalesces the actual pass.
+ */
+function pageRenderChangeHandler(hint?: ScanHint): Promise<void> {
+    if (location.href !== lastUrl) {
+        scheduler.bumpGeneration();
+    }
+    return scheduler.trigger(hint);
+}
+
 async function runRenderPass(hint?: ScanHint): Promise<void> {
     // Detect full URL change (SPA navigation) — clear state
     const currentUrl = location.href;
@@ -152,9 +190,9 @@ async function runRenderPass(hint?: ScanHint): Promise<void> {
         articleFeedbacksFetched = false;
         lastReferenceDoiKey = "";
         lastRenderedPageStateVersion = -1;
-        resolvedRefsPromise = null;
         pageState.clear();
         augmentAttempted = false;
+        doiRetryCount.clear();
         // New page — reset the relevance latch and the skip-unchanged memo.
         everYieldedDoi = false;
         lastScanFingerprint = null;
@@ -165,6 +203,12 @@ async function runRenderPass(hint?: ScanHint): Promise<void> {
             removeSidePanel();
         }
     }
+
+    // Capture the generation for this pass. The scheduler bumped it above (in
+    // pageRenderChangeHandler) when it observed the URL change; every async
+    // continuation below re-checks it and aborts if a newer navigation has
+    // superseded this pass.
+    const myGen = scheduler.capture();
 
     // ── Cheap gating before any full-DOM scan (non-Sheets only). ──────────────
     // Sheets uses a canvas-backed grid + CSV export and its own paths, so these
@@ -206,7 +250,9 @@ async function runRenderPass(hint?: ScanHint): Promise<void> {
     beginDomScanPass();
 
     // Resolve reference-list DOIs in parallel with the FORRT lookup below.
-    resolvedRefsPromise = resolveReferenceDois();
+    // Pass-local (not module-global) so overlapping passes can't observe or
+    // render each other's resolved list — the source of duplicate DOI pills.
+    const resolvedRefsPromise: Promise<ResolvedReference[]> = resolveReferenceDois();
     // A page whose only DOIs come from reference augmentation (entries with no
     // on-page DOI) still counts as relevant — latch the pre-gate open so later
     // mutations (e.g. more citations streaming in) keep getting full scans.
@@ -274,12 +320,14 @@ async function runRenderPass(hint?: ScanHint): Promise<void> {
 
     // One retraction check for occurrences + resolved refs; held in `redacts`.
     if (hasDoiChange && dois.length > 0) {
-        const resolvedRefs = resolvedRefsPromise ? await resolvedRefsPromise : [];
+        const resolvedRefs = await resolvedRefsPromise;
+        if (scheduler.isStale(myGen)) return; // superseded by a newer navigation
         const allNoticeDois = Array.from(new Set([
             ...dois,
             ...resolvedRefs.map((r) => r.doi),
         ]));
         redacts = await retractionCheck(allNoticeDois);
+        if (scheduler.isStale(myGen)) return;
 
         const retractionByDoi = new Map(redacts.map((r) => [r.originDoi, r] as const));
         const articleDois = new Set(
@@ -316,18 +364,30 @@ async function runRenderPass(hint?: ScanHint): Promise<void> {
     // If no valid DOIs found, try augmenting from page title in the background
     if (newDois.length === 0 && dois.length === 0) {
         debugLog("No valid DOIs found on page, attempting title augmentation");
-        if (!isSheets) augmentFromTitle().then().catch();
-        if (!isSheets) void checkPubPeer();
+        if (!isSheets) augmentFromTitle(myGen).then().catch();
+        if (!isSheets) void checkPubPeer(resolvedRefsPromise, myGen);
         return;
     }
 
     if (newDois.length === 0) {
         debugLog("No new DOIs (all already processed)");
-        // Re-place inline badges against the live DOM — hydrating SPAs (e.g.
-        // Sage) re-render and wipe a previously placed badge, and this pass
-        // (triggered by that mutation) would otherwise return without restoring it.
-        if (!isSheets) renderInlineBadges(pageState, pageOccurrences);
-        if (!isSheets) void checkPubPeer();
+        if (!isSheets) {
+            // Re-place inline badges against the live DOM — hydrating SPAs (e.g.
+            // Sage) re-render and wipe a previously placed badge, and this pass
+            // (triggered by that mutation) would otherwise return without it.
+            renderInlineBadges(pageState, pageOccurrences);
+            // A hydration wipe also strips reference DOI pills and notice pills.
+            // This !hasDoiChange pass runs precisely because that wipe changed the
+            // placed-FLoRA-UI count (see scanFingerprint). resolveReferenceDois
+            // re-resolves the fresh (un-marked) entries, so re-render their pills;
+            // per-entry / per-DOI idempotence leaves intact pills untouched.
+            const resolvedRefs = await resolvedRefsPromise;
+            if (scheduler.isStale(myGen)) return;
+            const retractionByDoi = new Map(redacts.map((r) => [r.originDoi, r] as const));
+            renderResolvedReferences(resolvedRefs, retractionByDoi);
+            reinjectMissingNoticePills(pageOccurrences);
+            void checkPubPeer(resolvedRefsPromise, myGen);
+        }
         return;
     }
     debugLog(isSheets ? "Sheets:" : "General:", "New DOIs to look up:", newDois.length, newDois);
@@ -346,8 +406,14 @@ async function runRenderPass(hint?: ScanHint): Promise<void> {
     beginWorkIndicator();
     try {
         const response = await safeSendMessage<LookupResponse>(request);
+        if (scheduler.isStale(myGen)) return; // superseded by a newer navigation
         if (!response) {
-            // Extension context invalidated (reload/update) — stale script, stop quietly.
+            // Null response — the service worker was restarting (common in Opera)
+            // or the extension context was invalidated. These DOIs are stuck in
+            // `processedDois` as "loading" and would never be retried until a
+            // navigation. Roll them back so a later pass retries, capped per DOI
+            // so a permanently-dead worker can't loop forever.
+            rollBackStuckDois(newDois);
             return;
         }
         debugLog("Lookup response:", Object.keys(response.results).length, "results,", Object.keys(response.errors).length, "errors");
@@ -408,13 +474,13 @@ async function runRenderPass(hint?: ScanHint): Promise<void> {
                     renderSheetsModal(matched, sheetsModalCallbacks);
                 }
             } else {
-                void checkPubPeer();
+                void checkPubPeer(resolvedRefsPromise, myGen);
             }
         } else {
             if (isSheets) {
                 removeSheetsModal();
             } else {
-                void checkPubPeer();
+                void checkPubPeer(resolvedRefsPromise, myGen);
             }
         }
 
@@ -423,9 +489,66 @@ async function runRenderPass(hint?: ScanHint): Promise<void> {
             renderInlineBadges(pageState, pageOccurrences);
         }
     } catch {
+        rollBackStuckDois(newDois);
         renderErrorBanner("Failed to contact FLoRA service");
     } finally {
         endWorkIndicator();
+    }
+}
+
+/**
+ * Roll DOIs whose lookup came back empty out of `processedDois` so a later pass
+ * retries them — but only up to MAX_DOI_RETRIES times per page, so a permanently
+ * unreachable service worker can't drive an unbounded retry storm. Past the cap
+ * the DOI is left as-is (quietly "loading", no badge) and never retried again on
+ * this page.
+ */
+function rollBackStuckDois(dois: DoiString[]): void {
+    for (const doi of dois) {
+        if (registerStuckRetry(doi, doiRetryCount, MAX_DOI_RETRIES)) {
+            processedDois.delete(doi);
+            pageState.delete(doi);
+        } else {
+            debugLog(`General: giving up on ${doi} after ${MAX_DOI_RETRIES} stuck-lookup retries`);
+        }
+    }
+}
+
+/**
+ * Restore notice (retraction / concern) pills whose target was detached by a
+ * hydration re-render. Runs on same-URL passes where the DOI set is unchanged
+ * (the main injection path is skipped there). Only DOIs whose pill is actually
+ * missing from the live DOM are re-injected, each dropped from the once-per-DOI
+ * latch first so the restore is allowed — this restores, never multiplies: a DOI
+ * that still has a connected pill is left untouched. `redacts` (module state)
+ * holds the notice data from the pass that first placed the pills.
+ */
+function reinjectMissingNoticePills(pageOccurrences: DoiOccurrence[]): void {
+    if (redacts.length === 0) return;
+
+    const articleDois = new Set(
+        [...doiContext.entries()].filter(([, ctx]) => ctx === "article").map(([doi]) => doi)
+    );
+    const titleEl = document.querySelector<HTMLHeadingElement>("h1");
+
+    for (const notice of redacts) {
+        if (hasConnectedNoticePill(notice.originDoi)) continue; // pill intact — leave it
+        // Allow a fresh placement for this DOI (it lost its pill).
+        resetRetractionPillDoi(notice.originDoi);
+
+        // Article notice → title pin, mirroring the main injection path.
+        if (titleEl && articleDois.has(notice.originDoi)) {
+            titleEl.removeAttribute(FLORA_RET_CHECK_KEY);
+            injectRetractionInfo(titleEl, notice, { append: true });
+            continue;
+        }
+        // Otherwise re-place at the DOI's first live occurrence.
+        for (const occ of pageOccurrences) {
+            if (occ.doi !== notice.originDoi) continue;
+            if (titleEl && articleDois.has(occ.doi)) continue;
+            injectRetractionInfo(occ.anchor, notice);
+            if (hasConnectedNoticePill(notice.originDoi)) break;
+        }
     }
 }
 
@@ -449,7 +572,7 @@ function isScholarlyArticlePage(): boolean {
  * Silently try to resolve a DOI from the page title via Crossref/OpenAlex.
  * Runs in the background with no UI.
  */
-async function augmentFromTitle(): Promise<void> {
+async function augmentFromTitle(myGen: number): Promise<void> {
     if (augmentAttempted) return;
     augmentAttempted = true;
 
@@ -469,6 +592,7 @@ async function augmentFromTitle(): Promise<void> {
             sourceUrl: location.href,
             ...extractPageAugmentationMetadata(document),
         }]);
+        if (scheduler.isStale(myGen)) return; // superseded by a newer navigation
         const resolvedDoi = augmented.get(pageTitle);
         debugLog("Title augmentation:", resolvedDoi ? `resolved to ${resolvedDoi}` : "no match", `(title: "${pageTitle}")`);
         if (resolvedDoi) {
@@ -479,6 +603,7 @@ async function augmentFromTitle(): Promise<void> {
                 dois: [resolvedDoi]
             };
             await safeSendMessage(request);
+            if (scheduler.isStale(myGen)) return;
 
             // Augmented DOI isn't in `dois` — check + pill it beside the title here.
             if (titleEl) {
@@ -577,12 +702,16 @@ function extractPageAugmentationMetadata(doc: Document): Omit<DoiAugmentRequest,
     };
 }
 
-async function checkPubPeer(): Promise<void> {
+async function checkPubPeer(
+    passResolvedRefs: Promise<ResolvedReference[]> | null,
+    myGen: number,
+): Promise<void> {
     if (isSheets) return;
     const primaryDoi = extractPrimaryDOI(document);
     if (!primaryDoi) return;
     try {
-        const resolvedRefs = resolvedRefsPromise ? await resolvedRefsPromise : [];
+        const resolvedRefs = passResolvedRefs ? await passResolvedRefs : [];
+        if (scheduler.isStale(myGen)) return; // superseded by a newer navigation
 
         // Union resolved refs with on-page reference DOIs for full PubPeer coverage.
         const seen = new Set<DoiString>();
@@ -611,6 +740,7 @@ async function checkPubPeer(): Promise<void> {
             articlePromise,
             lookupPubPeerForDois(referenceDois),
         ]);
+        if (scheduler.isStale(myGen)) return; // superseded by a newer navigation
         articleFeedbacksFetched = true;
         lastArticleFeedbacks = articleFeedbacks;
         lastRefFeedbackByDoi = refFeedbackByDoi;
@@ -637,6 +767,7 @@ async function checkPubPeer(): Promise<void> {
                 ?? doi;
             return {doi, title};
         }));
+        if (scheduler.isStale(myGen)) return; // superseded by a newer navigation
 
         lastRenderedPageStateVersion = pageStateVersion;
         renderSidePanel(articleFeedbacks, panelRefs, pageState, doiContext, refFeedbackByDoi, redacts);
@@ -720,16 +851,6 @@ function isFloraOwnedNode(node: Node): boolean {
         if (c.startsWith("flora-")) return true;
     }
     return false;
-}
-
-/** Hint passed from the mutation observer to the render handler. */
-interface ScanHint {
-    /**
-     * True when a node added in this mutation batch could carry a DOI — used by
-     * the relevance pre-gate to cheaply skip passes on irrelevant pages. Absent
-     * hint (initial run, tab re-show) always forces a full scan.
-     */
-    couldBeRelevant: boolean;
 }
 
 function startDomListener(callback: (hint?: ScanHint) => void) {

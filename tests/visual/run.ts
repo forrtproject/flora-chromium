@@ -86,6 +86,9 @@ const FIXTURES: Fixture[] = [
   { name: "rtl-article", urlPath: "rtl-article.html" },
   { name: "editor-textarea", urlPath: "editor-textarea.html" },
   { name: "long-article-sticky", urlPath: "long-article-sticky.html" },
+  // Dynamic: a hydrating SPA wipes the reference list and streams in a late
+  // entry — exercises the concurrency/idempotence re-injection paths.
+  { name: "spa-hydration", urlPath: "spa-hydration.html" },
   // Reused unit-test fixtures (served from tests/fixtures).
   { name: "article-with-dois", urlPath: "article-with-dois.html" },
   { name: "doi-in-href", urlPath: "doi-in-href.html" },

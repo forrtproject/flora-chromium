@@ -386,14 +386,19 @@ export function renderInlineBadges(
         if (!hasData) continue;
 
         if (!isVisible(occ.anchor)) continue;
-        // Skip if this anchor already carries a badge (idempotent re-runs).
-        if (anchorAlreadyBadged(occ.anchor)) continue;
+        // Skip if a badge for THIS DOI already sits in the anchor's scope
+        // (idempotent re-runs). Keyed by DOI, not position, so an intervening
+        // host-inserted node between anchor and badge can't defeat the check.
+        if (anchorAlreadyBadged(occ.anchor, occ.doi)) continue;
 
         const replLabel = stats.n_replications_total === 1 ? "replication" : "replications";
         const reproLabel = stats.n_reproductions_total === 1 ? "reproduction" : "reproductions";
 
         const badgeHost = document.createElement("span");
         badgeHost.className = BADGE_CLASS;
+        // DOI identity so re-runs dedupe by DOI rather than by fragile
+        // nextElementSibling/lastElementChild position checks.
+        badgeHost.dataset.floraDoi = occ.doi;
         const shadow = badgeHost.attachShadow({mode: "open"});
 
         const styleEl = document.createElement("style");
@@ -429,17 +434,48 @@ function placeBadge(anchor: HTMLElement, badge: HTMLElement): void {
         return;
     }
     if (anchor.tagName === "A") {
+        // A reused <a> (React swaps its href/DOI but keeps the node) can still
+        // carry a stale FLoRA badge for a DIFFERENT DOI as its next sibling.
+        // Remove that one before inserting the current badge — unambiguous here
+        // because a link anchor owns exactly the sibling slot right after it.
+        const next = anchor.nextElementSibling as HTMLElement | null;
+        const badgeDoi = badge.dataset.floraDoi;
+        if (
+            next?.classList.contains(BADGE_CLASS) &&
+            next.dataset.floraDoi !== undefined &&
+            next.dataset.floraDoi !== badgeDoi
+        ) {
+            next.remove();
+        }
         anchor.insertAdjacentElement("afterend", badge);
     } else {
         anchor.appendChild(badge);
     }
 }
 
-function anchorAlreadyBadged(anchor: HTMLElement): boolean {
+// Whether a badge is already present for this anchor, tolerant of host-inserted
+// nodes wedged between the anchor and its badge (the fragility the positional
+// nextElementSibling/lastElementChild check had).
+//
+// A-anchor: the badge is placed as a following sibling, so search the anchor's
+//   parent and match on `data-flora-doi` — a reused <a> keeps its slot, and a
+//   different-DOI badge there is stale (handled in placeBadge).
+// Block anchor: the badge is appended inside. Several DOI occurrences can be
+//   lifted onto ONE shared block container (pickAnchor), so this dedupes by
+//   "does the anchor already hold a FLoRA badge" rather than by DOI — matching
+//   the long-standing one-badge-per-block-anchor placement (which PR 7 owns).
+//   Scanning all descendants (not just lastElementChild) makes it robust to a
+//   host node appended after our badge, which is the real accumulation bug here.
+function anchorAlreadyBadged(anchor: HTMLElement, doi: DoiString): boolean {
     if (anchor.tagName === "A") {
-        return !!anchor.nextElementSibling?.classList.contains(BADGE_CLASS);
+        const parent = anchor.parentElement;
+        if (!parent) return false;
+        for (const b of parent.querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)) {
+            if (b.dataset.floraDoi === doi) return true;
+        }
+        return false;
     }
-    return !!anchor.lastElementChild?.classList.contains(BADGE_CLASS);
+    return anchor.querySelector(`.${BADGE_CLASS}`) !== null;
 }
 
 function isVisible(el: HTMLElement): boolean {

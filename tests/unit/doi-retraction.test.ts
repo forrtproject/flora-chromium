@@ -92,3 +92,69 @@ describe("injectRetractionInfo editable-context guard", () => {
         expect(document.querySelector(".flora-notice-pill")).toBeNull();
     });
 });
+
+// A hydration re-render can detach a notice pill the instant it's placed, or
+// wipe one that was placed on an earlier pass. The commit-after-connected rule
+// and the per-DOI reset let a later pass restore the pill without ever stamping
+// a second one (once-per-DOI is preserved).
+describe("injectRetractionInfo connected-target commit + re-injection", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        document.body.innerHTML = "";
+    });
+
+    const info = {
+        originDoi: doi("10.1038/nature12373"),
+        doi: doi("10.1038/retraction"),
+        kind: "retraction" as const,
+    };
+
+    it("tags the wrapper with the DOI and reports a connected pill", async () => {
+        document.body.innerHTML = `<p id="t">10.1038/nature12373</p>`;
+        const {injectRetractionInfo, hasConnectedNoticePill} = await import("../../src/shared/doi-retraction");
+        injectRetractionInfo(document.getElementById("t")!, info);
+
+        const pill = document.querySelector<HTMLElement>(".flora-notice-pill");
+        expect(pill?.dataset.floraDoi).toBe(info.originDoi);
+        expect(hasConnectedNoticePill(info.originDoi)).toBe(true);
+    });
+
+    it("does not burn the DOI when placement lands on a detached target", async () => {
+        const {injectRetractionInfo, hasConnectedNoticePill} = await import("../../src/shared/doi-retraction");
+
+        // Target is not in the live document — the pill lands detached.
+        const detached = document.createElement("p");
+        detached.textContent = "10.1038/nature12373";
+        injectRetractionInfo(detached, info);
+        expect(hasConnectedNoticePill(info.originDoi)).toBe(false);
+
+        // The DOI was not committed, so a later connected placement still works.
+        document.body.innerHTML = `<p id="t2">10.1038/nature12373</p>`;
+        injectRetractionInfo(document.getElementById("t2")!, info);
+        expect(hasConnectedNoticePill(info.originDoi)).toBe(true);
+        expect(document.querySelectorAll(".flora-notice-pill")).toHaveLength(1);
+    });
+
+    it("restores a wiped pill only after resetRetractionPillDoi (still once-per-DOI)", async () => {
+        const {injectRetractionInfo, hasConnectedNoticePill, resetRetractionPillDoi} =
+            await import("../../src/shared/doi-retraction");
+
+        document.body.innerHTML = `<p id="t">10.1038/nature12373</p>`;
+        injectRetractionInfo(document.getElementById("t")!, info);
+        expect(hasConnectedNoticePill(info.originDoi)).toBe(true);
+
+        // Hydration wipe: fresh target node, the pill is gone.
+        document.body.innerHTML = `<p id="t">10.1038/nature12373</p>`;
+        expect(hasConnectedNoticePill(info.originDoi)).toBe(false);
+
+        // Once-per-DOI blocks a naive re-inject.
+        injectRetractionInfo(document.getElementById("t")!, info);
+        expect(hasConnectedNoticePill(info.originDoi)).toBe(false);
+
+        // Dropping the DOI from the latch allows exactly one restoring pill.
+        resetRetractionPillDoi(info.originDoi);
+        injectRetractionInfo(document.getElementById("t")!, info);
+        expect(hasConnectedNoticePill(info.originDoi)).toBe(true);
+        expect(document.querySelectorAll(".flora-notice-pill")).toHaveLength(1);
+    });
+});

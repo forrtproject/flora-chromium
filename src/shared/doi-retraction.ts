@@ -117,6 +117,25 @@ export function resetRetractionPills(): void {
     pilledRetractionDois.clear();
 }
 
+/**
+ * Forget that a single DOI has been pilled, so the next injectRetractionInfo
+ * for it is allowed to place a fresh pill. Used by the same-URL re-injection
+ * path: when a hydration re-render wipes a previously-placed notice pill, the
+ * DOI is dropped here so the pill can be restored (still once-per-DOI — the
+ * caller only drops DOIs whose pill is actually missing from the live DOM).
+ */
+export function resetRetractionPillDoi(doi: DoiString): void {
+    pilledRetractionDois.delete(doi);
+}
+
+/** True once a connected notice pill for this DOI exists in the live DOM. */
+export function hasConnectedNoticePill(doi: DoiString): boolean {
+    for (const el of document.querySelectorAll<HTMLElement>(`.${FLORA_NOTICE_PILL_CLASS}`)) {
+        if (el.dataset.floraDoi === doi && el.isConnected) return true;
+    }
+    return false;
+}
+
 export interface InjectRetractionOptions {
     /**
      * Skip the link-search smart placement and append the pill directly to
@@ -153,11 +172,13 @@ export function injectRetractionInfo(
     // the same retracted DOI are skipped.
     if (target.getAttribute(FLORA_RET_CHECK_KEY) === '1') return;
     if (pilledRetractionDois.has(info.originDoi)) return;
-    pilledRetractionDois.add(info.originDoi);
-    target.setAttribute(FLORA_RET_CHECK_KEY, '1');
 
     const wrapper = document.createElement("span");
     wrapper.className = FLORA_NOTICE_PILL_CLASS;
+    // DOI identity on the wrapper so a later pass can tell whether this DOI's
+    // pill is still connected (see hasConnectedNoticePill) and restore it after
+    // a hydration wipe without stamping a second pill.
+    wrapper.dataset.floraDoi = info.originDoi;
     wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle; margin-left: 6px;`;
 
     const presentation = noticePresentation(info.kind);
@@ -183,6 +204,19 @@ export function injectRetractionInfo(
         target.insertAdjacentElement("afterend", wrapper);
     } else {
         placeRetractionPill(target, info.originDoi, wrapper);
+    }
+
+    // Only commit the once-per-DOI + per-anchor markers if the pill actually
+    // landed in the live DOM. A React re-render can detach the target the very
+    // moment we place; committing the DOI to `pilledRetractionDois` regardless
+    // would burn it forever — the pill would be gone with no way to restore it.
+    // Deferring the commit until after a connected placement lets a later pass
+    // retry (see the same-URL re-injection path in the general content script).
+    if (wrapper.isConnected) {
+        pilledRetractionDois.add(info.originDoi);
+        target.setAttribute(FLORA_RET_CHECK_KEY, '1');
+    } else {
+        wrapper.remove();
     }
 }
 

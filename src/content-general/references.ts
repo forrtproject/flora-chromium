@@ -115,6 +115,10 @@ function placeReferencePill(
 }
 
 const PROCESSED_ATTR = "data-flora-ref-processed";
+// Per-entry marker recording the DOI already pilled onto a reference entry, so
+// renderResolvedReferences is idempotent even when two passes hand it the same
+// resolved entry (e.g. overlapping mutation passes).
+const REF_PILLED_ATTR = "data-flora-ref-pilled";
 // Gray, dotted-underline "DOI" pill — for DOIs resolved via augmentation.
 const AUGMENTED_COLOR = "#656d76";
 // Pink "DOI ✓" pill — for DOIs that were found on the page but hidden in a
@@ -238,6 +242,13 @@ export function renderResolvedReferences(
     retractionByDoi: Map<DoiString, RetractionResponse>,
 ): void {
     for (const {entry, doi, mode} of resolved) {
+        // Idempotence at the pill level: skip an entry that already carries a
+        // pill for this DOI. Without this, two overlapping passes handed the
+        // same resolved list would each call placeReferencePill and stack a
+        // duplicate DOI pill on the citation.
+        if (entry.element.getAttribute(REF_PILLED_ATTR) === doi) continue;
+        entry.element.setAttribute(REF_PILLED_ATTR, doi);
+
         const isAugmented = mode === "augment";
         const color = isAugmented ? AUGMENTED_COLOR : CONFIDENT_COLOR;
         // Pass the Open Access lookup so the padlock renders inside the pill.
