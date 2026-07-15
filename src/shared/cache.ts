@@ -45,6 +45,37 @@ export class LocalCache<T> {
   }
 
   /**
+   * Batched read of many keys in ONE chrome.storage.local.get, instead of one
+   * round-trip per key. Only keys that are present and unexpired appear in the
+   * returned map (value `null` = cached negative result, `T` = cached match);
+   * missing/expired keys are simply absent. Expired entries are swept in a
+   * single remove call.
+   */
+  async getMany(keys: string[]): Promise<Map<string, T | null>> {
+    const out = new Map<string, T | null>();
+    if (keys.length === 0) return out;
+
+    const storageKeys = keys.map((k) => this.storageKey(k));
+    const result = await chrome.storage.local.get(storageKeys);
+
+    const now = Date.now();
+    const expired: string[] = [];
+    for (const key of keys) {
+      const storageKey = this.storageKey(key);
+      const entry = result[storageKey] as CachedEntry<T> | undefined;
+      if (!entry) continue;
+      if (entry.expiresAt !== null && now > entry.expiresAt) {
+        expired.push(storageKey);
+        continue;
+      }
+      out.set(key, entry.data);
+    }
+
+    if (expired.length > 0) await chrome.storage.local.remove(expired);
+    return out;
+  }
+
+  /**
    * @param data    The value to cache; pass `null` to record a negative result.
    * @param ttlMs   Milliseconds until expiry, or `null` to cache forever.
    */

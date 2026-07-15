@@ -63,6 +63,30 @@ describe("scholar observer", () => {
         expect(call).to.not.be.undefined;
         if (call) expect(call.dois).toContain("10.1126/science.9999999");
     });
+
+    it("batches all retraction checks into a single FLORA_RET_CHECK for the pass", async () => {
+        // Fresh pass over fresh rows so we count only this run's messages.
+        const html = readFileSync(
+            join(__dirname, "..", "fixtures", "scholar-results.html"),
+            "utf-8"
+        );
+        const dom = new JSDOM(html);
+        document.body.innerHTML = dom.window.document.body.innerHTML;
+        (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mockClear();
+
+        const {processScholarResults} = await import("../../src/content-scholar/observer");
+        await processScholarResults(document);
+
+        const retCalls = (chrome.runtime.sendMessage as ReturnType<typeof vi.fn>).mock.calls
+            .filter(args => args[0]?.type === "FLORA_RET_CHECK");
+        // One request for the whole pass rather than one per row.
+        expect(retCalls).toHaveLength(1);
+        // It carries every collected DOI, so results can be distributed per row.
+        expect(retCalls[0][0].dois.length).toBeGreaterThanOrEqual(2);
+        expect(retCalls[0][0].dois).toEqual(
+            expect.arrayContaining(["10.1038/nature12373", "10.1126/science.9999999"])
+        );
+    });
 });
 
 describe("Scholar row metadata extraction", () => {

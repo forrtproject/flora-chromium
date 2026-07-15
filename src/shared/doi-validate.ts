@@ -2,6 +2,7 @@ import type { DoiString } from "./types";
 import { debugLog } from "./debug";
 import { BlobCache } from "./blob-cache";
 import { isWorkerContext, proxyFetch } from "./messages";
+import { fetchWithTimeout } from "./fetch-timeout";
 
 /**
  * Validate DOIs by checking the doi.org Handle System API.
@@ -101,7 +102,7 @@ export async function validateDOIsRaw(
         // encodeURIComponent on the full DOI would collapse all '/' to %2F,
         // making the server see a single opaque segment instead of a path.
         const encodedHandle = doi.split("/").map(encodeURIComponent).join("/");
-        const response = await fetch(`${HANDLE_API}${encodedHandle}`);
+        const response = await fetchWithTimeout(`${HANDLE_API}${encodedHandle}`);
         if (!response.ok) {
           // 404 = the Handle System has no record of this DOI → invalid.
           // Any other non-OK status (429, 5xx) is transient — leave unknown.

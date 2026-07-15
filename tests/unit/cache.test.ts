@@ -9,8 +9,10 @@ describe("LocalCache", () => {
 
     chrome.storage.local.get = vi.fn(async (key: string | string[] | null) => {
       if (key === null) return { ...store };
-      const k = Array.isArray(key) ? key[0] : key;
-      return k in store ? { [k]: store[k] } : {};
+      const keys = Array.isArray(key) ? key : [key];
+      const out: Record<string, unknown> = {};
+      for (const k of keys) if (k in store) out[k] = store[k];
+      return out;
     });
 
     chrome.storage.local.set = vi.fn(async (items: Record<string, unknown>) => {
@@ -154,6 +156,62 @@ describe("LocalCache", () => {
 
     expect(store["test:legacy"]).toBeUndefined();
     expect(store["test:fresh"]).toBeDefined();
+  });
+
+  describe("getMany", () => {
+    it("reads every key in a single chrome.storage.local.get", async () => {
+      const cache = new LocalCache<string>("test");
+      await cache.set("a", "A", null);
+      await cache.set("b", "B", null);
+      await cache.set("c", "C", null);
+
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockClear();
+      const out = await cache.getMany(["a", "b", "c", "missing"]);
+
+      expect(chrome.storage.local.get).toHaveBeenCalledOnce();
+      expect(chrome.storage.local.get).toHaveBeenCalledWith([
+        "test:a",
+        "test:b",
+        "test:c",
+        "test:missing",
+      ]);
+      expect(out.get("a")).toBe("A");
+      expect(out.get("b")).toBe("B");
+      expect(out.get("c")).toBe("C");
+      // Absent keys are simply not present in the returned map.
+      expect(out.has("missing")).toBe(false);
+    });
+
+    it("returns an empty map without touching storage for no keys", async () => {
+      const cache = new LocalCache<string>("test");
+      (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockClear();
+      const out = await cache.getMany([]);
+      expect(out.size).toBe(0);
+      expect(chrome.storage.local.get).not.toHaveBeenCalled();
+    });
+
+    it("omits and sweeps expired entries", async () => {
+      const cache = new LocalCache<string>("test");
+      await cache.set("fresh", "still-good", null);
+      // Back-date an entry so it looks expired.
+      store["test:stale"] = { data: "old", expiresAt: Date.now() - 1000 };
+
+      const out = await cache.getMany(["fresh", "stale"]);
+      expect(out.get("fresh")).toBe("still-good");
+      expect(out.has("stale")).toBe(false);
+      // The expired entry is removed from storage.
+      expect(chrome.storage.local.remove).toHaveBeenCalledWith(["test:stale"]);
+      expect(store["test:stale"]).toBeUndefined();
+    });
+
+    it("preserves a cached negative result (null) distinctly from a miss", async () => {
+      const cache = new LocalCache<string>("test");
+      await cache.set("neg", null, 60_000);
+      const out = await cache.getMany(["neg", "gone"]);
+      expect(out.has("neg")).toBe(true);
+      expect(out.get("neg")).toBeNull();
+      expect(out.has("gone")).toBe(false);
+    });
   });
 
   it("setQuota(0) disables quota enforcement", async () => {

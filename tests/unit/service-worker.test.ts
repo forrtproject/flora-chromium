@@ -29,6 +29,8 @@ const cacheStore = new Map<string, unknown>();
 const cacheSetCalls: Array<{key: string; data: unknown; ttlMs: number | null}> = [];
 // When set, cache.set throws (simulates a storage-quota write failure).
 let cacheSetError: Error | null = null;
+const getSpy = vi.fn();
+const getManySpy = vi.fn();
 vi.mock("../../src/shared/cache", () => ({
     MONTH_MS: 30 * 24 * 60 * 60 * 1000,
     LocalCache: class {
@@ -41,9 +43,20 @@ vi.mock("../../src/shared/cache", () => ({
         setQuota(_bytes: number) {}
 
         async get(key: string) {
+            getSpy(key);
             return cacheStore.has(`${this.prefix}:${key}`)
                 ? cacheStore.get(`${this.prefix}:${key}`)
                 : undefined;
+        }
+
+        async getMany(keys: string[]) {
+            getManySpy(keys);
+            const out = new Map<string, unknown>();
+            for (const key of keys) {
+                const storageKey = `${this.prefix}:${key}`;
+                if (cacheStore.has(storageKey)) out.set(key, cacheStore.get(storageKey));
+            }
+            return out;
         }
 
         async set(key: string, data: unknown, ttlMs: number | null) {
@@ -65,6 +78,8 @@ describe("service-worker", () => {
         cacheStore.clear();
         cacheSetCalls.length = 0;
         cacheSetError = null;
+        getSpy.mockClear();
+        getManySpy.mockClear();
         mockLookupDOIs.mockReset();
         (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
@@ -359,5 +374,75 @@ describe("service-worker", () => {
         ]);
         expect(response.results["10.1038/nature12373"]).toEqual(MOCK_RESULT);
         expect(response.results["10.1126/science.9999999"]).toEqual(otherResult);
+    });
+
+    it("reads the cache with one batched getMany, not per-DOI get()", async () => {
+        mockLookupDOIs.mockResolvedValue(new Map());
+
+        await sendMessage({
+            type: "FLORA_LOOKUP",
+            dois: [
+                doi("10.1038/nature12373"),
+                doi("10.1126/science.9999999"),
+                doi("10.1000/third"),
+            ],
+        });
+
+        // One batched read covering every DOI; no per-DOI cache.get() round-trips.
+        expect(getManySpy).toHaveBeenCalledOnce();
+        expect(getManySpy).toHaveBeenCalledWith([
+            "10.1038/nature12373",
+            "10.1126/science.9999999",
+            "10.1000/third",
+        ]);
+        expect(getSpy).not.toHaveBeenCalled();
+    });
+
+    describe("setup-dismissed handlers respond even when storage rejects", () => {
+        it("FLORA_DISMISS_SETUP responds {ok:false} on a session.set rejection", async () => {
+            (chrome.storage.session.set as ReturnType<typeof vi.fn>)
+                .mockRejectedValueOnce(new Error("storage unavailable"));
+
+            const response = await new Promise((resolve) => {
+                messageHandler({type: "FLORA_DISMISS_SETUP"}, {}, resolve as (r: unknown) => void);
+            });
+            expect(response).toEqual({ok: false});
+        });
+
+        it("FLORA_IS_SETUP_DISMISSED responds {dismissed:false} on a session.get rejection", async () => {
+            (chrome.storage.session.get as ReturnType<typeof vi.fn>)
+                .mockRejectedValueOnce(new Error("storage unavailable"));
+
+            const response = await new Promise((resolve) => {
+                messageHandler({type: "FLORA_IS_SETUP_DISMISSED"}, {}, resolve as (r: unknown) => void);
+            });
+            expect(response).toEqual({dismissed: false});
+        });
+    });
+
+    it("deduplicates concurrent retraction syncs into a single fetch", async () => {
+        // Storage is empty (default mock) → isEmpty → each call would otherwise
+        // fetch + write the full map. The in-flight guard collapses them to one.
+        const fetchMock = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({retractions: {}, concerns: {}}),
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        const {syncRetractionsInfo} = await import("../../src/background/service-worker");
+        await Promise.all([
+            syncRetractionsInfo(),
+            syncRetractionsInfo(),
+            syncRetractionsInfo(),
+        ]);
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        // After the batch settles the guard clears, so a later call syncs again.
+        await syncRetractionsInfo();
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+
+        vi.unstubAllGlobals();
     });
 });

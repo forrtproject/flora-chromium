@@ -3,6 +3,7 @@ import {normaliseDOI} from "./doi-normalise";
 import {getSettings} from "./settings";
 import {BlobCache} from "./blob-cache";
 import {isWorkerContext, proxyFetch} from "./messages";
+import {fetchWithTimeout} from "./fetch-timeout";
 
 const OPENALEX_BASE = "https://api.openalex.org/works";
 const CROSSREF_BASE = "https://api.crossref.org/works";
@@ -16,9 +17,6 @@ const DOI_AUGMENT_CACHE = new BlobCache<CachedDoiResult>({
     ttlMs: 30 * 24 * 60 * 60 * 1000, // 30 days
     legacyPrefixes: ["flora_doi:"],
 });
-
-/** Cached email — refreshed once per page/worker lifecycle. */
-let _cachedEmail: string | null = null;
 
 interface CachedDoiResult {
     found: boolean;
@@ -39,10 +37,11 @@ interface DoiCandidate {
     urls?: string[];
 }
 
+// getSettings() already caches settings in module state and invalidates that
+// cache via chrome.storage.onChanged, so it's cheap to call every time and
+// never goes stale — no second email cache of our own to keep in sync.
 async function getUserEmail(): Promise<string> {
-    if (_cachedEmail) return _cachedEmail;
     const {email} = await getSettings();
-    _cachedEmail = email;
     return email;
 }
 
@@ -257,7 +256,7 @@ async function queryCrossref(request: DoiAugmentRequest, email: string): Promise
     const {title} = request;
     const cleaned = cleanTitleForSearch(title);
     const url = `${CROSSREF_BASE}?query.title=${encodeURIComponent(cleaned)}&rows=5&select=DOI,title,author,issued,published-print,published-online,published,URL,link&mailto=${encodeURIComponent(email)}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     if (!response.ok) return [];
 
     const data = (await response.json()) as {
@@ -311,7 +310,7 @@ async function queryOpenAlex(request: DoiAugmentRequest, email: string): Promise
     const cleaned = cleanTitleForSearch(title);
     const url = `${OPENALEX_BASE}?filter=title.search:${encodeURIComponent(cleaned)}&select=id,doi,title,publication_year,authorships,primary_location,locations&per_page=5&mailto=${encodeURIComponent(email)}`;
 
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     if (response.status === 429) {
         // Rate-limited — throw so Promise.allSettled marks this as rejected and
         // the caller falls back to Crossref results.
@@ -505,7 +504,7 @@ export async function fetchTitleByDoiRaw(doi: string): Promise<string | null> {
     try {
         const email = await getUserEmail();
         const mailto = email ? `?mailto=${encodeURIComponent(email)}` : "";
-        const response = await fetch(`${CROSSREF_BASE}/${doi}${mailto}`);
+        const response = await fetchWithTimeout(`${CROSSREF_BASE}/${doi}${mailto}`);
         if (response.ok) {
             const data = (await response.json()) as { message?: { title?: string[] } };
             title = data.message?.title?.[0] ?? null;
@@ -516,7 +515,7 @@ export async function fetchTitleByDoiRaw(doi: string): Promise<string | null> {
 
     if (!title) {
         try {
-            const response = await fetch(`${OPENALEX_BASE}/doi:${doi}?select=title`);
+            const response = await fetchWithTimeout(`${OPENALEX_BASE}/doi:${doi}?select=title`);
             if (response.ok) {
                 const data = (await response.json()) as { title?: string };
                 title = data.title ?? null;
@@ -533,5 +532,4 @@ export async function fetchTitleByDoiRaw(doi: string): Promise<string | null> {
 export function _resetAugmentCachesForTesting(): void {
     DOI_AUGMENT_CACHE.resetForTesting();
     TITLE_CACHE.resetForTesting();
-    _cachedEmail = null;
 }

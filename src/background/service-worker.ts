@@ -7,13 +7,15 @@ import {isLookupRequest, isRetractionCheckRequest, isSheetFetchRequest, isAugmen
 import {augmentDOIs} from "@shared/doi-augment";
 import {handleProxyFetch} from "./proxy-fetch";
 import {getSettings, isSetupComplete} from "@shared/settings";
+import {fetchWithTimeout} from "@shared/fetch-timeout";
+import {debugError} from "@shared/debug";
 
 const cache = new LocalCache<ReplicationResult>("flora");
 
 // Initialise cache quota from persisted settings (service worker may restart).
 getSettings().then(({ cacheQuotaMb }) => {
     cache.setQuota(cacheQuotaMb === 0 ? 0 : cacheQuotaMb * 1024 * 1024);
-}).catch();
+}).catch((err) => debugError("Failed to init cache quota:", err));
 
 // Keep quota in sync when the user changes the setting; drop the cached
 // retraction source whenever a fresh map is synced into local storage.
@@ -78,12 +80,12 @@ chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === "install") {
         chrome.tabs.create({ url: chrome.runtime.getURL("dist/walkthrough.html") });
     }
-    syncRetractionsInfo().then().catch();
+    syncRetractionsInfo().catch((err) => debugError("Retraction sync failed:", err));
 });
 
 // Refresh retraction data once per browser session (weekly interval enforced inside).
 chrome.runtime.onStartup.addListener(() => {
-    syncRetractionsInfo().then().catch();
+    syncRetractionsInfo().catch((err) => debugError("Retraction sync failed:", err));
 });
 
 
@@ -145,9 +147,9 @@ chrome.runtime.onMessage.addListener(
             message !== null &&
             (message as { type?: string }).type === "FLORA_DISMISS_SETUP"
         ) {
-            chrome.storage.session.set({flora_setup_dismissed: true}).then(() => {
-                sendResponse({ok: true});
-            });
+            chrome.storage.session.set({flora_setup_dismissed: true})
+                .then(() => sendResponse({ok: true}))
+                .catch(() => sendResponse({ok: false}));
             return true;
         }
 
@@ -156,9 +158,9 @@ chrome.runtime.onMessage.addListener(
             message !== null &&
             (message as { type?: string }).type === "FLORA_IS_SETUP_DISMISSED"
         ) {
-            chrome.storage.session.get("flora_setup_dismissed").then((result) => {
-                sendResponse({dismissed: !!result.flora_setup_dismissed});
-            });
+            chrome.storage.session.get("flora_setup_dismissed")
+                .then((result) => sendResponse({dismissed: !!result.flora_setup_dismissed}))
+                .catch(() => sendResponse({dismissed: false}));
             return true;
         }
         if (isSheetFetchRequest(message)) {
@@ -207,36 +209,50 @@ async function handleLookup(dois: DoiString[]): Promise<LookupResponse> {
     const results: Record<string, ReplicationResult> = {};
     const errors: Record<string, string> = {};
     const toFetch: DoiString[] = [];
+    const awaitingInflight: DoiString[] = [];
 
-    // Check cache and in-flight requests. We only persist matched results, so a
+    // One batched cache read for every DOI (a single chrome.storage.local.get)
+    // instead of one round-trip per DOI. We only persist matched results, so a
     // truthy cache hit is a real result. A null entry (legacy negative cache) or
     // a miss both fall through to re-query, so newly added FORRT data surfaces.
+    const cachedMap = await cache.getMany(dois);
+
+    // Synchronous classification pass: no awaits interleave between reading the
+    // in-flight map and registering new entries below, so two lookups for the
+    // same DOI can't both slip past the check and each fire the API (stampede).
     for (const doi of dois) {
-        const cached = await cache.get(doi);
+        const cached = cachedMap.get(doi);
         if (cached) {
             results[doi] = cached;
         } else if (inflight.has(doi)) {
-            const r = await inflight.get(doi)!;
-            if (r) results[doi] = r;
+            awaitingInflight.push(doi);
         } else {
             toFetch.push(doi);
         }
     }
 
-    if (toFetch.length === 0) {
-        return {type: "FLORA_LOOKUP_RESULT", results, errors};
+    // Register every to-fetch DOI as in-flight BEFORE any further await, so a
+    // concurrent lookup arriving now sees them as in-flight rather than
+    // re-fetching. (catch prevents unhandled rejection — the try/catch below
+    // handles the actual error reporting.)
+    const batchPromise = toFetch.length > 0 ? lookupDOIs(toFetch) : null;
+    if (batchPromise) {
+        for (const doi of toFetch) {
+            inflight.set(
+                doi,
+                batchPromise.then((map) => map.get(doi) ?? null).catch(() => null)
+            );
+        }
     }
 
-    // Batch API call for uncached DOIs
-    const batchPromise = lookupDOIs(toFetch);
+    // Now it's safe to await: collect results for DOIs a prior call is fetching.
+    for (const doi of awaitingInflight) {
+        const r = await inflight.get(doi)!;
+        if (r) results[doi] = r;
+    }
 
-    // Register each DOI as in-flight (catch to prevent unhandled rejection —
-    // the main try/catch below handles the actual error reporting)
-    for (const doi of toFetch) {
-        inflight.set(
-            doi,
-            batchPromise.then((map) => map.get(doi) ?? null).catch(() => null)
-        );
+    if (!batchPromise) {
+        return {type: "FLORA_LOOKUP_RESULT", results, errors};
     }
 
     try {
@@ -290,7 +306,7 @@ async function handleSheetFetch(
 ): Promise<SheetFetchResponse> {
     const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
     try {
-        const resp = await fetch(url, {credentials: "include"});
+        const resp = await fetchWithTimeout(url, {credentials: "include"});
         if (!resp.ok) {
             return {
                 type: "FLORA_SHEET_FETCH_RESULT",
@@ -382,7 +398,7 @@ async function getRetractionSource(): Promise<RetractionMaps> {
     // Nothing synced yet: kick off a sync for next time and answer from the
     // bundled JSON now. Don't cache the fallback — onChanged will pick up the
     // synced map, but until then we re-read so an in-flight sync is noticed.
-    syncRetractionsInfo().then().catch();
+    syncRetractionsInfo().catch((err) => debugError("Retraction sync failed:", err));
     return loadBundledRetractionMap();
 }
 
@@ -409,7 +425,21 @@ async function handleRetractionCheck(dois: DoiString[]): Promise<RetractionCheck
     return {type: "FLORA_RET_CHECK_RESULT", results};
 }
 
-export async function syncRetractionsInfo() {
+// A single in-flight sync shared across onInstalled/onStartup/getRetractionSource.
+// Without this, several triggers can each fetch + write the ~3.6MB retraction
+// map concurrently. While a sync is running, later callers await the same
+// promise instead of starting their own.
+let syncInFlight: Promise<void> | null = null;
+
+export function syncRetractionsInfo(): Promise<void> {
+    if (syncInFlight) return syncInFlight;
+    syncInFlight = runRetractionSync().finally(() => {
+        syncInFlight = null;
+    });
+    return syncInFlight;
+}
+
+async function runRetractionSync(): Promise<void> {
     const minInterval = 1000 * 60 * 60 * 24 * 7; // weekly
     const currentTime = Date.now();
     const previous = await chrome.storage.local.get(["synctime"]) ?? 0;

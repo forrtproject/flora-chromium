@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { DoiString, ReplicationResult } from "./types";
 import { ReplicationResultSchema } from "./types";
 import { debugLog, debugError } from "./debug";
+import { fetchWithTimeout } from "./fetch-timeout";
 
 // Loose envelope — validate each result individually below so one malformed
 // entry can't fail the whole batch.
@@ -51,7 +52,7 @@ async function lookupBatch(
   dois: DoiString[]
 ): Promise<Map<DoiString, ReplicationResult>> {
   const doisParam = dois.join(",");
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${API_BASE}/v1/original-lookup?dois=${encodeURIComponent(doisParam)}`
   );
 

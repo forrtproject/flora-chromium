@@ -1,6 +1,7 @@
 import { debugLog } from "./debug";
 import { BlobCache } from "./blob-cache";
 import { isWorkerContext, proxyFetch, ProxyFetchError } from "./messages";
+import { fetchWithTimeout } from "./fetch-timeout";
 
 export interface PubPeerFeedback {
   id: string;
@@ -47,7 +48,7 @@ export async function lookupPubPeerRaw(
   dois: string[],
   urls: string[]
 ): Promise<PubPeerFeedback[]> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     "https://pubpeer.com/v3/publications?devkey=PubMedChrome",
     {
       method: "POST",

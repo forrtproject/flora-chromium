@@ -1,6 +1,13 @@
+// @vitest-environment node
+// Runs under the node environment (jsdom's AbortSignal is rejected by Node's
+// undici fetch, which the worker-side raw fetches now use via fetchWithTimeout).
+// A stubbed `window` global preserves what jsdom provided for this suite: the
+// content-script context signal that isWorkerContext() keys on.
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
+
+vi.stubGlobal("window", {});
 
 // getUserEmail() must return a configured email for the Unpaywall lookup.
 vi.mock("../../src/shared/settings", () => ({

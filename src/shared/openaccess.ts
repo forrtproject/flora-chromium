@@ -4,6 +4,7 @@
 import { getSettings } from "./settings";
 import { BlobCache } from "./blob-cache";
 import { isWorkerContext, proxyFetch } from "./messages";
+import { fetchWithTimeout } from "./fetch-timeout";
 
 export interface OpenAccessStatus {
     /** True when Unpaywall reports a free full-text location. */
@@ -17,11 +18,11 @@ const OA_CACHE = new BlobCache<OpenAccessStatus>({
     ttlMs: 30 * 24 * 60 * 60 * 1000, // 30 days — OA status changes rarely
 });
 
-let _cachedEmail: string | null = null;
+// getSettings() already caches settings in module state and invalidates that
+// cache via chrome.storage.onChanged, so it's cheap to call every time and
+// never goes stale — no second email cache of our own to keep in sync.
 async function getUserEmail(): Promise<string> {
-    if (_cachedEmail) return _cachedEmail;
     const { email } = await getSettings();
-    _cachedEmail = email;
     return email;
 }
 
@@ -60,7 +61,7 @@ export async function fetchOpenAccessRaw(
     doi: string,
     email: string
 ): Promise<OpenAccessStatus | null> {
-    const resp = await fetch(
+    const resp = await fetchWithTimeout(
         `https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`
     );
     if (!resp.ok) return null;
@@ -77,5 +78,4 @@ export async function fetchOpenAccessRaw(
 /** Test-only: drop in-memory cache state so each case starts fresh. */
 export function _resetOpenAccessCacheForTesting(): void {
     OA_CACHE.resetForTesting();
-    _cachedEmail = null;
 }

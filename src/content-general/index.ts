@@ -231,7 +231,7 @@ async function pageRenderChangeHandler(): Promise<void> {
     // If no valid DOIs found, try augmenting from page title in the background
     if (newDois.length === 0 && dois.length === 0) {
         debugLog("No valid DOIs found on page, attempting title augmentation");
-        if (!isSheets) augmentFromTitle().then().catch();
+        if (!isSheets) augmentFromTitle().catch(() => {});
         if (!isSheets) void checkPubPeer();
         return;
     }
@@ -722,7 +722,7 @@ function startDomListener(callback: () => void) {
     reportActiveState(true);
     // Show setup prompt if email not configured (non-blocking — extension still runs)
     if (!(await isSetupComplete())) {
-        renderSetupPrompt().then().catch();
+        renderSetupPrompt().catch(() => {});
     }
     const startFlora = (): void => {
         if (isSheets) {
@@ -731,6 +731,11 @@ function startDomListener(callback: () => void) {
             // Poll for sheet tab switches — Sheets uses replaceState (no popstate).
             let lastGid = parseSheetsUrl(location.href)?.gid ?? "0";
             setInterval(() => {
+                // Skip the poll while the tab is hidden — background tabs don't
+                // need gid tracking, and this keeps the timer near-free until the
+                // user returns (the interval itself is left running so detection
+                // resumes immediately on re-focus).
+                if (document.hidden) return;
                 const nowGid = parseSheetsUrl(location.href)?.gid ?? "0";
                 if (nowGid !== lastGid) {
                     lastGid = nowGid;

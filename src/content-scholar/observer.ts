@@ -1,7 +1,7 @@
 import {normaliseDOI} from "@shared/doi-normalise";
 import {type DoiAugmentRequest} from "@shared/doi-augment";
 import {augmentDOIsViaWorker} from "@shared/messages";
-import {injectRetractionInfo, retractionCheck} from "@shared/doi-retraction"
+import {injectRetractionInfo, retractionCheck, type RetractionResponse} from "@shared/doi-retraction"
 import {validateDOI, validateDOIs} from "@shared/doi-validate";
 import type {DoiString, DoiSource} from "@shared/types";
 import type {LookupRequest, LookupResponse} from "@shared/messages";
@@ -54,6 +54,16 @@ export async function processScholarResults(doc: Document): Promise<void> {
         source: DoiSource
     }[] = [];
 
+    // Retraction-notice targets collected across the whole pass so we can issue
+    // ONE retractionCheck for every DOI instead of one per row, then place the
+    // pills. `append` drops the pill inside a row's FLoRA pill container
+    // (.gs_ggs); `afterend` inserts it beside a title element.
+    const pendingRetractions: {
+        doi: DoiString;
+        target: HTMLElement;
+        mode: "append" | "afterend";
+    }[] = [];
+
     // Phase 1: Extract DOIs from URLs and collect all titles for augmentation
     interface RowInfo {
         row: HTMLElement;
@@ -86,7 +96,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
         if (extraction?.confident) {
             debugLog(`Scholar resolve [confident] "${title}" → ${extraction.doi}`);
             rowDois.push({row, doi: extraction.doi, source: "extracted"});
-            preInjectLabels(row, extraction.doi, "#853953", false);
+            preInjectLabels(row, extraction.doi, "#853953", false, pendingRetractions);
         } else {
             // Non-confident or no extraction — collect for augmentation cross-check
             rowInfos.push({
@@ -128,7 +138,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
                     doi: info.extractedDoi,
                     source: "extracted"
                 });
-                preInjectLabels(info.row, info.extractedDoi, "#853953", false);
+                preInjectLabels(info.row, info.extractedDoi, "#853953", false, pendingRetractions);
             } else {
                 if (info.extractedDoi) {
                     debugLog(`Scholar: "${info.title}" — extracted ${info.extractedDoi} failed doi.org validation, falling back to augmentation`);
@@ -167,7 +177,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
                         doi: info.extractedDoi,
                         source: "extracted"
                     });
-                    preInjectLabels(info.row, info.extractedDoi, "#853953", false);
+                    preInjectLabels(info.row, info.extractedDoi, "#853953", false, pendingRetractions);
                 } else if (info.extractedDoi && augmentedDoi && augmentedDoi !== info.extractedDoi) {
                     // Conflict: prefer augmented DOI → gray (augmented)
                     debugLog(`Scholar resolve [conflict] "${info.title}" → using augmented ${augmentedDoi} (extracted was ${info.extractedDoi})`);
@@ -176,7 +186,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
                         doi: augmentedDoi,
                         source: "augmented"
                     });
-                    preInjectLabels(info.row, augmentedDoi, "#656d76", true);
+                    preInjectLabels(info.row, augmentedDoi, "#656d76", true, pendingRetractions);
                 } else if (info.extractedDoi && !augmentedDoi) {
                     // Extracted but augmentation found nothing — last-resort doi.org check
                     let valid = false;
@@ -192,7 +202,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
                             doi: info.extractedDoi,
                             source: "extracted"
                         });
-                        preInjectLabels(info.row, info.extractedDoi, "#853953", false);
+                        preInjectLabels(info.row, info.extractedDoi, "#853953", false, pendingRetractions);
                     } else {
                         // Invalid DOI — no DOI pill, but still check for a
                         // retraction/concern notice (the static map is keyed
@@ -200,13 +210,14 @@ export async function processScholarResults(doc: Document): Promise<void> {
                         // next to the row title since there's no DOI pill to
                         // anchor against.
                         debugLog(`Scholar resolve [extracted-invalid] "${info.title}" → ${info.extractedDoi} rejected (doi.org says invalid)`);
-                        try {
-                            const notices = await retractionCheck([info.extractedDoi]);
-                            if (notices.length > 0) {
-                                const titleEl = info.row.querySelector<HTMLElement>(".gs_rt");
-                                if (titleEl) injectRetractionInfo(titleEl, notices[0], { afterend: true });
-                            }
-                        } catch { /* supplementary */ }
+                        const titleEl = info.row.querySelector<HTMLElement>(".gs_rt");
+                        if (titleEl) {
+                            pendingRetractions.push({
+                                doi: info.extractedDoi,
+                                target: titleEl,
+                                mode: "afterend",
+                            });
+                        }
                     }
                 } else if (!info.extractedDoi && augmentedDoi) {
                     // No extraction, only augmented → gray with dotted underline
@@ -216,10 +227,34 @@ export async function processScholarResults(doc: Document): Promise<void> {
                         doi: augmentedDoi,
                         source: "augmented"
                     });
-                    preInjectLabels(info.row, augmentedDoi, "#656d76", true);
+                    preInjectLabels(info.row, augmentedDoi, "#656d76", true, pendingRetractions);
                 } else {
                     debugLog(`Scholar resolve [no-doi] "${info.title}" → no DOI from extraction or augmentation`);
                 }
+            }
+        }
+    }
+
+    // One batched retraction check for the whole pass, then place each pill.
+    // Distributing by originDoi keeps behaviour identical to the previous
+    // per-row retractionCheck([doi]) calls, minus the redundant round-trips.
+    if (pendingRetractions.length > 0) {
+        const doisToCheck = [...new Set(pendingRetractions.map((p) => p.doi))];
+        let notices: RetractionResponse[] = [];
+        try {
+            notices = await retractionCheck(doisToCheck);
+        } catch {
+            // Retraction check failed — pills are supplementary, so skip them.
+        }
+        const noticeByDoi = new Map(notices.map((n) => [n.originDoi, n]));
+        for (const {doi, target, mode} of pendingRetractions) {
+            const notice = noticeByDoi.get(doi);
+            if (notice) {
+                injectRetractionInfo(
+                    target,
+                    notice,
+                    mode === "append" ? {append: true} : {afterend: true}
+                );
             }
         }
     }
@@ -256,21 +291,28 @@ export async function processScholarResults(doc: Document): Promise<void> {
     }
 }
 
-async function preInjectLabels(row: HTMLElement, doi: DoiString, color: string, isAugmented = false): Promise<void> {
+// Injects the DOI pill immediately and records a pending retraction-notice
+// target for the caller's single batched retractionCheck. The notice pill is
+// appended directly inside the FLoRA pill area (.gs_ggs gs_fl) — the default
+// smart placement would otherwise drop it into Scholar's nested .gs_or_ggsm
+// "All versions" submenu, since that contains the publisher links the
+// smart-placement heuristic matches against.
+function preInjectLabels(
+    row: HTMLElement,
+    doi: DoiString,
+    color: string,
+    isAugmented: boolean,
+    pending: {doi: DoiString; target: HTMLElement; mode: "append" | "afterend"}[]
+): void {
     injectDoiLabel(row, doi, color, isAugmented);
-    let target = row.querySelector(".gs_ggs");
+    let target = row.querySelector<HTMLElement>(".gs_ggs");
     if (!target) {
         target = document.createElement("div");
         target.className = "gs_ggs gs_fl";
         const gsRi = row.querySelector(".gs_ri");
         row.insertBefore(target, gsRi);
     }
-    let result = await retractionCheck([doi]);
-    // Append directly inside the FLoRA pill area (.gs_ggs gs_fl) — the default
-    // smart placement would otherwise drop the pill into Scholar's nested
-    // .gs_or_ggsm "All versions" submenu, since that contains the publisher
-    // links the smart-placement heuristic matches against.
-    if (result && result[0] != undefined) injectRetractionInfo(target, result[0], { append: true })
+    pending.push({doi, target, mode: "append"});
 }
 
 function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmented = false): void {
