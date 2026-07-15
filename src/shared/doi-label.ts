@@ -11,13 +11,15 @@ function ensureInlinePillStyle(): void {
     if (inlinePillStyleInjected) return;
     inlinePillStyleInjected = true;
     const style = document.createElement("style");
+    // Logical margins (margin-inline-*) so the gaps sit on the correct side in
+    // both LTR and RTL documents.
     style.textContent = `
         .${DOI_LABEL_CLASS}:not(:first-child),
         .${FLORA_NOTICE_PILL_CLASS}:not(:first-child) {
-            margin-left: 6px;
+            margin-inline-start: 6px;
         }
         .${DOI_LABEL_CLASS} {
-            margin-right: 2px;
+            margin-inline-end: 2px;
         }
     `;
     document.head.appendChild(style);
@@ -64,7 +66,10 @@ export function createDoiPill(
     wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: baseline; top: -1px;`;
 
     const pill = document.createElement("span");
+    // direction:ltr keeps the pill's Latin content ("DOI ✓", "Free") in order
+    // on RTL host pages (an inline-flex row otherwise reverses to "✓ DOI").
     pill.style.cssText = `
+    direction: ltr;
     display: inline-flex;
     align-items: center;
     gap: 4px;

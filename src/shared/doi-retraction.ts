@@ -1,4 +1,13 @@
 import {extractDoiFromHref, isEditableContext} from "@shared/doi-extractor";
+import {
+    insertNodeAfter,
+    appendNodeInto,
+    isElementVisible,
+    isTableStructural,
+    mostTextBearingCell,
+    smallestTextContainer,
+    bestInnerTextHost,
+} from "@shared/placement";
 import {FLORA_NOTICE_PILL_CLASS} from "@shared/doi-label";
 import type {DoiString, NoticeKind, RetractionResponse} from "@shared/types";
 import {safeSendMessage, type RetractionCheckResponse} from "@shared/messages";
@@ -179,7 +188,15 @@ export function injectRetractionInfo(
     // pill is still connected (see hasConnectedNoticePill) and restore it after
     // a hydration wipe without stamping a second pill.
     wrapper.dataset.floraDoi = info.originDoi;
-    wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle; margin-left: 6px;`;
+    // margin-inline-start (not margin-left) so the gap sits before the pill in
+    // both LTR and RTL documents. direction:ltr keeps the pill's Latin label
+    // ("Retracted"/"Concern") laid out left-to-right — without it the SVG text
+    // inherits the page's RTL direction and renders clipped off the pill's left
+    // edge. max-width:100% lets the wrapper wrap onto a new line instead of
+    // pushing the title line past the viewport edge.
+    wrapper.style.cssText =
+        `position: relative; display: inline-block; vertical-align: middle; ` +
+        `direction: ltr; margin-inline-start: 6px; max-width: 100%;`;
 
     const presentation = noticePresentation(info.kind);
     const W = presentation.pillWidth;
@@ -221,41 +238,63 @@ export function injectRetractionInfo(
 }
 
 /**
- * Place the "Retracted" pill inline, mirroring the DOI pill's placement.
+ * Place the "Retracted"/"Concern" pill inline, mirroring the DOI pill's
+ * placement and upholding the no-new-layout-item invariant (see placement.ts):
+ * inserting the pill must never create a flex/grid item or an invalid table
+ * child in the host page.
  *
- * - Anchor target: insert right after it. The wrapper carries its own
- *   <a href="…retraction notice">, so nesting it inside another <a> would
+ * - Anchor target: insert right after it (flex/grid/table-safe). The wrapper
+ *   carries its own <a href="…notice">, so nesting it inside another <a> would
  *   create invalid nested anchors that browsers split.
- * - Block target (a reference entry): insert right after the link that
- *   carries this DOI so the pill sits inline with the citation; fall back to
- *   the entry's last link, then to appending at the entry end.
+ * - Table row/section target: a <span> appended directly is hoisted out of the
+ *   table, so place it inside the row's most text-bearing cell (Fix 2).
+ * - Block target (a reference entry): insert right after the link that carries
+ *   this DOI; else beside the DOI where it reads as text; else after the entry's
+ *   last link; else append into the entry. Every branch nests into the citation
+ *   body rather than becoming a new flex/grid item when the row is flex/grid.
  */
 function placeRetractionPill(target: Element, doi: DoiString, pill: HTMLElement): void {
     if (target.tagName === "A" && target.parentElement) {
-        target.insertAdjacentElement("afterend", pill);
+        insertNodeAfter(target as HTMLElement, pill);
         return;
     }
+    if (isTableStructural(target)) {
+        const cell = mostTextBearingCell(target);
+        if (cell) {
+            cell.appendChild(pill);
+            return;
+        }
+    }
+    // Citation body — the preferred nesting host when a sibling insert would
+    // otherwise land the pill as a new flex/grid item in an action row.
+    const body = bestInnerTextHost(target as HTMLElement);
     // Only consider visible links. The DOI-pill widget (Scholar rows, etc.)
     // hides its hover popover with display:none, but its <a href=doi.org/...>
-    // would otherwise win the match and the notice pill would land inside
-    // the popover. offsetParent === null also catches detached/hidden
-    // ancestors generally.
+    // would otherwise win the match and the notice pill would land inside the
+    // popover. isElementVisible also catches detached/hidden ancestors generally.
     const visibleLinks: HTMLAnchorElement[] = [];
     for (const link of target.querySelectorAll<HTMLAnchorElement>("a[href]")) {
-        if (link.offsetParent === null) continue;
+        if (!isElementVisible(link)) continue;
         visibleLinks.push(link);
     }
     for (const link of visibleLinks) {
         if (extractDoiFromHref(link.href) === doi) {
-            link.insertAdjacentElement("afterend", pill);
+            insertNodeAfter(link, pill, body);
             return;
         }
     }
+    // No link carries the DOI — sit the pill beside the DOI where it reads as
+    // citation text (matches where the DOI pill lands).
+    const textHost = smallestTextContainer(target as HTMLElement, doi);
+    if (textHost) {
+        appendNodeInto(textHost, pill, body);
+        return;
+    }
     const lastLink = visibleLinks[visibleLinks.length - 1];
     if (lastLink) {
-        lastLink.insertAdjacentElement("afterend", pill);
+        insertNodeAfter(lastLink, pill, body);
     } else {
-        target.appendChild(pill);
+        appendNodeInto(target as HTMLElement, pill, body);
     }
 }
 

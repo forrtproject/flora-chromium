@@ -4,7 +4,12 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-left: 6px;
+  /* Logical margin so the gap sits before the badge in both LTR and RTL. */
+  margin-inline-start: 6px;
+  max-width: 100%;
+  /* Latin content — keep it left-to-right so an RTL host page doesn't reverse
+     "FLoRA 3 replications" into "replications 3 FLoRA". */
+  direction: ltr;
   padding: 2px 10px;
   border-radius: 20px;
   font-family:

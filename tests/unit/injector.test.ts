@@ -331,6 +331,22 @@ describe("injector", () => {
       expect(badges[0].dataset.floraDoi).toBe("10.1016/j.cell.2020.01.001");
     });
 
+    it("places a prose-DOI badge immediately after the DOI text node, not at the block end", () => {
+      document.body.innerHTML = `<p id="p">See 10.1038/nature12373 for more details here.</p>`;
+      const state = new Map<DoiString, LookupState>();
+      state.set(doi("10.1038/nature12373"), { status: "matched", result: MOCK_RESULT, source: "extracted" });
+
+      renderInlineBadges(state);
+
+      const p = document.getElementById("p")!;
+      const badge = p.querySelector<HTMLElement>(".flora-inline-badge");
+      expect(badge).not.toBeNull();
+      // The DOI text stays to the left of the badge; the trailing prose to its right.
+      expect(badge!.previousSibling?.textContent).toContain("10.1038/nature12373");
+      expect(badge!.previousSibling?.textContent).not.toContain("for more details");
+      expect(badge!.nextSibling?.textContent).toContain("for more details");
+    });
+
     it("injects badge next to a SICI DOI non-doi.org link whose text contains the full DOI", () => {
       document.body.innerHTML = `
         <a href="https://onlinelibrary.wiley.com/doi/10.1002/(SICI)1097-0266(199704)18:4%3C303::AID-SMJ869%3E3.0.CO;2-G">

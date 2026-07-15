@@ -1,6 +1,7 @@
 import type { DoiString, LookupState, ReplicationResult, ReplicationEntry, OriginalEntry, DoiContext } from "../shared/types";
 import type { PubPeerFeedback } from "../shared/pubpeer-api";
 import { extractDoiOccurrences, isEditableContext, type DoiOccurrence } from "../shared/doi-extractor";
+import { insertNodeAfter, appendNodeInto, isAppendSafe, isElementVisible } from "../shared/placement";
 import { debugLog } from "../shared/debug";
 import { getSettings } from "../shared/settings";
 import { safeSendMessage } from "../shared/messages";
@@ -385,7 +386,7 @@ export function renderInlineBadges(
         const hasData = stats.n_replications_total > 0 || stats.n_reproductions_total > 0;
         if (!hasData) continue;
 
-        if (!isVisible(occ.anchor)) continue;
+        if (!isElementVisible(occ.anchor)) continue;
         // Skip if a badge for THIS DOI already sits in the anchor's scope
         // (idempotent re-runs). Keyed by DOI, not position, so an intervening
         // host-inserted node between anchor and badge can't defeat the check.
@@ -417,14 +418,28 @@ export function renderInlineBadges(
     `;
         shadow.appendChild(badge);
 
-        placeBadge(occ.anchor, badgeHost);
+        placeBadge(occ, badgeHost);
         debugLog("renderInlineBadges: badged", occ.doi, "as", occ.kind);
     }
 }
 
-/** Place a badge relative to its anchor: after the anchor for links, inside
- *  for everything else (reference entries, paragraphs). */
-function placeBadge(anchor: HTMLElement, badge: HTMLElement): void {
+/**
+ * Place a badge relative to its DOI occurrence, without ever creating a new
+ * flex/grid item or an invalid table child in the host page (see placement.ts).
+ *
+ * Decision tree:
+ *  - Text occurrence with a captured text node → split the node right after the
+ *    DOI and drop the badge there, so it sits beside the DOI it annotates rather
+ *    than at the end of the block. Only when the text node's parent can host it
+ *    inline; otherwise fall through to the anchor path.
+ *  - A-anchor → insert as the anchor's following sibling in normal flow; when
+ *    the anchor sits in a flex/grid row or a table, nest into a safe inline host
+ *    instead (the badge is itself a link, so it can't go inside the <a>).
+ *  - Block anchor (reference entry, paragraph) → append inside; when the anchor
+ *    is itself a flex/grid/table container, nest into its citation/text body.
+ */
+function placeBadge(occ: DoiOccurrence, badge: HTMLElement): void {
+    const anchor = occ.anchor;
     // Defence in depth: mutation-driven re-runs can reach placement with an
     // anchor in an editable region even though extraction filters those out.
     // Never inject into user-editable content — the markup would be serialized
@@ -433,6 +448,25 @@ function placeBadge(anchor: HTMLElement, badge: HTMLElement): void {
         debugLog("placeBadge: skipped — anchor is in an editable context");
         return;
     }
+
+    // Text occurrence: drop the badge immediately after the DOI's text node.
+    if (occ.kind === "text" && occ.textNode?.isConnected && occ.matchText) {
+        const tn = occ.textNode;
+        const parent = tn.parentElement;
+        const idx = tn.data.indexOf(occ.matchText);
+        if (parent && !isEditableContext(parent) && isAppendSafe(parent) && idx >= 0) {
+            const end = idx + occ.matchText.length;
+            // splitText(end) leaves the DOI (and any leading text) in `tn` and
+            // returns the trailing remainder; inserting before it places the
+            // badge flush against the end of the DOI.
+            const tail = end < tn.data.length ? tn.splitText(end) : tn.nextSibling;
+            parent.insertBefore(badge, tail);
+            return;
+        }
+        // Parent can't host the badge inline (flex/grid/table/editable) or the
+        // DOI text moved — fall back to the anchor-based placement below.
+    }
+
     if (anchor.tagName === "A") {
         // A reused <a> (React swaps its href/DOI but keeps the node) can still
         // carry a stale FLoRA badge for a DIFFERENT DOI as its next sibling.
@@ -447,9 +481,9 @@ function placeBadge(anchor: HTMLElement, badge: HTMLElement): void {
         ) {
             next.remove();
         }
-        anchor.insertAdjacentElement("afterend", badge);
+        insertNodeAfter(anchor, badge);
     } else {
-        anchor.appendChild(badge);
+        appendNodeInto(anchor, badge);
     }
 }
 
@@ -476,11 +510,6 @@ function anchorAlreadyBadged(anchor: HTMLElement, doi: DoiString): boolean {
         return false;
     }
     return anchor.querySelector(`.${BADGE_CLASS}`) !== null;
-}
-
-function isVisible(el: HTMLElement): boolean {
-    const style = window.getComputedStyle(el);
-    return style.display !== "none" && style.visibility !== "hidden";
 }
 
 function escapeHtml(s: string): string {

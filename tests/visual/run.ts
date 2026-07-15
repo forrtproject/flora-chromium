@@ -82,6 +82,9 @@ const FIXTURES: Fixture[] = [
   // New visual fixtures (served from tests/visual/fixtures).
   { name: "ref-list-flex", urlPath: "ref-list-flex.html" },
   { name: "ref-list-grid", urlPath: "ref-list-grid.html" },
+  // Publisher action rows (flex + one grid) that carry the DOI link — a pill
+  // inserted after that link must not become a new flex/grid item.
+  { name: "flex-action-row", urlPath: "flex-action-row.html" },
   { name: "table-bibliography", urlPath: "table-bibliography.html" },
   { name: "rtl-article", urlPath: "rtl-article.html" },
   { name: "editor-textarea", urlPath: "editor-textarea.html" },

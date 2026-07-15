@@ -11,7 +11,8 @@
 // their DOI as visible text only get one when the user opts into
 // `showDoiPillsOnAllReferences`.
 
-import {findReferenceEntries, extractDoiFromHref, isEditableContext, type ReferenceEntry} from "@shared/doi-extractor";
+import {findReferenceEntries, extractDoiFromHref, isEditableContext, MIN_CITATION_LENGTH, YEAR_RE, type ReferenceEntry} from "@shared/doi-extractor";
+import {insertNodeAfter, appendNodeInto} from "@shared/placement";
 import {augmentDOIsViaWorker} from "@shared/messages";
 import {validateDOIs} from "@shared/doi-validate";
 import {injectRetractionInfo, type RetractionResponse} from "@shared/doi-retraction";
@@ -86,31 +87,31 @@ function placeReferencePill(
         debugLog("placeReferencePill: skipped — entry is in an editable context");
         return;
     }
+    // The citation body is the preferred nesting host when a plain sibling
+    // insert would land the pill as a new flex/grid/table item (see placement.ts).
+    const body = findCitationBody(entry);
     if (mode === "hidden") {
         for (const link of entry.querySelectorAll<HTMLAnchorElement>("a[href]")) {
             if (extractDoiFromHref(link.href) === doi) {
-                link.insertAdjacentElement("afterend", pill);
+                insertNodeAfter(link, pill, body);
                 return;
             }
         }
         const textHost = findSmallestTextContainer(entry, doi);
         if (textHost) {
-            textHost.appendChild(pill);
+            appendNodeInto(textHost, pill, body);
             return;
         }
-    } else {
-        const body = findCitationBody(entry);
-        if (body) {
-            body.appendChild(pill);
-            return;
-        }
+    } else if (body) {
+        appendNodeInto(body, pill, body);
+        return;
     }
     const links = entry.querySelectorAll<HTMLAnchorElement>("a[href]");
     const lastLink = links[links.length - 1];
     if (lastLink) {
-        lastLink.insertAdjacentElement("afterend", pill);
+        insertNodeAfter(lastLink, pill, body);
     } else {
-        entry.appendChild(pill);
+        appendNodeInto(entry, pill, body);
     }
 }
 
@@ -126,13 +127,8 @@ const AUGMENTED_COLOR = "#656d76";
 const CONFIDENT_COLOR = "#853953";
 // Cap API usage on reference lists with many DOI-less entries.
 const MAX_REFERENCE_AUGMENTATIONS = 30;
-// Skip entries too short to be a real citation (avoids junk augmentation queries).
-const MIN_CITATION_LENGTH = 16;
-// Real citations always have a publication year. Without one, the entry is
-// almost certainly a navigation stub (pagination, source-tab label, "Show more")
-// inside a reference container — sending those to Crossref/OpenAlex would
-// hallucinate a DOI and surface a stray pill on the section header.
-const YEAR_RE = /\b(?:18|19|20)\d{2}\b/;
+// MIN_CITATION_LENGTH / YEAR_RE are shared with the extractor (which reuses them
+// to decide when a table row is a citation) — imported from doi-extractor.
 
 type PendingEntry =
   | { entry: ReferenceEntry; mode: "augment"; doi: null }

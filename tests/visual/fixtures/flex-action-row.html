@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Reference list — flex/grid action rows with a DOI link</title>
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+      color: #1a1a1a;
+      background: #ffffff;
+      font-size: 15px;
+      line-height: 1.5;
+      padding: 32px 48px;
+    }
+    h1 { font-size: 22px; margin: 0 0 24px; }
+    h2 { font-size: 17px; margin: 24px 0 12px; color: #333; }
+    .references { max-width: 860px; }
+    .ref {
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      border: 1px solid #e2e2e2;
+      border-radius: 8px;
+      background: #fafafa;
+    }
+    .cite { display: block; margin-bottom: 8px; }
+    /* The citation's action row: a flex bar with the links spread across it.
+       The final link is the DOI link — a FLoRA pill inserted after it must NOT
+       become a fourth flex item and shift the row. */
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      border-top: 1px dashed #d8d8d8;
+      padding-top: 8px;
+    }
+    .actions a { color: #1a5fb4; text-decoration: none; font-size: 13px; }
+    /* One entry lays its action row out on a fixed 3-column grid. A stray pill
+       here would consume a grid column and misalign the row. */
+    .actions.grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      justify-content: initial;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sources with publisher action rows</h1>
+  <h2 id="references-heading">References</h2>
+  <div class="references" aria-labelledby="references-heading">
+    <div class="ref">
+      <span class="cite">Author, A., &amp; Author, B. (2015). A highly replicated finding in cognition. <em>Journal of Mock Studies</em>, 12(3), 200–219.</span>
+      <div class="actions">
+        <a href="#pdf">View PDF</a>
+        <a href="#article">Article</a>
+        <a href="https://doi.org/10.5555/flora.repl.0001">DOI</a>
+      </div>
+    </div>
+    <div class="ref">
+      <span class="cite">Author, C. (2016). A computationally reproduced analysis. <em>Journal of Mock Studies</em>, 13(1), 44–60.</span>
+      <div class="actions">
+        <a href="#pdf">View PDF</a>
+        <a href="#article">Article</a>
+        <a href="https://doi.org/10.5555/flora.repro.0002">DOI</a>
+      </div>
+    </div>
+    <div class="ref">
+      <span class="cite">Author, D., &amp; Author, E. (2017). A now-retracted intervention study. <em>Journal of Mock Studies</em>, 14(2), 88–104.</span>
+      <div class="actions">
+        <a href="#pdf">View PDF</a>
+        <a href="#article">Article</a>
+        <a href="https://doi.org/10.5555/flora.retr.0003">DOI</a>
+      </div>
+    </div>
+    <div class="ref">
+      <span class="cite">Author, F. (2018). A paper flagged with an expression of concern. <em>Journal of Mock Studies</em>, 15(4), 310–329.</span>
+      <div class="actions grid">
+        <a href="#pdf">View PDF</a>
+        <a href="#article">Article</a>
+        <a href="https://doi.org/10.5555/flora.conc.0004">DOI</a>
+      </div>
+    </div>
+    <div class="ref">
+      <span class="cite">Author, G. (2019). An ordinary paper with no replication record. <em>Journal of Mock Studies</em>, 16(1), 5–21.</span>
+      <div class="actions">
+        <a href="#pdf">View PDF</a>
+        <a href="#article">Article</a>
+        <a href="https://doi.org/10.5555/flora.none.0005">DOI</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,5 +1,6 @@
 import {
     beginDomScanPass,
+    chooseArticleTitleElement,
     classifyPageDois,
     extractDOIs,
     extractDOIsFromText,
@@ -333,7 +334,7 @@ async function runRenderPass(hint?: ScanHint): Promise<void> {
         const articleDois = new Set(
             [...doiContext.entries()].filter(([, ctx]) => ctx === "article").map(([doi]) => doi)
         );
-        const titleEl = document.querySelector<HTMLHeadingElement>("h1");
+        const titleEl = chooseArticleTitleElement(document);
 
         // Article notice → pinned inline at the end of the page title for a
         // consistent spot across sites, instead of at whatever DOI occurrence
@@ -529,7 +530,7 @@ function reinjectMissingNoticePills(pageOccurrences: DoiOccurrence[]): void {
     const articleDois = new Set(
         [...doiContext.entries()].filter(([, ctx]) => ctx === "article").map(([doi]) => doi)
     );
-    const titleEl = document.querySelector<HTMLHeadingElement>("h1");
+    const titleEl = chooseArticleTitleElement(document);
 
     for (const notice of redacts) {
         if (hasConnectedNoticePill(notice.originDoi)) continue; // pill intact — leave it

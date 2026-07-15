@@ -333,6 +333,14 @@ export interface DoiOccurrence {
    */
   anchor: HTMLElement;
   kind: DoiOccurrenceKind;
+  /**
+   * For `kind === "text"` occurrences: the exact text node the DOI appears in,
+   * plus the DOI substring as it reads in that node. Lets a renderer place the
+   * badge immediately AFTER the DOI (splitting the text node) instead of at the
+   * end of the containing block. Absent for link occurrences.
+   */
+  textNode?: Text;
+  matchText?: string;
 }
 
 /**
@@ -427,7 +435,20 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
       const doi = normaliseDOI(trimmed);
       if (!doi || seen.has(doi)) continue;
       seen.add(doi);
-      occurrences.push({ doi, source: parent, anchor: pickAnchor(parent), kind: "text" });
+      // Capture the text node + the DOI substring so a renderer can drop the
+      // badge right beside the DOI. Only reliable when the DOI reads identically
+      // in the RAW node (no percent-encoding / word-break chars altered it);
+      // when it doesn't, `matchText` is omitted and the renderer falls back to
+      // end-of-block placement rather than risk splitting the wrong offset.
+      const readsInRaw = raw.indexOf(trimmed) >= 0;
+      occurrences.push({
+        doi,
+        source: parent,
+        anchor: pickAnchor(parent),
+        kind: "text",
+        textNode: node as Text,
+        matchText: readsInRaw ? trimmed : undefined,
+      });
     }
   }
 
@@ -536,6 +557,16 @@ export function findReferenceContainers(doc: Document): Element[] {
   return result;
 }
 
+// Shared citation heuristics (also imported by references.ts). Kept here so
+// findReferenceEntries can apply the same "is this row a real citation?" test
+// when splitting a table bibliography into per-row entries.
+//
+// Skip entries too short to be a real citation (avoids junk augmentation).
+export const MIN_CITATION_LENGTH = 16;
+// Real citations always carry a publication year — without one a fragment is
+// almost certainly a header/nav stub, not a reference.
+export const YEAR_RE = /\b(?:18|19|20)\d{2}\b/;
+
 /** A single reference-list entry, kept linked to its DOM element. */
 export interface ReferenceEntry {
   /** The DOM element for this one reference (e.g. an <li>). */
@@ -639,6 +670,31 @@ export function findReferenceEntries(doc: Document): ReferenceEntry[] {
   const elements: HTMLElement[] = [];
 
   for (const container of findReferenceContainers(doc)) {
+    // Table bibliography: treat each data <tr> that looks like a citation as its
+    // own entry. Without this the whole <table> (or its <tbody>) is one entry,
+    // so every row's pill clusters onto a single anchor instead of appearing
+    // per row. Gated on the row carrying a year + enough text (the same
+    // citation test used elsewhere) so genuine data tables that happen to sit
+    // inside a reference container aren't split into stray-pill rows.
+    const tables =
+      container.tagName === "TABLE"
+        ? [container as HTMLElement]
+        : Array.from(container.querySelectorAll<HTMLElement>("table"));
+    let handledAsTable = false;
+    for (const table of tables) {
+      const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>("tr")).filter((tr) => {
+        // Skip header rows (all-<th>, no <td>).
+        if (tr.querySelector("th") && !tr.querySelector("td")) return false;
+        const text = (tr.textContent ?? "").trim();
+        return text.length >= MIN_CITATION_LENGTH && YEAR_RE.test(text);
+      });
+      if (rows.length >= 2) {
+        elements.push(...rows);
+        handledAsTable = true;
+      }
+    }
+    if (handledAsTable) continue;
+
     const lis = Array.from(container.querySelectorAll<HTMLElement>("li"))
       .filter((li) => !li.querySelector("li"));
     if (lis.length >= 2) {
@@ -791,6 +847,94 @@ export function classifyPageDois(doc: Document, occurrences?: DoiOccurrence[]): 
     retractedDois: [],
     allDois: [...new Set([...articleFound, ...referenceFound, ...otherFound])],
   };
+}
+
+// ── Article title element chooser ───────────────────────────────────────────
+
+/** Collapse whitespace and lowercase for fuzzy title comparison. */
+function normaliseTitleText(s: string): string {
+  return s.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** The article title as declared in the page head (citation_title first). */
+function citationTitleFromMeta(doc: Document): string | null {
+  for (const sel of [
+    'meta[name="citation_title"]',
+    'meta[name="dc.title" i]',
+    'meta[property="og:title"]',
+    'meta[name="twitter:title"]',
+  ]) {
+    const content = doc.querySelector<HTMLMetaElement>(sel)?.content?.trim();
+    if (content) return content;
+  }
+  return null;
+}
+
+// Jaccard-style token overlap of two normalised titles (0..1). A heading like
+// "Cognitive bias in decision making — Journal of X" still overlaps strongly
+// with the citation_title even when it carries extra site/journal chrome.
+function titleOverlap(a: string, b: string): number {
+  const ta = new Set(a.split(" ").filter((w) => w.length > 2));
+  const tb = new Set(b.split(" ").filter((w) => w.length > 2));
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let shared = 0;
+  for (const w of ta) if (tb.has(w)) shared++;
+  return shared / Math.min(ta.size, tb.size);
+}
+
+// Selectors publishers commonly give the real article-title element. Ordered
+// most- to least-specific.
+const TITLE_SELECTORS = [
+  "h1.title",
+  "h1.article-title",
+  '[class*="article-title" i]',
+  '[class*="articleTitle" i]',
+  "h1.entry-title",
+  ".entry-title",
+  'h1[itemprop="headline"]',
+  '[data-test*="article-title" i]',
+  "h1#title",
+];
+
+/**
+ * Pick the best on-page element to pin an article-level notice (retraction /
+ * concern) to. The first <h1> is frequently the site or journal name, not the
+ * paper title, so prefer — in order:
+ *   1. an <h1>/<h2> whose text fuzzy-matches the head's citation_title
+ *      (substring either way, or high token overlap);
+ *   2. an element matching a common article-title selector;
+ *   3. the first <h1> (today's behaviour);
+ *   4. null when the page has no heading at all.
+ */
+export function chooseArticleTitleElement(doc: Document): HTMLElement | null {
+  const citationTitle = citationTitleFromMeta(doc);
+  const headings = Array.from(doc.querySelectorAll<HTMLElement>("h1, h2"));
+
+  if (citationTitle) {
+    const target = normaliseTitleText(citationTitle);
+    let best: HTMLElement | null = null;
+    let bestScore = 0;
+    for (const h of headings) {
+      const text = normaliseTitleText(h.textContent ?? "");
+      if (!text) continue;
+      // A clean substring match either direction is a confident hit.
+      if (text.includes(target) || target.includes(text)) return h;
+      const score = titleOverlap(target, text);
+      if (score > bestScore) {
+        best = h;
+        bestScore = score;
+      }
+    }
+    // Require a solid majority of shared tokens before trusting overlap.
+    if (best && bestScore >= 0.6) return best;
+  }
+
+  for (const sel of TITLE_SELECTORS) {
+    const el = doc.querySelector<HTMLElement>(sel);
+    if (el && (el.textContent ?? "").trim()) return el;
+  }
+
+  return doc.querySelector<HTMLElement>("h1") ?? headings[0] ?? null;
 }
 
 function isGoogleSheets(doc: Document): boolean {
