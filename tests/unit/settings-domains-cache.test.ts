@@ -6,7 +6,7 @@ import {afterEach, describe, expect, it, vi} from "vitest";
 const FULL_SETTINGS = {
   email: "test@example.com",
   showDoiPillsOnAllReferences: false,
-  cacheQuotaMb: 500,
+  cacheQuotaMb: 50,
 };
 
 describe("settings/domain storage caches", () => {

@@ -59,7 +59,7 @@ getSettings().then(({ cacheQuotaMb }) => {
 
 cacheQuotaSaveBtn.addEventListener("click", async () => {
   const raw = parseInt(cacheQuotaInput.value, 10);
-  const cacheQuotaMb = isNaN(raw) || raw < 0 ? 500 : raw;
+  const cacheQuotaMb = isNaN(raw) || raw < 0 ? 50 : raw;
   cacheQuotaInput.value = String(cacheQuotaMb);
   cacheQuotaSaveBtn.disabled = true;
   try {

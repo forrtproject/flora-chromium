@@ -25,6 +25,10 @@ vi.mock("../../src/shared/settings", () => ({
 
 // Mock cache
 const cacheStore = new Map<string, unknown>();
+// Records every cache.set(key, data, ttlMs) so tests can assert TTL is applied.
+const cacheSetCalls: Array<{key: string; data: unknown; ttlMs: number | null}> = [];
+// When set, cache.set throws (simulates a storage-quota write failure).
+let cacheSetError: Error | null = null;
 vi.mock("../../src/shared/cache", () => ({
     MONTH_MS: 30 * 24 * 60 * 60 * 1000,
     LocalCache: class {
@@ -42,7 +46,9 @@ vi.mock("../../src/shared/cache", () => ({
                 : undefined;
         }
 
-        async set(key: string, data: unknown, _ttlMs: number | null) {
+        async set(key: string, data: unknown, ttlMs: number | null) {
+            cacheSetCalls.push({key, data, ttlMs});
+            if (cacheSetError) throw cacheSetError;
             cacheStore.set(`${this.prefix}:${key}`, data);
         }
     },
@@ -57,6 +63,8 @@ describe("service-worker", () => {
 
     beforeEach(async () => {
         cacheStore.clear();
+        cacheSetCalls.length = 0;
+        cacheSetError = null;
         mockLookupDOIs.mockReset();
         (chrome.storage.local.get as ReturnType<typeof vi.fn>).mockResolvedValue({});
 
@@ -176,6 +184,41 @@ describe("service-worker", () => {
         expect(response.errors["10.1038/nature12373"]).toBe(
             "FLoRA API error: 500"
         );
+    });
+
+    it("applies a finite TTL to lookup cache writes (not forever)", async () => {
+        mockLookupDOIs.mockResolvedValue(
+            new Map([[doi("10.1038/nature12373"), MOCK_RESULT]])
+        );
+
+        await sendMessage({
+            type: "FLORA_LOOKUP",
+            dois: [doi("10.1038/nature12373")],
+        });
+
+        expect(cacheSetCalls).toHaveLength(1);
+        // ~30 days, not null/forever — this is what makes eviction possible.
+        expect(cacheSetCalls[0].ttlMs).toBe(30 * 24 * 60 * 60 * 1000);
+    });
+
+    it("does not turn a cache-WRITE failure into a lookup error", async () => {
+        // The API returns a real result, but persisting it to storage fails
+        // (e.g. quota). The result must still be returned and NOT reported as an
+        // error — this is the storage-quota time-bomb regression.
+        mockLookupDOIs.mockResolvedValue(
+            new Map([[doi("10.1038/nature12373"), MOCK_RESULT]])
+        );
+        cacheSetError = new Error("QUOTA_BYTES quota exceeded");
+
+        const response = await sendMessage({
+            type: "FLORA_LOOKUP",
+            dois: [doi("10.1038/nature12373")],
+        });
+
+        expect(response.results["10.1038/nature12373"]).toEqual(MOCK_RESULT);
+        expect(Object.keys(response.errors)).toHaveLength(0);
+        // The write was attempted (and threw) but did not corrupt the response.
+        expect(cacheSetCalls).toHaveLength(1);
     });
 
     it("ignores non-lookup messages", () => {

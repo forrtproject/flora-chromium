@@ -10,8 +10,10 @@ export interface FloraSettings {
    */
   showDoiPillsOnAllReferences: boolean;
   /**
-   * Soft cap on chrome.storage.local usage in MB. 0 = unlimited.
-   * Expired cache entries are evicted when this limit is approached.
+   * Soft cap on chrome.storage.local usage in MB. 0 = unlimited. With the
+   * "unlimitedStorage" permission the browser lifts the ~10 MB hard cap, so
+   * this is a housekeeping bound: when it's approached, expired cache entries
+   * are evicted first, then live entries oldest-first (LRU).
    */
   cacheQuotaMb: number;
 }
@@ -21,7 +23,7 @@ const STORAGE_KEY = "flora_settings";
 const DEFAULTS: FloraSettings = {
   email: "",
   showDoiPillsOnAllReferences: false,
-  cacheQuotaMb: 500,
+  cacheQuotaMb: 50,
 };
 
 let cachedSettings: FloraSettings | null = null;

@@ -84,6 +84,78 @@ describe("LocalCache", () => {
     expect(await cache.get("key")).toBe("second");
   });
 
+  it("records createdAt on set", async () => {
+    const cache = new LocalCache<string>("test");
+    const before = Date.now();
+    await cache.set("key", "value", null);
+    const entry = store["test:key"] as { createdAt: number };
+    expect(entry.createdAt).toBeGreaterThanOrEqual(before);
+  });
+
+  it("evicts expired entries first when over quota", async () => {
+    const cache = new LocalCache<string>("test");
+    cache.setQuota(1000);
+
+    // Pre-load one expired and one live entry directly into the store.
+    store["test:old"] = { data: "old", expiresAt: Date.now() - 1000, createdAt: 1 };
+    store["test:live"] = { data: "live", expiresAt: Date.now() + 100000, createdAt: 2 };
+
+    // Report over-quota on the first check, then under-quota afterwards so the
+    // LRU pass is not needed once the expired entry is reclaimed.
+    let call = 0;
+    (chrome.storage.local.getBytesInUse as ReturnType<typeof vi.fn>).mockImplementation(
+      async () => (call++ === 0 ? 5000 : 0)
+    );
+
+    await cache.set("new", "new", null);
+
+    expect(store["test:old"]).toBeUndefined(); // expired -> evicted
+    expect(store["test:live"]).toBeDefined();  // live -> kept
+    expect(store["test:new"]).toBeDefined();
+  });
+
+  it("evicts live entries oldest-first (LRU) when still over quota", async () => {
+    const cache = new LocalCache<string>("test");
+    cache.setQuota(1000);
+
+    // Three live entries with increasing createdAt (oldest = a).
+    store["test:a"] = { data: "a", expiresAt: null, createdAt: 1 };
+    store["test:b"] = { data: "b", expiresAt: null, createdAt: 2 };
+    store["test:c"] = { data: "c", expiresAt: null, createdAt: 3 };
+
+    // Stay over quota through both getBytesInUse(null) checks so the LRU pass
+    // runs; per-key size reported large enough that one eviction suffices.
+    (chrome.storage.local.getBytesInUse as ReturnType<typeof vi.fn>).mockImplementation(
+      async (key: string | null) => (key === null ? 5000 : 4001)
+    );
+
+    await cache.set("d", "d", null);
+
+    // Oldest live entry (a) evicted; newer ones survive.
+    expect(store["test:a"]).toBeUndefined();
+    expect(store["test:b"]).toBeDefined();
+    expect(store["test:c"]).toBeDefined();
+    expect(store["test:d"]).toBeDefined();
+  });
+
+  it("evicts entries without createdAt before newer ones", async () => {
+    const cache = new LocalCache<string>("test");
+    cache.setQuota(1000);
+
+    // Legacy entry lacks createdAt (treated as 0 = oldest); newer has createdAt.
+    store["test:legacy"] = { data: "legacy", expiresAt: null };
+    store["test:fresh"] = { data: "fresh", expiresAt: null, createdAt: 100 };
+
+    (chrome.storage.local.getBytesInUse as ReturnType<typeof vi.fn>).mockImplementation(
+      async (key: string | null) => (key === null ? 5000 : 4001)
+    );
+
+    await cache.set("new", "new", null);
+
+    expect(store["test:legacy"]).toBeUndefined();
+    expect(store["test:fresh"]).toBeDefined();
+  });
+
   it("setQuota(0) disables quota enforcement", async () => {
     const cache = new LocalCache<string>("test");
     cache.setQuota(0);
