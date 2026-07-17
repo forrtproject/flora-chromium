@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="citation_title" content="The Article Under Study">
+  <meta name="citation_doi" content="10.5555/flora.article.0006">
+  <meta name="citation_author" content="Author, Alex">
+  <meta name="citation_publication_date" content="2015">
+  <title>Long article with sticky header and fixed footer</title>
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+      color: #1a1a1a;
+      background: #ffffff;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    header.site {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: #612d53;
+      color: #fff;
+      padding: 14px 48px;
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+    main { padding: 24px 48px 80px; max-width: 900px; }
+    h1 { font-size: 24px; margin: 16px 0 8px; }
+    h2 { font-size: 18px; margin: 28px 0 10px; color: #333; }
+    p { margin: 0 0 14px; }
+    ol.references { padding-inline-start: 24px; }
+    ol.references li { margin-bottom: 12px; }
+    .doi { color: #555; }
+    footer.fixed {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      box-sizing: border-box;
+      background: #2b2b2b;
+      color: #eee;
+      padding: 10px 48px;
+      font-size: 13px;
+      z-index: 50;
+    }
+  </style>
+</head>
+<body>
+  <header class="site">Journal of Mock Studies — Online First</header>
+  <main>
+    <h1>The Article Under Study</h1>
+    <p>Alex Author · 2015 · Journal of Mock Studies · 10.5555/flora.article.0006</p>
+
+    <h2>Introduction</h2>
+    <p>Replication is central to cumulative science. This article synthesises evidence across several lines of work, including a highly replicated finding reported at 10.5555/flora.repl.0001.</p>
+    <p>We review a computationally reproduced analysis (10.5555/flora.repro.0002) and discuss its implications for measurement practice in the field.</p>
+    <p>We also revisit a claim from a now-retracted study, 10.5555/flora.retr.0003, whose conclusions no longer hold, and a separate paper carrying an expression of concern, 10.5555/flora.conc.0004.</p>
+
+    <h2>Methods</h2>
+    <p>Standard procedures were followed throughout. Additional citations appear in the reference list. An ordinary paper with no replication record (10.5555/flora.none.0005) is cited for background only.</p>
+    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+    <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+
+    <h2>Results</h2>
+    <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p>
+    <p>Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.</p>
+    <p>Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.</p>
+
+    <h2>Discussion</h2>
+    <p>At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident.</p>
+    <p>Et harum quidem rerum facilis est et expedita distinctio. Nam libero tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat facere possimus.</p>
+
+    <h2 id="refs">References</h2>
+    <ol class="references" aria-labelledby="refs">
+      <li>Author, A. (2015). A highly replicated finding. <em>Journal of Mock Studies</em>. <span class="doi">10.5555/flora.repl.0001</span></li>
+      <li>Author, C. (2016). A computationally reproduced analysis. <em>Journal of Mock Studies</em>. <span class="doi">10.5555/flora.repro.0002</span></li>
+      <li>Author, D. (2017). A now-retracted intervention study. <em>Journal of Mock Studies</em>. <span class="doi">10.5555/flora.retr.0003</span></li>
+      <li>Author, F. (2018). A paper with an expression of concern. <em>Journal of Mock Studies</em>. <span class="doi">10.5555/flora.conc.0004</span></li>
+      <li>Author, G. (2019). An ordinary paper with no replication record. <em>Journal of Mock Studies</em>. <span class="doi">10.5555/flora.none.0005</span></li>
+    </ol>
+  </main>
+  <footer class="fixed">© 2015 Journal of Mock Studies — fixed footer bar</footer>
+</body>
+</html>
