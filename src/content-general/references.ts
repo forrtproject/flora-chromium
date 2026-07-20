@@ -14,12 +14,12 @@
 import {findReferenceEntries, extractDoiFromHref, type ReferenceEntry} from "@shared/doi-extractor";
 import {augmentDOIsViaWorker} from "@shared/messages";
 import {validateDOIs} from "@shared/doi-validate";
-import {injectRetractionInfo, type RetractionResponse} from "@shared/doi-retraction";
-import {createDoiPill} from "@shared/doi-label";
+import type {RetractionResponse} from "@shared/doi-retraction";
+import {createIndicatorPill} from "@shared/indicator-pill";
 import {fetchOpenAccess} from "@shared/openaccess";
 import {getSettings} from "@shared/settings";
 import {debugLog} from "@shared/debug";
-import type {DoiString} from "@shared/types";
+import type {DoiString, LookupState} from "@shared/types";
 
 /**
  * Place a DOI pill inline. For a "hidden" DOI (tucked into a link href) the
@@ -212,25 +212,34 @@ export async function resolveReferenceDois(): Promise<ResolvedReference[]> {
 }
 
 /**
- * Render an inline DOI pill (and, when present in retractionByDoi, a notice
- * pill) on each resolved reference. Idempotent at the pill level — repeated
- * calls on the same entry skip via existing per-element markers.
+ * Render one merged indicator pill (DOI + Open Access + PubPeer + retraction/
+ * replication badge) on each resolved reference. Idempotent at the pill
+ * level — repeated calls on the same entry skip via existing per-element
+ * markers.
  */
 export function renderResolvedReferences(
     resolved: ResolvedReference[],
     retractionByDoi: Map<DoiString, RetractionResponse>,
+    pageState: ReadonlyMap<DoiString, LookupState>,
 ): void {
     for (const {entry, doi, mode} of resolved) {
         const isAugmented = mode === "augment";
         const color = isAugmented ? AUGMENTED_COLOR : CONFIDENT_COLOR;
-        // Pass the Open Access lookup so the padlock renders inside the pill.
-        const pill = createDoiPill(doi, color, isAugmented, fetchOpenAccess(doi));
+        const state = pageState.get(doi);
+        const stats = state?.status === "matched" ? state.result.record.stats : null;
+        const pill = createIndicatorPill({
+            doi,
+            color,
+            isAugmented,
+            oaStatus: fetchOpenAccess(doi),
+            retraction: retractionByDoi.get(doi) ?? null,
+            replicationsCount: stats?.n_replications_total ?? null,
+            reproductionsCount: stats?.n_reproductions_total ?? null,
+        });
         placeReferencePill(entry.element, doi, mode, pill);
-        const notice = retractionByDoi.get(doi);
-        if (notice) injectRetractionInfo(entry.element, notice);
         debugLog(`References: surfaced "${entry.text.slice(0, 60)}" → ${doi} (${mode})`);
     }
-    debugLog(`References: rendered ${resolved.length} inline DOI pill(s)`);
+    debugLog(`References: rendered ${resolved.length} inline indicator pill(s)`);
 }
 
 

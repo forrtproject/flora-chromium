@@ -36,6 +36,8 @@ import {debugLog} from "@shared/debug";
 import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
+import {createIndicatorPill, updateIndicatorPillBadges, INDICATOR_PILL_CLASS} from "@shared/indicator-pill";
+import {fetchOpenAccess} from "@shared/openaccess";
 import {resolveReferenceDois, renderResolvedReferences, type ResolvedReference} from "./references";
 
 // PubPeer commenter IDs whose comments are hidden in the embedded iframe.
@@ -202,18 +204,8 @@ async function pageRenderChangeHandler(): Promise<void> {
         );
         const titleEl = document.querySelector<HTMLHeadingElement>("h1");
 
-        // Article notice → pinned inline at the end of the page title for a
-        // consistent spot across sites, instead of at whatever DOI occurrence
-        // happens to exist.
-        if (titleEl) {
-            for (const doi of articleDois) {
-                const notice = retractionByDoi.get(doi);
-                if (notice) injectRetractionInfo(titleEl, notice, { append: true });
-            }
-        }
-
         // Inline pills for remaining (reference/other) occurrences. Article DOIs
-        // are handled at the title above when a title element exists.
+        // get the merged indicator pill at the title instead (placeTitleIndicatorPill).
         for (const occ of pageOccurrences) {
             const notice = retractionByDoi.get(occ.doi);
             if (!notice) continue;
@@ -222,7 +214,7 @@ async function pageRenderChangeHandler(): Promise<void> {
         }
 
         // Pills for augmented refs with no on-page anchor (idempotent).
-        renderResolvedReferences(resolvedRefs, retractionByDoi);
+        renderResolvedReferences(resolvedRefs, retractionByDoi, pageState);
     }
 
     // Filter out already-processed DOIs
@@ -231,6 +223,8 @@ async function pageRenderChangeHandler(): Promise<void> {
     // If no valid DOIs found, try augmenting from page title in the background
     if (newDois.length === 0 && dois.length === 0) {
         debugLog("No valid DOIs found on page, attempting title augmentation");
+        if (!isSheets) placeTitleIndicatorPill();
+        if (!isSheets) updateIndicatorPillBadges(document, pageState, redacts);
         if (!isSheets) augmentFromTitle().then().catch();
         if (!isSheets) void checkPubPeer();
         return;
@@ -238,6 +232,10 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     if (newDois.length === 0) {
         debugLog("No new DOIs (all already processed)");
+        // Merged pills first so renderInlineBadges can see them in the DOM and
+        // skip standalone badges for DOIs they already cover.
+        if (!isSheets) placeTitleIndicatorPill();
+        if (!isSheets) updateIndicatorPillBadges(document, pageState, redacts);
         // Re-place inline badges against the live DOM — hydrating SPAs (e.g.
         // Sage) re-render and wipe a previously placed badge, and this pass
         // (triggered by that mutation) would otherwise return without restoring it.
@@ -322,8 +320,12 @@ async function pageRenderChangeHandler(): Promise<void> {
             }
         }
 
-        // Inline badges (skip on Google Sheets — modal only)
+        // Inline badges (skip on Google Sheets — modal only). Merged pills first
+        // so renderInlineBadges can see them in the DOM and skip standalone
+        // badges for DOIs they already cover.
         if (!isSheets) {
+            placeTitleIndicatorPill();
+            updateIndicatorPillBadges(document, pageState, redacts);
             renderInlineBadges(pageState, pageOccurrences);
         }
     } catch {
@@ -331,6 +333,33 @@ async function pageRenderChangeHandler(): Promise<void> {
     } finally {
         endWorkIndicator();
     }
+}
+
+/**
+ * Place the merged FLoRA indicator pill (DOI + Open Access + PubPeer +
+ * retraction/replication badge) beside the article title, keyed off the
+ * primary DOI rather than the on-page occurrence scan so it still surfaces
+ * when the primary DOI is only found via URL/meta tags. Idempotent — checks
+ * the live DOM rather than a separate processed flag, so it self-heals if a
+ * hydrating SPA wipes the title's children.
+ */
+function placeTitleIndicatorPill(): void {
+    const titleEl = document.querySelector<HTMLHeadingElement>("h1");
+    if (!titleEl || titleEl.querySelector(`.${INDICATOR_PILL_CLASS}`)) return;
+    const primaryDoi = extractPrimaryDOI(document);
+    if (!primaryDoi) return;
+
+    const retraction = redacts.find((r) => r.originDoi === primaryDoi) ?? null;
+    const state = pageState.get(primaryDoi);
+    const stats = state?.status === "matched" ? state.result.record.stats : null;
+
+    titleEl.appendChild(createIndicatorPill({
+        doi: primaryDoi,
+        oaStatus: fetchOpenAccess(primaryDoi),
+        retraction,
+        replicationsCount: stats?.n_replications_total ?? null,
+        reproductionsCount: stats?.n_reproductions_total ?? null,
+    }));
 }
 
 // Gate augmentFromTitle to real article pages — avoids polluting the cache.
@@ -383,13 +412,17 @@ async function augmentFromTitle(): Promise<void> {
             };
             await safeSendMessage(request);
 
-            // Augmented DOI isn't in `dois` — check + pill it beside the title here.
-            if (titleEl) {
+            // Augmented DOI isn't in `dois` — extractPrimaryDOI won't find it either
+            // (it was never on the page), so placeTitleIndicatorPill() never fires
+            // for this path. Pill it beside the title here instead.
+            if (titleEl && !titleEl.querySelector(`.${INDICATOR_PILL_CLASS}`)) {
                 try {
                     const notices = await retractionCheck([resolvedDoi]);
-                    if (notices.length > 0) {
-                        injectRetractionInfo(titleEl, notices[0], { afterend: true });
-                    }
+                    titleEl.insertAdjacentElement("afterend", createIndicatorPill({
+                        doi: resolvedDoi,
+                        oaStatus: fetchOpenAccess(resolvedDoi),
+                        retraction: notices[0] ?? null,
+                    }));
                 } catch { /* supplementary */ }
             }
         }
