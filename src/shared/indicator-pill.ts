@@ -206,7 +206,7 @@ function buildRow(opts: {
     <span style="${rowIconWrapStyle(opts.accent, opts.available)}">${opts.iconHtml}</span>
     <span style="${ROW_LABEL_WRAP}">
       <span style="${ROW_TITLE_STYLE}">${opts.title}</span>
-      <span style="${rowSubStyle(opts.available)}">${opts.subtitle}</span>
+      <span data-flora-row-sub style="${rowSubStyle(opts.available)}">${opts.subtitle}</span>
     </span>
     ${useLink ? `<span style="${rowActionStyle(opts.accent)}">${opts.actionLabel ?? "View"} ↗</span>` : ""}
   `;
@@ -272,6 +272,200 @@ export interface IndicatorPillOptions {
     replicationsCount?: number | null;
     /** Already-known reproduction count for this DOI, if any (pass only when > 0). Shown only when replicationsCount is absent. */
     reproductionsCount?: number | null;
+}
+
+/** The DOI row: link icon, the DOI itself, and open/copy actions. */
+function buildDoiRow(doi: string, color: string, isAugmented: boolean): HTMLElement {
+    const contentRow = document.createElement("div");
+    contentRow.style.cssText = "display: flex; align-items: center; gap: 8px; padding: 5px 4px;";
+
+    const doiIcon = document.createElement("span");
+    doiIcon.style.cssText = rowIconWrapStyle(color, true);
+    doiIcon.innerHTML = DOI_LINK_SVG;
+
+    // Matches the other rows: value on top, state spelled out underneath. The
+    // underline is kept as a secondary cue, but provenance is stated in words —
+    // an unmarked DOI otherwise gives the reader nothing to compare against.
+    const labelWrap = document.createElement("span");
+    labelWrap.style.cssText = ROW_LABEL_WRAP;
+
+    const doiText = document.createElement("span");
+    doiText.textContent = doi;
+    doiText.style.cssText = `
+    min-width: 0;
+    color: #1f2328;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  `;
+    if (isAugmented) {
+        doiText.style.textDecoration = "underline dotted";
+        doiText.style.textUnderlineOffset = "2px";
+    }
+
+    const provenance = document.createElement("span");
+    provenance.setAttribute("data-flora-doi-provenance", "");
+    provenance.style.cssText = rowSubStyle(!isAugmented);
+    provenance.textContent = isAugmented
+        ? "Matched by title — not stated on the page"
+        : "Found on this page";
+
+    labelWrap.appendChild(doiText);
+    labelWrap.appendChild(provenance);
+
+    const clipboardSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>`;
+    const checkSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path></svg>`;
+
+    const iconBtnStyle = `
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: content-box;
+    width: 14px !important;
+    height: 14px !important;
+    min-width: 0 !important;
+    max-width: 14px !important;
+    padding: 0 !important;
+    margin: 0;
+    border: none !important;
+    background: transparent !important;
+    cursor: pointer;
+    color: #656d76;
+    transition: color 0.15s ease;
+    line-height: 0;
+    font-size: 0;
+    text-decoration: none;
+    flex: 0 0 auto;
+  `;
+
+    const copyBtn = document.createElement("button");
+    copyBtn.innerHTML = clipboardSvg;
+    copyBtn.title = "Copy DOI";
+    copyBtn.style.cssText = iconBtnStyle;
+    let copySuccess = false;
+    copyBtn.addEventListener("mouseenter", () => {
+        if (!copySuccess) copyBtn.style.color = color;
+    });
+    copyBtn.addEventListener("mouseleave", () => {
+        if (!copySuccess) copyBtn.style.color = "#656d76";
+    });
+    copyBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        copySuccess = true;
+        copyBtn.innerHTML = checkSvg;
+        copyBtn.style.color = color;
+        copyBtn.title = "Copied";
+        const writePromise = navigator.clipboard?.writeText
+            ? navigator.clipboard.writeText(doi)
+            : Promise.reject();
+        writePromise.catch(() => {
+            // Fallback for contexts where the async clipboard API is blocked
+            const ta = document.createElement("textarea");
+            ta.value = doi;
+            ta.setAttribute("data-flora-ui", "");
+            ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;";
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+                document.execCommand("copy");
+            } catch {
+                /* nothing more we can do */
+            }
+            ta.remove();
+        });
+        setTimeout(() => {
+            copySuccess = false;
+            copyBtn.innerHTML = clipboardSvg;
+            copyBtn.style.color = copyBtn.matches(":hover") ? color : "#656d76";
+            copyBtn.title = "Copy DOI";
+        }, 1500);
+    });
+
+    const externalLinkSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"></path></svg>`;
+
+    const openLink = document.createElement("a");
+    openLink.innerHTML = externalLinkSvg;
+    openLink.href = `https://doi.org/${doi}`;
+    openLink.target = "_blank";
+    openLink.rel = "noopener noreferrer";
+    openLink.title = "Open on doi.org";
+    openLink.style.cssText = iconBtnStyle;
+    openLink.addEventListener("mouseenter", () => {
+        openLink.style.color = color;
+    });
+    openLink.addEventListener("mouseleave", () => {
+        openLink.style.color = "#656d76";
+    });
+    openLink.addEventListener("click", (e) => {
+        e.stopPropagation();
+    });
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0;";
+    actions.appendChild(openLink);
+    actions.appendChild(copyBtn);
+
+    contentRow.appendChild(doiIcon);
+    contentRow.appendChild(labelWrap);
+    contentRow.appendChild(actions);
+    return contentRow;
+}
+
+interface IndicatorRowsOptions {
+    doi: DoiString;
+    color: string;
+    isAugmented: boolean;
+    oaStatus?: Promise<OpenAccessStatus | null>;
+    retraction: RetractionResponse | null;
+    replicationsCount: number | null;
+    reproductionsCount: number | null;
+    /** Called when the async lookup lands, so a caller can mirror it elsewhere. */
+    onOa?: (oa: OpenAccessStatus | null) => void;
+    onPubPeer?: (feedback: PubPeerFeedback | null) => void;
+}
+
+/**
+ * The row stack shared by the pill's popover and the standalone panel: DOI,
+ * Open Access, PubPeer, replication/retraction. The OA and PubPeer rows start
+ * unresolved and swap themselves in when their lookups land.
+ */
+function buildIndicatorRows(opts: IndicatorRowsOptions): HTMLElement {
+    const rows = document.createElement("div");
+    rows.style.cssText = "display:flex;flex-direction:column;gap:2px;";
+
+    rows.appendChild(buildDoiRow(opts.doi, opts.color, opts.isAugmented));
+
+    const sectionDivider = document.createElement("div");
+    sectionDivider.style.cssText = "height:1px;background:#eaeef2;margin:0 0 2px;";
+    rows.appendChild(sectionDivider);
+
+    let oaRow = buildOaRow(null);
+    rows.appendChild(oaRow);
+    if (opts.oaStatus) {
+        void opts.oaStatus.then((oa) => {
+            const resolved = buildOaRow(oa);
+            oaRow.replaceWith(resolved);
+            oaRow = resolved;
+            opts.onOa?.(oa);
+        }).catch(() => {});
+    }
+
+    let pubpeerRow = buildPubPeerRow(null);
+    rows.appendChild(pubpeerRow);
+    void lookupPubPeerForDoi(opts.doi).then((feedback) => {
+        const resolved = buildPubPeerRow(feedback);
+        pubpeerRow.replaceWith(resolved);
+        pubpeerRow = resolved;
+        opts.onPubPeer?.(feedback);
+    }).catch(() => {});
+
+    rows.appendChild(buildBadgeRow(resolveBadgeSignal(
+        opts.doi, opts.retraction, opts.replicationsCount, opts.reproductionsCount
+    )));
+    return rows;
 }
 
 /**
@@ -379,154 +573,20 @@ export function createIndicatorPill(options: IndicatorPillOptions): HTMLElement 
     gap: 2px;
   `;
 
-    const contentRow = document.createElement("div");
-    contentRow.style.cssText = "display: flex; align-items: center; gap: 8px; padding: 5px 4px;";
-
-    const doiIcon = document.createElement("span");
-    doiIcon.style.cssText = rowIconWrapStyle(color, true);
-    doiIcon.innerHTML = DOI_LINK_SVG;
-
-    const doiText = document.createElement("span");
-    doiText.textContent = doi;
-    doiText.style.cssText = `
-    flex: 1;
-    min-width: 0;
-    color: #1f2328;
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-    font-size: 11.5px;
-    letter-spacing: 0.01em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  `;
-
-    const clipboardSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>`;
-    const checkSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path></svg>`;
-
-    const iconBtnStyle = `
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: content-box;
-    width: 14px !important;
-    height: 14px !important;
-    min-width: 0 !important;
-    max-width: 14px !important;
-    padding: 0 !important;
-    margin: 0;
-    border: none !important;
-    background: transparent !important;
-    cursor: pointer;
-    color: #656d76;
-    transition: color 0.15s ease;
-    line-height: 0;
-    font-size: 0;
-    text-decoration: none;
-    flex: 0 0 auto;
-  `;
-
-    const copyBtn = document.createElement("button");
-    copyBtn.innerHTML = clipboardSvg;
-    copyBtn.title = "Copy DOI";
-    copyBtn.style.cssText = iconBtnStyle;
-    let copySuccess = false;
-    copyBtn.addEventListener("mouseenter", () => {
-        if (!copySuccess) copyBtn.style.color = color;
-    });
-    copyBtn.addEventListener("mouseleave", () => {
-        if (!copySuccess) copyBtn.style.color = "#656d76";
-    });
-    copyBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        copySuccess = true;
-        copyBtn.innerHTML = checkSvg;
-        copyBtn.style.color = color;
-        copyBtn.title = "Copied";
-        const writePromise = navigator.clipboard?.writeText
-            ? navigator.clipboard.writeText(doi)
-            : Promise.reject();
-        writePromise.catch(() => {
-            // Fallback for contexts where the async clipboard API is blocked
-            const ta = document.createElement("textarea");
-            ta.value = doi;
-            ta.setAttribute("data-flora-ui", "");
-            ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;";
-            document.body.appendChild(ta);
-            ta.select();
-            try {
-                document.execCommand("copy");
-            } catch {
-                /* nothing more we can do */
-            }
-            ta.remove();
-        });
-        setTimeout(() => {
-            copySuccess = false;
-            copyBtn.innerHTML = clipboardSvg;
-            copyBtn.style.color = copyBtn.matches(":hover") ? color : "#656d76";
-            copyBtn.title = "Copy DOI";
-        }, 1500);
-    });
-
-    const externalLinkSvg = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"></path></svg>`;
-
-    const openLink = document.createElement("a");
-    openLink.innerHTML = externalLinkSvg;
-    openLink.href = `https://doi.org/${doi}`;
-    openLink.target = "_blank";
-    openLink.rel = "noopener noreferrer";
-    openLink.title = "Open on doi.org";
-    openLink.style.cssText = iconBtnStyle;
-    openLink.addEventListener("mouseenter", () => {
-        openLink.style.color = color;
-    });
-    openLink.addEventListener("mouseleave", () => {
-        openLink.style.color = "#656d76";
-    });
-    openLink.addEventListener("click", (e) => {
-        e.stopPropagation();
-    });
-
-    const actions = document.createElement("div");
-    actions.style.cssText = "display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0;";
-    actions.appendChild(openLink);
-    actions.appendChild(copyBtn);
-
-    contentRow.appendChild(doiIcon);
-    contentRow.appendChild(doiText);
-    contentRow.appendChild(actions);
-    popover.appendChild(contentRow);
-
-    const sectionDivider = document.createElement("div");
-    sectionDivider.style.cssText = "height:1px;background:#eaeef2;margin:0 0 2px;";
-    popover.appendChild(sectionDivider);
-
-    let oaRow = buildOaRow(null);
-    popover.appendChild(oaRow);
-    if (oaStatus) {
-        void oaStatus.then((oa) => {
-            const resolvedSeg = buildOaSegment(oa);
-            oaSegment.replaceWith(resolvedSeg);
-            oaSegment = resolvedSeg;
-            const resolvedRow = buildOaRow(oa);
-            oaRow.replaceWith(resolvedRow);
-            oaRow = resolvedRow;
-        }).catch(() => {});
-    }
-
-    let pubpeerRow = buildPubPeerRow(null);
-    popover.appendChild(pubpeerRow);
-    void lookupPubPeerForDoi(doi).then((feedback) => {
-        const resolvedSeg = buildPubPeerSegment(feedback);
-        pubpeerSegment.replaceWith(resolvedSeg);
-        pubpeerSegment = resolvedSeg;
-        const resolvedRow = buildPubPeerRow(feedback);
-        pubpeerRow.replaceWith(resolvedRow);
-        pubpeerRow = resolvedRow;
-    }).catch(() => {});
-
-    const badgeRow = buildBadgeRow(resolveBadgeSignal(doi, retraction, replicationsCount, reproductionsCount));
-    popover.appendChild(badgeRow);
+    popover.appendChild(buildIndicatorRows({
+        doi, color, isAugmented, oaStatus, retraction, replicationsCount, reproductionsCount,
+        // The pill mirrors each resolved row into its matching inline segment.
+        onOa: (oa) => {
+            const resolved = buildOaSegment(oa);
+            oaSegment.replaceWith(resolved);
+            oaSegment = resolved;
+        },
+        onPubPeer: (feedback) => {
+            const resolved = buildPubPeerSegment(feedback);
+            pubpeerSegment.replaceWith(resolved);
+            pubpeerSegment = resolved;
+        },
+    }));
 
     let hideTimeout: ReturnType<typeof setTimeout> | null = null;
     let pinned = false;
@@ -637,6 +697,69 @@ export function createIndicatorPill(options: IndicatorPillOptions): HTMLElement 
  * Idempotent — safe to call repeatedly (e.g. alongside renderInlineBadges'
  * re-placement passes).
  */
+const PANEL_STYLE_ID = "flora-indicator-panel-style";
+
+/**
+ * Rows are styled for the pill's popover, which sets its own min-width and can
+ * afford to ellipsise a subtitle to one line. A panel inherits the width of
+ * whatever it is dropped into — Scholar's link column is ~160px — so its status
+ * text has to wrap or it truncates mid-sentence.
+ *
+ * This is a stylesheet rather than inline styles because the OA, PubPeer and
+ * badge rows replace themselves when their lookups land; a rule keyed on the
+ * panel keeps applying to whatever is swapped in.
+ */
+function ensurePanelStyle(): void {
+    if (document.getElementById(PANEL_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = PANEL_STYLE_ID;
+    style.textContent =
+        `[data-flora-panel] [data-flora-row-sub],` +
+        `[data-flora-panel] [data-flora-doi-provenance]{` +
+        `white-space:normal !important;overflow:visible !important;}`;
+    (document.head ?? document.documentElement).appendChild(style);
+}
+
+/**
+ * The pill's rows rendered inline as a standalone card, for surfaces with the
+ * room to show them outright instead of behind a hover (Google Scholar's result
+ * rows). Carries the same class, DOI attribute and badge-row marker as the
+ * pill, so updateIndicatorPillBadges refreshes it identically.
+ */
+export function createIndicatorPanel(options: IndicatorPillOptions): HTMLElement {
+    const {
+        doi, color = "#853953", isAugmented = false, oaStatus,
+        retraction = null, replicationsCount = null, reproductionsCount = null,
+    } = options;
+
+    const wrapper = document.createElement("div");
+    wrapper.className = INDICATOR_PILL_CLASS;
+    wrapper.setAttribute("data-flora-doi", doi);
+    wrapper.setAttribute("data-flora-ui", "");
+    wrapper.setAttribute("data-flora-panel", "");
+    wrapper.style.cssText = `
+    display: block;
+    box-sizing: border-box;
+    max-width: 260px;
+    margin-top: 6px;
+    background: #ffffff;
+    border: 1px solid ${color}40;
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(27,31,36,0.08);
+    padding: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    line-height: 18px;
+    text-align: left;
+  `;
+
+    ensurePanelStyle();
+    wrapper.appendChild(buildIndicatorRows({
+        doi, color, isAugmented, oaStatus, retraction, replicationsCount, reproductionsCount,
+    }));
+    return wrapper;
+}
+
 export function updateIndicatorPillBadges(
     root: ParentNode,
     pageState: ReadonlyMap<DoiString, LookupState>,

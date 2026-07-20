@@ -31,4 +31,11 @@ describe("indicator pill provenance", () => {
     expect(seg.style.textDecoration).not.toContain("underline");
     expect(seg.querySelector("svg")).not.toBeNull();
   });
+
+  it("spells provenance out in the popover too, not just the compact segment", () => {
+    const provenance = (isAugmented: boolean) =>
+      build(isAugmented).querySelector("[data-flora-doi-provenance]")!.textContent;
+    expect(provenance(false)).toBe("Found on this page");
+    expect(provenance(true)).toBe("Matched by title — not stated on the page");
+  });
 });
