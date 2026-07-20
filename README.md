@@ -113,7 +113,9 @@ const NATURE: SiteAdapter = {
   titlePill: [
     { selector: "h1.c-article-title", position: "append" },
   ],
-  referenceScope: "#references",       // optional
+  referenceScope: "#references",            // optional
+  referencePillStyle: { top: "2px" },       // optional
+  titlePillStyle: { top: "0" },             // optional
 };
 ```
 
@@ -126,6 +128,11 @@ two-minute job rather than an archaeology exercise.
   fallback for older page templates.
 * `position` is `append` (default), `prepend`, `before`, or `after`. The
   selector `":self"` targets the search root itself.
+* `referencePillStyle` / `titlePillStyle` override the pill wrapper's CSS, per
+  slot — most often `top`, the vertical nudge, whose default suits body text and
+  usually needs lowering inside a large `h1`. Anything you don't name keeps its
+  default, and a value may end in `!important` for publishers with aggressive
+  CSS.
 * `referenceScope` confines pills to one part of the page. Sage marks author
   endnotes up much like citations, and without a scope they get pilled — and
   worse, sent to Crossref/OpenAlex for augmentation, which can return a

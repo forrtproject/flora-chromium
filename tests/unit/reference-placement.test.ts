@@ -47,11 +47,11 @@ describe("reference pill placement (integration)", () => {
     document.documentElement.innerHTML = "";
   });
 
-  for (const [hostname, fixture] of [
-    ["www.science.org", "science-org-article.html"],
-    ["journals.sagepub.com", "sagepub-article.html"],
+  for (const [hostname, fixture, container] of [
+    ["www.science.org", "science-org-article.html", ".citation"],
+    ["journals.sagepub.com", "sagepub-article.html", ".citation-content"],
   ] as const) {
-    it(`puts the pill in .citation-content on ${hostname}`, () => {
+    it(`puts the pill in ${container} on ${hostname}`, () => {
       setHostname(hostname);
       loadIntoDocument(fixture);
 
@@ -64,7 +64,7 @@ describe("reference pill placement (integration)", () => {
 
       const placed = entry.querySelector(`.${INDICATOR_PILL_CLASS}`);
       expect(placed).not.toBeNull();
-      expect(entry.querySelector(".citation-content")!.contains(placed!)).toBe(true);
+      expect(entry.querySelector(container)!.contains(placed!)).toBe(true);
       expect(entry.querySelector(".external-links")!.contains(placed!)).toBe(false);
     });
   }

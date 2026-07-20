@@ -287,14 +287,13 @@ export function createIndicatorPill(options: IndicatorPillOptions): HTMLElement 
     const wrapper = document.createElement("span");
     wrapper.className = INDICATOR_PILL_CLASS;
     wrapper.setAttribute("data-flora-doi", doi);
-    // Marks the whole subtree as FLoRA's own UI so the DOI extractor skips it —
-    // the popover renders the DOI as plain text and links it to doi.org, which
-    // would otherwise be rescanned as a page occurrence and pilled again.
+    // The popover prints the DOI and links it to doi.org; without this marker
+    // the extractor rescans that as a page occurrence and pills it again.
     wrapper.setAttribute("data-flora-ui", "");
     // Nudge up 1px with relative `top`, NOT `transform` — a transform would make
     // this wrapper the containing block for the position:fixed popover below,
     // throwing its viewport-based coordinates far off from the pill.
-    wrapper.style.cssText = "position: relative; display: inline-block; vertical-align: baseline; top: -1px; margin-left: 6px;";
+    wrapper.style.cssText = "position: relative; display: inline-block; vertical-align: baseline; top: 5px;";
 
     const pill = document.createElement("span");
     pill.style.cssText = `
@@ -328,6 +327,7 @@ export function createIndicatorPill(options: IndicatorPillOptions): HTMLElement 
 
     // Segment 1 — DOI content.
     const doiSegment = document.createElement("span");
+    doiSegment.setAttribute("data-flora-doi-segment", "");
     if (isAugmented) {
         doiSegment.textContent = "DOI";
         doiSegment.style.cssText = "text-decoration: underline dotted; text-underline-offset: 2px; text-decoration-thickness: 1px;";
@@ -612,9 +612,8 @@ export function createIndicatorPill(options: IndicatorPillOptions): HTMLElement 
         // Defer so this same click doesn't immediately trigger the doc handler.
         setTimeout(() => {
             docClickHandler = (ev: MouseEvent) => {
-                // A hydrating SPA can wipe this pill while it is pinned, which
-                // would otherwise strand this listener on `document` — holding
-                // the detached pill alive — with nothing left to unpin it.
+                // isConnected: a hydrating SPA can wipe a pinned pill, stranding
+                // this listener on `document` with nothing left to unpin it.
                 if (!wrapper.isConnected || !wrapper.contains(ev.target as Node)) unpin();
             };
             document.addEventListener("click", docClickHandler, {capture: true});

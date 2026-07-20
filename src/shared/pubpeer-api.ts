@@ -129,11 +129,9 @@ export async function lookupPubPeerForDois<T extends string>(
   return result;
 }
 
-// Single-DOI callers — one merged indicator pill per reference — would each
-// fire their own request. On a reference list that is dozens of concurrent
-// single-DOI POSTs issued before any of them has written back to the cache, so
-// every one of them misses it, and PubPeer 429s. Collect same-tick lookups and
-// send them as the one batch the endpoint is designed for.
+// One indicator pill per reference means dozens of concurrent single-DOI
+// POSTs, all issued before any has written to the cache — so all of them miss
+// it and PubPeer 429s. Collect same-tick lookups into one batch.
 const BATCH_WINDOW_MS = 50;
 const pendingDois = new Map<string, Array<(fb: PubPeerFeedback | null) => void>>();
 let flushHandle: ReturnType<typeof setTimeout> | null = null;
@@ -153,11 +151,7 @@ function flushPendingDois(): void {
   lookupPubPeerForDois([...batch.keys()]).then(settle).catch(() => settle(null));
 }
 
-/**
- * Look up one DOI, coalesced with every other single-DOI lookup requested in
- * the same ~50ms window into a single batch call. Resolves to null on miss or
- * failure — callers render a "no discussion" state either way.
- */
+/** Resolves to null on miss or failure — callers render "no discussion" for both. */
 export function lookupPubPeerForDoi(doi: string): Promise<PubPeerFeedback | null> {
   return new Promise((resolve) => {
     const waiting = pendingDois.get(doi);

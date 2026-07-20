@@ -37,7 +37,7 @@ import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
 import {createIndicatorPill, updateIndicatorPillBadges, INDICATOR_PILL_CLASS} from "@shared/indicator-pill";
-import {applyPlacement, currentSiteAdapter} from "@shared/site-adapters";
+import {applyPillStyle, applyPlacement, currentSiteAdapter} from "@shared/site-adapters";
 import {fetchOpenAccess} from "@shared/openaccess";
 import {resolveReferenceDois, renderResolvedReferences, type ResolvedReference} from "./references";
 
@@ -361,12 +361,12 @@ function placeTitleIndicatorPill(): void {
         replicationsCount: stats?.n_replications_total ?? null,
         reproductionsCount: stats?.n_reproductions_total ?? null,
     });
-    // Marks this as the title pill so the idempotence check above can find it
-    // wherever a site adapter put it, which is not necessarily inside the h1.
+    // Marks the title pill so the check above finds it wherever an adapter put it.
     pill.setAttribute("data-flora-title-pill", "");
 
-    // Site adapter first; fall back to appending inside the h1.
-    if (!applyPlacement(currentSiteAdapter()?.titlePill, document.documentElement, pill, "title pill")) {
+    const adapter = currentSiteAdapter();
+    applyPillStyle(pill, adapter, "title");
+    if (!applyPlacement(adapter?.titlePill, document.documentElement, pill, "title pill")) {
         titleEl.appendChild(pill);
     }
 }
@@ -427,16 +427,16 @@ async function augmentFromTitle(): Promise<void> {
             if (titleEl && !document.querySelector(`.${INDICATOR_PILL_CLASS}[data-flora-title-pill]`)) {
                 try {
                     const notices = await retractionCheck([resolvedDoi]);
-                    // Same placement and same marker as placeTitleIndicatorPill,
-                    // so the two paths can see each other's pill and neither
-                    // adds a second one for the same title.
+                    // Same marker as placeTitleIndicatorPill so neither path double-pills.
                     const pill = createIndicatorPill({
                         doi: resolvedDoi,
                         oaStatus: fetchOpenAccess(resolvedDoi),
                         retraction: notices[0] ?? null,
                     });
                     pill.setAttribute("data-flora-title-pill", "");
-                    if (!applyPlacement(currentSiteAdapter()?.titlePill, document.documentElement, pill, "title pill")) {
+                    const adapter = currentSiteAdapter();
+                    applyPillStyle(pill, adapter, "title");
+                    if (!applyPlacement(adapter?.titlePill, document.documentElement, pill, "title pill")) {
                         titleEl.appendChild(pill);
                     }
                 } catch { /* supplementary */ }

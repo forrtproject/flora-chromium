@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import {
   resolveSiteAdapter,
   applyPlacement,
+  applyPillStyle,
   isInReferenceScope,
   SITE_ADAPTERS,
   type SiteAdapter,
@@ -129,24 +130,23 @@ describe("applyPlacement", () => {
 // trimmed from live article pages, so the selectors are checked against markup
 // the sites actually serve rather than an idealised version of it.
 describe.each([
-  ["science.org", "science-org-article.html", "science.org"],
-  ["journals.sagepub.com", "sagepub-article.html", "sagepub"],
-])("%s reference placement", (hostname, fixture, expectedId) => {
+  ["science.org", "science-org-article.html", "science.org", ".citation"],
+  ["journals.sagepub.com", "sagepub-article.html", "sagepub", ".citation-content"],
+])("%s reference placement", (hostname, fixture, expectedId, expectedContainer) => {
   const adapter = () => resolveSiteAdapter(hostname) as SiteAdapter;
 
   it("resolves to the expected adapter", () => {
     expect(adapter().id).toBe(expectedId);
   });
 
-  it("places the pill in .citation-content, not the publisher's link row", () => {
+  it(`places the pill in ${expectedContainer}, not the publisher's link row`, () => {
     const doc = loadFixture(fixture);
     const entry = doc.querySelector<HTMLElement>('div[role="listitem"]')!;
     const p = doc.createElement("span");
 
     expect(applyPlacement(adapter().referencePill, entry, p)).toBe(true);
 
-    const content = entry.querySelector(".citation-content")!;
-    expect(content.contains(p)).toBe(true);
+    expect(entry.querySelector(expectedContainer)!.contains(p)).toBe(true);
     // The regression this exists to prevent: landing among
     // "Crossref | Web of Science | Google Scholar".
     expect(entry.querySelector(".external-links")!.contains(p)).toBe(false);
@@ -159,7 +159,8 @@ describe.each([
     for (const entry of entries) {
       const p = doc.createElement("span");
       expect(applyPlacement(adapter().referencePill, entry, p)).toBe(true);
-      expect(entry.querySelector(".citation-content")!.contains(p)).toBe(true);
+      expect(entry.querySelector(expectedContainer)!.contains(p)).toBe(true);
+      expect(entry.querySelector(".external-links")!.contains(p)).toBe(false);
     }
   });
 
@@ -192,6 +193,77 @@ describe.each([
       e.element.querySelector(".citation-content")
     );
     expect(withContent.length).toBeGreaterThan(0);
+  });
+});
+
+describe("applyPillStyle", () => {
+  const el = () => new JSDOM(`<span style="top:5px;"></span>`).window.document.querySelector("span")!;
+  const base = { id: "t", hostnames: ["t.com"] };
+
+  it("leaves the pill untouched with no adapter", () => {
+    const p = el();
+    applyPillStyle(p as HTMLElement, null, "reference");
+    expect(p.style.top).toBe("5px");
+  });
+
+  it("keeps the default when the adapter declares no override", () => {
+    const p = el();
+    applyPillStyle(p as HTMLElement, base, "reference");
+    expect(p.style.top).toBe("5px");
+  });
+
+  it("only touches the properties the override names", () => {
+    const p = el();
+    applyPillStyle(p as HTMLElement, { ...base, referencePillStyle: { "margin-left": "4px" } }, "reference");
+    expect(p.style.marginLeft).toBe("4px");
+    expect(p.style.top).toBe("5px");
+  });
+
+  it("overrides the built-in default", () => {
+    const p = el();
+    applyPillStyle(p as HTMLElement, { ...base, referencePillStyle: { top: "2px" } }, "reference");
+    expect(p.style.top).toBe("2px");
+  });
+
+  it("tunes the two slots independently", () => {
+    const adapter: SiteAdapter = {
+      ...base,
+      referencePillStyle: { top: "2px" },
+      titlePillStyle: { top: "0px" },
+    };
+    const ref = el();
+    const title = el();
+    applyPillStyle(ref as HTMLElement, adapter, "reference");
+    applyPillStyle(title as HTMLElement, adapter, "title");
+    expect(ref.style.top).toBe("2px");
+    expect(title.style.top).toBe("0px");
+  });
+
+  it("leaves a slot at its default when only the other slot is styled", () => {
+    const adapter: SiteAdapter = { ...base, titlePillStyle: { top: "0px" } };
+    const ref = el();
+    applyPillStyle(ref as HTMLElement, adapter, "reference");
+    expect(ref.style.top).toBe("5px");
+  });
+
+  it("accepts camelCase property names", () => {
+    // setProperty ignores camelCase silently, so this must be normalised.
+    const p = el();
+    applyPillStyle(p as HTMLElement, { ...base, referencePillStyle: { marginLeft: "4px" } }, "reference");
+    expect(p.style.marginLeft).toBe("4px");
+  });
+
+  it('honours a trailing "!important"', () => {
+    const p = el();
+    applyPillStyle(p as HTMLElement, { ...base, referencePillStyle: { top: "3px !important" } }, "reference");
+    expect(p.style.top).toBe("3px");
+    expect(p.style.getPropertyPriority("top")).toBe("important");
+  });
+
+  it("does not apply the other slot's style", () => {
+    const p = el();
+    applyPillStyle(p as HTMLElement, { ...base, titlePillStyle: { top: "9px" } }, "reference");
+    expect(p.style.top).toBe("5px");
   });
 });
 

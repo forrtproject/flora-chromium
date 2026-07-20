@@ -10,6 +10,10 @@ import {createDoiPill} from "@shared/doi-label";
 import {fetchOpenAccess} from "@shared/openaccess";
 import {debugLog} from "@shared/debug";
 
+// One colour for every provenance — an unconfirmed DOI is marked by the
+// underline inside the pill, not by a different colour.
+const PILL_COLOR = "#853953";
+
 const RESULT_CONTAINER = "#gs_res_ccl";
 const RESULT_ROW = ".gs_r.gs_or.gs_scl";
 const PROCESSED_ATTR = "data-flora-processed";
@@ -86,7 +90,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
         if (extraction?.confident) {
             debugLog(`Scholar resolve [confident] "${title}" → ${extraction.doi}`);
             rowDois.push({row, doi: extraction.doi, source: "extracted"});
-            preInjectLabels(row, extraction.doi, "#853953", false);
+            preInjectLabels(row, extraction.doi, PILL_COLOR, false);
         } else {
             // Non-confident or no extraction — collect for augmentation cross-check
             rowInfos.push({
@@ -128,7 +132,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
                     doi: info.extractedDoi,
                     source: "extracted"
                 });
-                preInjectLabels(info.row, info.extractedDoi, "#853953", false);
+                preInjectLabels(info.row, info.extractedDoi, PILL_COLOR, false);
             } else {
                 if (info.extractedDoi) {
                     debugLog(`Scholar: "${info.title}" — extracted ${info.extractedDoi} failed doi.org validation, falling back to augmentation`);
@@ -167,16 +171,16 @@ export async function processScholarResults(doc: Document): Promise<void> {
                         doi: info.extractedDoi,
                         source: "extracted"
                     });
-                    preInjectLabels(info.row, info.extractedDoi, "#853953", false);
+                    preInjectLabels(info.row, info.extractedDoi, PILL_COLOR, false);
                 } else if (info.extractedDoi && augmentedDoi && augmentedDoi !== info.extractedDoi) {
-                    // Conflict: prefer augmented DOI → gray (augmented)
+                    // Conflict: prefer the augmented DOI (rendered as unconfirmed)
                     debugLog(`Scholar resolve [conflict] "${info.title}" → using augmented ${augmentedDoi} (extracted was ${info.extractedDoi})`);
                     rowDois.push({
                         row: info.row,
                         doi: augmentedDoi,
                         source: "augmented"
                     });
-                    preInjectLabels(info.row, augmentedDoi, "#656d76", true);
+                    preInjectLabels(info.row, augmentedDoi, PILL_COLOR, true);
                 } else if (info.extractedDoi && !augmentedDoi) {
                     // Extracted but augmentation found nothing — last-resort doi.org check
                     let valid = false;
@@ -192,7 +196,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
                             doi: info.extractedDoi,
                             source: "extracted"
                         });
-                        preInjectLabels(info.row, info.extractedDoi, "#853953", false);
+                        preInjectLabels(info.row, info.extractedDoi, PILL_COLOR, false);
                     } else {
                         // Invalid DOI — no DOI pill, but still check for a
                         // retraction/concern notice (the static map is keyed
@@ -209,14 +213,14 @@ export async function processScholarResults(doc: Document): Promise<void> {
                         } catch { /* supplementary */ }
                     }
                 } else if (!info.extractedDoi && augmentedDoi) {
-                    // No extraction, only augmented → gray with dotted underline
+                    // No extraction, only augmented → rendered as unconfirmed
                     debugLog(`Scholar resolve [augmented-only] "${info.title}" → ${augmentedDoi} (no extraction)`);
                     rowDois.push({
                         row: info.row,
                         doi: augmentedDoi,
                         source: "augmented"
                     });
-                    preInjectLabels(info.row, augmentedDoi, "#656d76", true);
+                    preInjectLabels(info.row, augmentedDoi, PILL_COLOR, true);
                 } else {
                     debugLog(`Scholar resolve [no-doi] "${info.title}" → no DOI from extraction or augmentation`);
                 }

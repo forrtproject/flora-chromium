@@ -58,7 +58,6 @@ export function createDoiPill(
     ensureInlinePillStyle();
     const wrapper = document.createElement("span");
     wrapper.className = DOI_LABEL_CLASS;
-    // See indicator-pill.ts — keeps the extractor out of our own popover markup.
     wrapper.setAttribute("data-flora-ui", "");
     // Nudge up 1px with relative `top`, NOT `transform` — a transform would make
     // this wrapper the containing block for the position:fixed popover below,

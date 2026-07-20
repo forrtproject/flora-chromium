@@ -1,89 +1,69 @@
-// Per-site pill placement.
+// Per-site pill placement. Sites not listed here use the generic placement
+// heuristics in references.ts and index.ts, and so does any listed site whose
+// selectors stop matching.
 //
-// The generic placement heuristics in references.ts and index.ts infer a spot
-// from the shape of the DOM (longest text container, last link in the entry,
-// …). That travels well across the long tail of publishers, but on sites we
-// know it lands in the wrong place — most often inside a publisher's own
-// "Crossref | Web of Science | Google Scholar" action row, because the DOI the
-// pill describes is carried by a link in exactly that row.
+// ── Adding a site ────────────────────────────────────────────────────────────
+// Copy a block below, change the selectors, append it to SITE_ADAPTERS:
 //
-// A site adapter names the element the pill belongs in for one hostname. Rules
-// are tried in order and the first one that matches a live element wins; if
-// none match, the caller falls back to the generic heuristics. That fallback is
-// the important part — publisher markup changes without notice, and a stale
-// selector here should quietly degrade to the generic placement rather than
-// drop the pill from the page.
+//   const NATURE: SiteAdapter = {
+//       id: "nature",
+//       hostnames: ["nature.com"],        // subdomains and www. match too
+//       referencePill: [
+//           {selector: ".c-article-references__text", position: "append"},
+//       ],
+//       titlePill: [
+//           {selector: "h1.c-article-title", position: "append"},
+//       ],
+//       referenceScope: "#references",         // optional
+//       referencePillStyle: {top: "2px"},      // optional
+//       titlePillStyle: {top: "0"},            // optional
+//   };
 //
-// Adding a site means appending one entry to SITE_ADAPTERS. Nothing else needs
-// to change.
+// - referencePill / titlePill are ordered candidate lists: the first selector
+//   matching a live element wins, so list a preferred target then fallbacks for
+//   older templates. If none match, the pill still renders via the generic
+//   placement — it is never dropped.
+// - position: "append" (default) | "prepend" | "before" | "after".
+//   The selector ":self" targets the search root itself.
+// - referenceScope confines pills to one part of the page, for publishers that
+//   mark up footnotes closely enough to citations to be mistaken for them.
+// - Give every site its own selectors even when two sites agree today. Sharing
+//   a rule object across adapters is a test failure.
+// - referencePillStyle / titlePillStyle override the pill wrapper's CSS, per
+//   slot. `top` is the vertical nudge: the default suits body text and usually
+//   needs lowering inside a large h1. Anything you do not name keeps its
+//   default. Values may end in "!important" for publishers with aggressive CSS.
+//
+// Verify selectors against a live page and note the DOM path you checked in a
+// comment on the block.
+// ─────────────────────────────────────────────────────────────────────────────
 
 import {debugLog} from "@shared/debug";
 
-/** Where the pill goes relative to the element a rule matched. */
 export type PlacementPosition = "append" | "prepend" | "before" | "after";
 
 export interface PlacementRule {
-    /**
-     * CSS selector, resolved within the reference entry (reference pills) or
-     * against the document (title pills). The sentinel ":self" means the
-     * search root itself, for "just append to the entry" rules.
-     */
     selector: string;
-    /** Defaults to "append". */
     position?: PlacementPosition;
 }
 
+/** CSS property/value pairs, e.g. {top: "2px"}. Kebab-case or camelCase. */
+export type PillStyle = Record<string, string>;
+
 export interface SiteAdapter {
-    /** Stable identifier, used in debug output. */
     id: string;
-    /**
-     * Hostnames this adapter serves. Matched case-insensitively against the
-     * host and any of its subdomains, ignoring a leading "www.".
-     */
     hostnames: string[];
-    /** Placement for pills on reference-list entries. */
     referencePill?: PlacementRule[];
-    /** Placement for the merged indicator pill beside the article title. */
     titlePill?: PlacementRule[];
-    /**
-     * When set, only reference entries inside an element matching this
-     * selector get a pill. Publishers that mark up footnotes and endnotes with
-     * the same shape as citations otherwise pick up stray pills.
-     */
     referenceScope?: string;
+    referencePillStyle?: PillStyle;
+    titlePillStyle?: PillStyle;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// The registry.
-//
-// Every site spells out its own selectors, even where two sites currently agree
-// — sites are tuned and broken independently, and sharing a rule set means you
-// cannot fix one publisher without retesting the other. Duplication is the
-// cheaper mistake here.
-//
-// To add a site, copy a block below, change the selectors, and append it to
-// SITE_ADAPTERS. Record the DOM path you verified it against in the comment;
-// that is what makes the next person's fix a two-minute job instead of an
-// archaeology exercise.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// science.org — Atypon Literatum. Verified against a live article page:
-//
-//   section#bibliography > div[role=list] > div[role=listitem]
-//     └ .citations > .citation
-//         ├ .citation-content   ← citation text; the pill belongs here
-//         └ .external-links     ← Crossref | Web of Science | Google Scholar
-//
-// The entry's only DOI is the href of the Crossref link, which sits in
-// .external-links, so the generic "insert after the link carrying this DOI"
-// rule wedges the pill between "Crossref" and "Web of Science". Pinning it to
-// .citation-content puts it at the end of the citation sentence instead.
 const SCIENCE_ORG: SiteAdapter = {
     id: "science.org",
     hostnames: ["science.org"],
     referencePill: [
-        {selector: ".citation-content", position: "append"},
-        // Variant templates omit the inner content div.
         {selector: ".citation", position: "append"},
     ],
     titlePill: [
@@ -92,29 +72,17 @@ const SCIENCE_ORG: SiteAdapter = {
     referenceScope: "#bibliography",
 };
 
-// journals.sagepub.com — also Atypon Literatum, and as of the last check it
-// serves the same structure as science.org above. Kept as its own block so the
-// two can drift apart without a shared constant forcing them to move together.
-//
-//   section#bibliography > div[role=list] > div[role=listitem]
-//     └ .citations > .citation
-//         ├ .citation-content   ← citation text; the pill belongs here
-//         └ .external-links     ← Crossref | Web of Science | Google Scholar
 const SAGEPUB: SiteAdapter = {
     id: "sagepub",
-    // Bare domain — subdomain matching covers journals.sagepub.com.
     hostnames: ["sagepub.com"],
     referencePill: [
-        {selector: ".citation-content", position: "append"},
         {selector: ".citation", position: "append"},
     ],
     titlePill: [
-        {selector: "h1[property='name']", position: "append"},
+        {selector: "h1[property='name']", position: "after"},
     ],
-    // Sage renders author endnotes as div[role=doc-footnote] blocks shaped
-    // enough like citations to be picked up as reference entries. Confining
-    // pills to the bibliography keeps them off those.
     referenceScope: "#bibliography",
+    titlePillStyle: {top: "-10px"},          
 };
 
 export const SITE_ADAPTERS: SiteAdapter[] = [
@@ -126,16 +94,11 @@ function normaliseHost(hostname: string): string {
     return hostname.toLowerCase().replace(/^www\./, "");
 }
 
-/** True when `host` is `pattern` or a subdomain of it. */
 function hostMatches(host: string, pattern: string): boolean {
     const p = normaliseHost(pattern);
     return host === p || host.endsWith(`.${p}`);
 }
 
-/**
- * The adapter for a hostname, or null when the site isn't in the registry —
- * in which case callers use their generic placement.
- */
 export function resolveSiteAdapter(
     hostname: string,
     registry: readonly SiteAdapter[] = SITE_ADAPTERS
@@ -147,7 +110,6 @@ export function resolveSiteAdapter(
     return null;
 }
 
-/** The adapter for the page this content script is running on. */
 export function currentSiteAdapter(): SiteAdapter | null {
     return resolveSiteAdapter(location.hostname);
 }
@@ -168,14 +130,7 @@ function insertAt(target: Element, pill: HTMLElement, position: PlacementPositio
     }
 }
 
-/**
- * Place `pill` using the first rule that matches inside `root`.
- *
- * Returns false when no rule matched, which is the caller's signal to fall
- * back to its generic placement. A rule matching an element that is not
- * attached to the document is treated as no match — publisher templates keep
- * detached prototypes around, and placing into one loses the pill silently.
- */
+/** Returns false when no rule matched — the caller's signal to place generically. */
 export function applyPlacement(
     rules: readonly PlacementRule[] | undefined,
     root: ParentNode & Element,
@@ -185,6 +140,8 @@ export function applyPlacement(
     if (!rules?.length) return false;
     for (const rule of rules) {
         const target = rule.selector === ":self" ? root : root.querySelector(rule.selector);
+        // Publisher templates keep detached prototype nodes around; placing into
+        // one loses the pill with no visible error.
         if (!target || !target.isConnected) continue;
         insertAt(target, pill, rule.position ?? "append");
         debugLog(`Site adapter: placed ${debugContext} via "${rule.selector}" (${rule.position ?? "append"})`);
@@ -194,11 +151,28 @@ export function applyPlacement(
     return false;
 }
 
-/**
- * Whether a reference entry is inside the adapter's declared bibliography
- * scope. Always true when the adapter declares no scope.
- */
 export function isInReferenceScope(entry: Element, adapter: SiteAdapter | null): boolean {
     if (!adapter?.referenceScope) return true;
     return entry.closest(adapter.referenceScope) !== null;
+}
+
+function toKebab(prop: string): string {
+    return prop.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+}
+
+/** Apply the slot's CSS overrides; anything unnamed keeps the pill's default. */
+export function applyPillStyle(
+    pill: HTMLElement,
+    adapter: SiteAdapter | null,
+    slot: "reference" | "title"
+): void {
+    const style = slot === "reference" ? adapter?.referencePillStyle : adapter?.titlePillStyle;
+    if (!style) return;
+    for (const [prop, raw] of Object.entries(style)) {
+        // setProperty silently ignores camelCase names and an inline "!important",
+        // so normalise both rather than letting an override quietly do nothing.
+        const important = /!important\s*$/.test(raw);
+        const value = important ? raw.replace(/\s*!important\s*$/, "") : raw;
+        pill.style.setProperty(toKebab(prop), value, important ? "important" : "");
+    }
 }

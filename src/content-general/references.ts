@@ -21,6 +21,7 @@ import {getSettings} from "@shared/settings";
 import {debugLog} from "@shared/debug";
 import type {DoiString, LookupState} from "@shared/types";
 import {
+    applyPillStyle,
     applyPlacement,
     currentSiteAdapter,
     isInReferenceScope,
@@ -76,9 +77,7 @@ function placeReferencePill(
     pill: HTMLElement,
     adapter: SiteAdapter | null
 ): void {
-    // A site adapter names the exact element the pill belongs in. It wins over
-    // the heuristics below, but only if its selector actually matches — a stale
-    // selector falls through to the generic placement rather than losing the pill.
+    // A stale adapter selector falls through to the heuristics below.
     if (applyPlacement(adapter?.referencePill, entry, pill, `reference pill for ${doi}`)) return;
 
     if (mode === "hidden") {
@@ -110,11 +109,9 @@ function placeReferencePill(
 }
 
 const PROCESSED_ATTR = "data-flora-ref-processed";
-// Gray, dotted-underline "DOI" pill — for DOIs resolved via augmentation.
-const AUGMENTED_COLOR = "#656d76";
-// Pink "DOI ✓" pill — for DOIs that were found on the page but hidden in a
-// button link; matches Scholar's confident colour.
-const CONFIDENT_COLOR = "#853953";
+// One colour for every provenance — an unconfirmed DOI is marked by the
+// underline inside the pill, not by a different colour.
+const PILL_COLOR = "#853953";
 // Cap API usage on reference lists with many DOI-less entries.
 const MAX_REFERENCE_AUGMENTATIONS = 30;
 // Skip entries too short to be a real citation (avoids junk augmentation queries).
@@ -153,9 +150,8 @@ export async function resolveReferenceDois(): Promise<ResolvedReference[]> {
     for (const entry of entries) {
         if (entry.element.hasAttribute(PROCESSED_ATTR)) continue;
         if (entry.text.length < MIN_CITATION_LENGTH) continue;
-        // Filter before augmenting, not just before rendering — an out-of-scope
-        // block (a Sage endnote, say) that reaches Crossref/OpenAlex burns a
-        // lookup and can come back with a confident-looking wrong DOI.
+        // Filter before augmenting: an out-of-scope block that reaches
+        // Crossref/OpenAlex can come back with a confident-looking wrong DOI.
         if (!isInReferenceScope(entry.element, adapter)) continue;
 
         if (entry.doi === null) {
@@ -242,18 +238,18 @@ export function renderResolvedReferences(
     const adapter = currentSiteAdapter();
     for (const {entry, doi, mode} of resolved) {
         const isAugmented = mode === "augment";
-        const color = isAugmented ? AUGMENTED_COLOR : CONFIDENT_COLOR;
         const state = pageState.get(doi);
         const stats = state?.status === "matched" ? state.result.record.stats : null;
         const pill = createIndicatorPill({
             doi,
-            color,
+            color: PILL_COLOR,
             isAugmented,
             oaStatus: fetchOpenAccess(doi),
             retraction: retractionByDoi.get(doi) ?? null,
             replicationsCount: stats?.n_replications_total ?? null,
             reproductionsCount: stats?.n_reproductions_total ?? null,
         });
+        applyPillStyle(pill, adapter, "reference");
         placeReferencePill(entry.element, doi, mode, pill, adapter);
         debugLog(`References: surfaced "${entry.text.slice(0, 60)}" → ${doi} (${mode})`);
     }
