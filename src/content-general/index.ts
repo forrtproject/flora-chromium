@@ -37,6 +37,7 @@ import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
 import {createIndicatorPill, updateIndicatorPillBadges, INDICATOR_PILL_CLASS} from "@shared/indicator-pill";
+import {applyPlacement, currentSiteAdapter} from "@shared/site-adapters";
 import {fetchOpenAccess} from "@shared/openaccess";
 import {resolveReferenceDois, renderResolvedReferences, type ResolvedReference} from "./references";
 
@@ -345,7 +346,7 @@ async function pageRenderChangeHandler(): Promise<void> {
  */
 function placeTitleIndicatorPill(): void {
     const titleEl = document.querySelector<HTMLHeadingElement>("h1");
-    if (!titleEl || titleEl.querySelector(`.${INDICATOR_PILL_CLASS}`)) return;
+    if (!titleEl || document.querySelector(`.${INDICATOR_PILL_CLASS}[data-flora-title-pill]`)) return;
     const primaryDoi = extractPrimaryDOI(document);
     if (!primaryDoi) return;
 
@@ -353,13 +354,21 @@ function placeTitleIndicatorPill(): void {
     const state = pageState.get(primaryDoi);
     const stats = state?.status === "matched" ? state.result.record.stats : null;
 
-    titleEl.appendChild(createIndicatorPill({
+    const pill = createIndicatorPill({
         doi: primaryDoi,
         oaStatus: fetchOpenAccess(primaryDoi),
         retraction,
         replicationsCount: stats?.n_replications_total ?? null,
         reproductionsCount: stats?.n_reproductions_total ?? null,
-    }));
+    });
+    // Marks this as the title pill so the idempotence check above can find it
+    // wherever a site adapter put it, which is not necessarily inside the h1.
+    pill.setAttribute("data-flora-title-pill", "");
+
+    // Site adapter first; fall back to appending inside the h1.
+    if (!applyPlacement(currentSiteAdapter()?.titlePill, document.documentElement, pill, "title pill")) {
+        titleEl.appendChild(pill);
+    }
 }
 
 // Gate augmentFromTitle to real article pages — avoids polluting the cache.
@@ -415,14 +424,21 @@ async function augmentFromTitle(): Promise<void> {
             // Augmented DOI isn't in `dois` — extractPrimaryDOI won't find it either
             // (it was never on the page), so placeTitleIndicatorPill() never fires
             // for this path. Pill it beside the title here instead.
-            if (titleEl && !titleEl.querySelector(`.${INDICATOR_PILL_CLASS}`)) {
+            if (titleEl && !document.querySelector(`.${INDICATOR_PILL_CLASS}[data-flora-title-pill]`)) {
                 try {
                     const notices = await retractionCheck([resolvedDoi]);
-                    titleEl.insertAdjacentElement("afterend", createIndicatorPill({
+                    // Same placement and same marker as placeTitleIndicatorPill,
+                    // so the two paths can see each other's pill and neither
+                    // adds a second one for the same title.
+                    const pill = createIndicatorPill({
                         doi: resolvedDoi,
                         oaStatus: fetchOpenAccess(resolvedDoi),
                         retraction: notices[0] ?? null,
-                    }));
+                    });
+                    pill.setAttribute("data-flora-title-pill", "");
+                    if (!applyPlacement(currentSiteAdapter()?.titlePill, document.documentElement, pill, "title pill")) {
+                        titleEl.appendChild(pill);
+                    }
                 } catch { /* supplementary */ }
             }
         }

@@ -20,6 +20,12 @@ import {fetchOpenAccess} from "@shared/openaccess";
 import {getSettings} from "@shared/settings";
 import {debugLog} from "@shared/debug";
 import type {DoiString, LookupState} from "@shared/types";
+import {
+    applyPlacement,
+    currentSiteAdapter,
+    isInReferenceScope,
+    type SiteAdapter,
+} from "@shared/site-adapters";
 
 /**
  * Place a DOI pill inline. For a "hidden" DOI (tucked into a link href) the
@@ -67,8 +73,14 @@ function placeReferencePill(
     entry: HTMLElement,
     doi: DoiString,
     mode: "augment" | "hidden",
-    pill: HTMLElement
+    pill: HTMLElement,
+    adapter: SiteAdapter | null
 ): void {
+    // A site adapter names the exact element the pill belongs in. It wins over
+    // the heuristics below, but only if its selector actually matches — a stale
+    // selector falls through to the generic placement rather than losing the pill.
+    if (applyPlacement(adapter?.referencePill, entry, pill, `reference pill for ${doi}`)) return;
+
     if (mode === "hidden") {
         for (const link of entry.querySelectorAll<HTMLAnchorElement>("a[href]")) {
             if (extractDoiFromHref(link.href) === doi) {
@@ -135,11 +147,16 @@ export interface ResolvedReference {
 export async function resolveReferenceDois(): Promise<ResolvedReference[]> {
     const entries = findReferenceEntries(document);
     const {showDoiPillsOnAllReferences} = await getSettings();
+    const adapter = currentSiteAdapter();
 
     const pending: PendingEntry[] = [];
     for (const entry of entries) {
         if (entry.element.hasAttribute(PROCESSED_ATTR)) continue;
         if (entry.text.length < MIN_CITATION_LENGTH) continue;
+        // Filter before augmenting, not just before rendering — an out-of-scope
+        // block (a Sage endnote, say) that reaches Crossref/OpenAlex burns a
+        // lookup and can come back with a confident-looking wrong DOI.
+        if (!isInReferenceScope(entry.element, adapter)) continue;
 
         if (entry.doi === null) {
             if (!YEAR_RE.test(entry.text)) continue;
@@ -222,6 +239,7 @@ export function renderResolvedReferences(
     retractionByDoi: Map<DoiString, RetractionResponse>,
     pageState: ReadonlyMap<DoiString, LookupState>,
 ): void {
+    const adapter = currentSiteAdapter();
     for (const {entry, doi, mode} of resolved) {
         const isAugmented = mode === "augment";
         const color = isAugmented ? AUGMENTED_COLOR : CONFIDENT_COLOR;
@@ -236,7 +254,7 @@ export function renderResolvedReferences(
             replicationsCount: stats?.n_replications_total ?? null,
             reproductionsCount: stats?.n_reproductions_total ?? null,
         });
-        placeReferencePill(entry.element, doi, mode, pill);
+        placeReferencePill(entry.element, doi, mode, pill, adapter);
         debugLog(`References: surfaced "${entry.text.slice(0, 60)}" → ${doi} (${mode})`);
     }
     debugLog(`References: rendered ${resolved.length} inline indicator pill(s)`);

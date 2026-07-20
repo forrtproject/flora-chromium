@@ -13,7 +13,7 @@
 import type {DoiString, LookupState, RetractionResponse} from "@shared/types";
 import type {OpenAccessStatus} from "@shared/openaccess";
 import type {PubPeerFeedback} from "@shared/pubpeer-api";
-import {lookupPubPeerForDois} from "@shared/pubpeer-api";
+import {lookupPubPeerForDoi} from "@shared/pubpeer-api";
 import {noticePresentation} from "@shared/doi-retraction";
 import {OA_UNLOCK_SVG} from "@shared/doi-label";
 
@@ -287,6 +287,10 @@ export function createIndicatorPill(options: IndicatorPillOptions): HTMLElement 
     const wrapper = document.createElement("span");
     wrapper.className = INDICATOR_PILL_CLASS;
     wrapper.setAttribute("data-flora-doi", doi);
+    // Marks the whole subtree as FLoRA's own UI so the DOI extractor skips it —
+    // the popover renders the DOI as plain text and links it to doi.org, which
+    // would otherwise be rescanned as a page occurrence and pilled again.
+    wrapper.setAttribute("data-flora-ui", "");
     // Nudge up 1px with relative `top`, NOT `transform` — a transform would make
     // this wrapper the containing block for the position:fixed popover below,
     // throwing its viewport-based coordinates far off from the pill.
@@ -340,7 +344,8 @@ export function createIndicatorPill(options: IndicatorPillOptions): HTMLElement 
     pill.appendChild(oaSegment);
 
     // Segment 3 — PubPeer marker (async, fetched internally so callers don't
-    // each need to import pubpeer-api.ts; the underlying lookup is cached).
+    // each need to import pubpeer-api.ts; per-pill lookups are coalesced into
+    // one batch request and cached).
     pill.appendChild(makeDivider());
     let pubpeerSegment = buildPubPeerSegment(null);
     pill.appendChild(pubpeerSegment);
@@ -510,8 +515,7 @@ export function createIndicatorPill(options: IndicatorPillOptions): HTMLElement 
 
     let pubpeerRow = buildPubPeerRow(null);
     popover.appendChild(pubpeerRow);
-    void lookupPubPeerForDois([doi]).then((map) => {
-        const feedback = map.get(doi) ?? null;
+    void lookupPubPeerForDoi(doi).then((feedback) => {
         const resolvedSeg = buildPubPeerSegment(feedback);
         pubpeerSegment.replaceWith(resolvedSeg);
         pubpeerSegment = resolvedSeg;
@@ -608,7 +612,10 @@ export function createIndicatorPill(options: IndicatorPillOptions): HTMLElement 
         // Defer so this same click doesn't immediately trigger the doc handler.
         setTimeout(() => {
             docClickHandler = (ev: MouseEvent) => {
-                if (!wrapper.contains(ev.target as Node)) unpin();
+                // A hydrating SPA can wipe this pill while it is pinned, which
+                // would otherwise strand this listener on `document` — holding
+                // the detached pill alive — with nothing left to unpin it.
+                if (!wrapper.isConnected || !wrapper.contains(ev.target as Node)) unpin();
             };
             document.addEventListener("click", docClickHandler, {capture: true});
         }, 0);

@@ -7,6 +7,7 @@ import {
   extractDOIsFromText,
   findReferenceContainers,
   findReferenceEntries,
+  extractDoiOccurrences,
 } from "../../src/shared/doi-extractor";
 
 function loadFixture(name: string): Document {
@@ -657,5 +658,50 @@ describe("findReferenceEntries", () => {
     expect(entries).toHaveLength(2);
     expect(entries[0].doiInText).toBe(true);
     expect(entries[1].doiInText).toBe(true);
+  });
+});
+
+describe("extractDoiOccurrences — FLoRA's own injected UI", () => {
+  // Every pill FLoRA injects renders the DOI as plain text and links it to
+  // doi.org inside its popover. Re-scanning that turns our own output into a
+  // page occurrence, which gets pilled again on the next mutation pass.
+  const pageHtml = `<!DOCTYPE html>
+    <html><body>
+      <p>Real prose citation: 10.1111/real.one</p>
+      <span class="flora-indicator-pill" data-flora-ui="" data-flora-doi="10.2222/injected">
+        <span>DOI</span>
+        <div style="display:none">
+          <span>10.2222/injected</span>
+          <a href="https://doi.org/10.2222/injected">open</a>
+        </div>
+      </span>
+    </body></html>`;
+
+  it("ignores DOI text inside an injected pill", () => {
+    const doc = new JSDOM(pageHtml).window.document;
+    const dois = extractDoiOccurrences(doc).map((o) => o.doi);
+    expect(dois).toContain("10.1111/real.one");
+    expect(dois).not.toContain("10.2222/injected");
+  });
+
+  it("ignores the pill's own doi.org link", () => {
+    const doc = new JSDOM(pageHtml).window.document;
+    const fromLinks = extractDoiOccurrences(doc)
+      .filter((o) => o.kind !== "text")
+      .map((o) => o.doi);
+    expect(fromLinks).not.toContain("10.2222/injected");
+  });
+
+  it("still extracts a genuine page DOI that sits next to a pill", () => {
+    const doc = new JSDOM(`<!DOCTYPE html>
+      <html><body>
+        <p>
+          <a href="https://doi.org/10.3333/genuine">10.3333/genuine</a>
+          <span data-flora-ui=""><span>10.2222/injected</span></span>
+        </p>
+      </body></html>`).window.document;
+    const dois = extractDoiOccurrences(doc).map((o) => o.doi);
+    expect(dois).toContain("10.3333/genuine");
+    expect(dois).not.toContain("10.2222/injected");
   });
 });

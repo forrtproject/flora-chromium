@@ -298,6 +298,10 @@ export interface DoiOccurrence {
  *   Crossref/PubMed button" links that embed a DOI in their URL).
  * - DOIs elsewhere → anchored to the link or text-containing element.
  */
+// Every element FLoRA injects into the page carries this marker, so extraction
+// passes can skip our own markup instead of re-scanning it as page content.
+const FLORA_UI_SELECTOR = "[data-flora-ui]";
+
 export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
   const occurrences: DoiOccurrence[] = [];
   if (!doc.body) return occurrences;
@@ -318,6 +322,8 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
 
   // 1. Links — text match wins over href; embedded URLs are last resort.
   for (const link of doc.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    // FLoRA's own injected pills link the DOI to doi.org inside their popover.
+    if (link.closest(FLORA_UI_SELECTOR)) continue;
     const textDois = new Set<DoiString>();
     const linkText = link.innerText || link.textContent || "";
     const cleaned = decodeEncodedDois(linkText.replace(WORD_BREAK_CHARS, ""));
@@ -353,6 +359,8 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
       }
       // Anchor descendants are covered by the link pass above.
       if (parent.closest("a")) return NodeFilter.FILTER_REJECT;
+      // FLoRA's own injected pills print the DOI as text in their popover.
+      if (parent.closest(FLORA_UI_SELECTOR)) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     },
   });
