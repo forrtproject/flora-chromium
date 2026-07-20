@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Reference list — flex rows</title>
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+      color: #1a1a1a;
+      background: #ffffff;
+      font-size: 15px;
+      line-height: 1.5;
+      padding: 32px 48px;
+    }
+    h1 { font-size: 22px; margin: 0 0 24px; }
+    h2 { font-size: 17px; margin: 24px 0 12px; color: #333; }
+    .references { display: flex; flex-direction: column; gap: 16px; max-width: 820px; }
+    .ref {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 12px 14px;
+      border: 1px solid #e2e2e2;
+      border-radius: 8px;
+      background: #fafafa;
+    }
+    .ref .num {
+      flex: 0 0 28px;
+      font-weight: 700;
+      color: #853953;
+      text-align: right;
+    }
+    .ref .body { flex: 1; }
+    .ref .cite { display: block; }
+    .ref .doi { color: #555; }
+    .actions { margin-top: 6px; display: flex; gap: 12px; }
+    .actions a { color: #1a5fb4; text-decoration: none; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Meta-analytic evidence on decision heuristics</h1>
+  <h2 id="references-heading">References</h2>
+  <div class="references" aria-labelledby="references-heading">
+    <div class="ref">
+      <span class="num">1.</span>
+      <div class="body">
+        <span class="cite">Author, A., &amp; Author, B. (2015). A highly replicated finding in cognition. <em>Journal of Mock Studies</em>, 12(3), 200–219. <span class="doi">https://doi.org/10.5555/flora.repl.0001</span></span>
+        <div class="actions"><a href="#">View PDF</a><a href="#">View article</a><a href="#">Google Scholar</a></div>
+      </div>
+    </div>
+    <div class="ref">
+      <span class="num">2.</span>
+      <div class="body">
+        <span class="cite">Author, C. (2016). A computationally reproduced analysis. <em>Journal of Mock Studies</em>, 13(1), 44–60. <span class="doi">10.5555/flora.repro.0002</span></span>
+        <div class="actions"><a href="#">View PDF</a><a href="#">Google Scholar</a></div>
+      </div>
+    </div>
+    <div class="ref">
+      <span class="num">3.</span>
+      <div class="body">
+        <span class="cite">Author, D., &amp; Author, E. (2017). A now-retracted intervention study. <em>Journal of Mock Studies</em>, 14(2), 88–104. <span class="doi">10.5555/flora.retr.0003</span></span>
+        <div class="actions"><a href="#">View PDF</a><a href="#">Google Scholar</a></div>
+      </div>
+    </div>
+    <div class="ref">
+      <span class="num">4.</span>
+      <div class="body">
+        <span class="cite">Author, F. (2018). A paper flagged with an expression of concern. <em>Journal of Mock Studies</em>, 15(4), 310–329. <span class="doi">10.5555/flora.conc.0004</span></span>
+        <div class="actions"><a href="#">View PDF</a><a href="#">Google Scholar</a></div>
+      </div>
+    </div>
+    <div class="ref">
+      <span class="num">5.</span>
+      <div class="body">
+        <span class="cite">Author, G. (2019). An ordinary paper with no replication record. <em>Journal of Mock Studies</em>, 16(1), 5–21. <span class="doi">10.5555/flora.none.0005</span></span>
+        <div class="actions"><a href="#">View PDF</a><a href="#">Google Scholar</a></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -97,6 +97,7 @@ export type ReplicationResult = z.infer<typeof ReplicationResultSchema>;
 export interface CachedEntry<T> {
   data: T | null; // null = cached no-match
   expiresAt: number | null; // null = never expires
+  createdAt?: number; // epoch ms when written; used for LRU eviction under quota
 }
 
 /** How a DOI was classified on the page */
