@@ -1191,8 +1191,11 @@ export function renderSidePanel(
     sectionLabel.style.cssText =
       "font-size:14px;font-weight:600;color:#5f6368;text-transform:uppercase;padding:0px 16px 10px 12px;" +
       "letter-spacing:0.5px;margin-bottom:6px;border-bottom:1px solid #e8e8e8;padding:10px 16px;";
-    sectionLabel.textContent = sectionTitle;
+    sectionLabel.textContent = `${sectionTitle} (${entries.length})`;
     section.appendChild(sectionLabel);
+
+    const COLLAPSED_COUNT = 5;
+    const items: HTMLDivElement[] = [];
     for (const entry of entries) {
       const item = document.createElement("div");
       item.style.cssText = "padding:6px 0;border-bottom:1px solid #f0f0f0;padding:10px 16px;";
@@ -1251,8 +1254,42 @@ export function renderSidePanel(
         metaEl.textContent = meta.join(" · ");
         item.appendChild(metaEl);
       }
+      items.push(item);
       section.appendChild(item);
     }
+
+    if (items.length > COLLAPSED_COUNT) {
+      const hidden = items.slice(COLLAPSED_COUNT);
+      for (const item of hidden) item.style.display = "none";
+
+      const toggleWrap = document.createElement("div");
+      toggleWrap.style.cssText = "padding:8px 16px;text-align:center;border-bottom:1px solid #f0f0f0;";
+
+      const toggle = document.createElement("button");
+      toggle.style.cssText =
+        "all:unset;cursor:pointer;font-size:12px;font-weight:600;color:#853953;" +
+        "padding:4px 10px;border-radius:6px;transition:background 0.15s;";
+      toggle.addEventListener("mouseenter", () => { toggle.style.background = "#f9f0f4"; });
+      toggle.addEventListener("mouseleave", () => { toggle.style.background = ""; });
+
+      const noun = sectionTitle.replace(/s$/i, "").toLowerCase();
+      let expanded = false;
+      const setLabel = (): void => {
+        toggle.textContent = expanded
+          ? `Show fewer ${noun}s`
+          : `Show ${hidden.length} more ${noun}${hidden.length === 1 ? "" : "s"}`;
+      };
+      setLabel();
+      toggle.addEventListener("click", () => {
+        expanded = !expanded;
+        for (const item of hidden) item.style.display = expanded ? "" : "none";
+        setLabel();
+      });
+
+      toggleWrap.appendChild(toggle);
+      section.appendChild(toggleWrap);
+    }
+
     summary.appendChild(section);
     return oaPlaceholders;
   };
