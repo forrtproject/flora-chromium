@@ -129,7 +129,46 @@ export async function lookupPubPeerForDois<T extends string>(
   return result;
 }
 
+// One indicator pill per reference means dozens of concurrent single-DOI
+// POSTs, all issued before any has written to the cache — so all of them miss
+// it and PubPeer 429s. Collect same-tick lookups into one batch.
+const BATCH_WINDOW_MS = 50;
+const pendingDois = new Map<string, Array<(fb: PubPeerFeedback | null) => void>>();
+let flushHandle: ReturnType<typeof setTimeout> | null = null;
+
+function flushPendingDois(): void {
+  flushHandle = null;
+  if (pendingDois.size === 0) return;
+  const batch = new Map(pendingDois);
+  pendingDois.clear();
+
+  const settle = (map: Map<string, PubPeerFeedback> | null) => {
+    for (const [doi, resolvers] of batch) {
+      const feedback = map?.get(doi) ?? null;
+      for (const resolve of resolvers) resolve(feedback);
+    }
+  };
+  lookupPubPeerForDois([...batch.keys()]).then(settle).catch(() => settle(null));
+}
+
+/** Resolves to null on miss or failure — callers render "no discussion" for both. */
+export function lookupPubPeerForDoi(doi: string): Promise<PubPeerFeedback | null> {
+  return new Promise((resolve) => {
+    const waiting = pendingDois.get(doi);
+    if (waiting) {
+      waiting.push(resolve);
+    } else {
+      pendingDois.set(doi, [resolve]);
+    }
+    if (flushHandle === null) flushHandle = setTimeout(flushPendingDois, BATCH_WINDOW_MS);
+  });
+}
+
 /** Test-only: drop in-memory cache state so each case starts fresh. */
 export function _resetPubPeerCacheForTesting(): void {
   PUBPEER_CACHE.resetForTesting();
+  if (flushHandle !== null) clearTimeout(flushHandle);
+  flushHandle = null;
+  pendingDois.clear();
+  rateLimitedUntil = 0;
 }

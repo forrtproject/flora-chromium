@@ -6,6 +6,7 @@ import { getSettings } from "../shared/settings";
 import { safeSendMessage } from "../shared/messages";
 import styles from "./styles.css";
 import {RetractionResponse, noticePresentation} from "@shared/doi-retraction";
+import {INDICATOR_PILL_CLASS} from "@shared/indicator-pill";
 
 const BANNER_HOST_ID = "flora-banner-host";
 const BADGE_CLASS = "flora-inline-badge";
@@ -338,7 +339,17 @@ export function renderInlineBadges(
         "pageState has", pageState.size, "DOI(s):",
         [...pageState.entries()].map(([d, s]) => `${d}(${s.status})`));
 
+    // DOIs that already carry a merged indicator pill (title/reference) show
+    // their replication count in that pill's badge segment — skip the
+    // standalone FLoRA badge for those so the same count isn't shown twice.
+    const mergedPilledDois = new Set<DoiString>();
+    for (const el of document.querySelectorAll<HTMLElement>(`.${INDICATOR_PILL_CLASS}`)) {
+        const d = el.getAttribute("data-flora-doi");
+        if (d) mergedPilledDois.add(d as DoiString);
+    }
+
     for (const occ of bestByDoi.values()) {
+        if (mergedPilledDois.has(occ.doi)) continue;
         const state = pageState.get(occ.doi);
         if (!state || state.status !== "matched") {
             const status = state?.status ?? "not found";

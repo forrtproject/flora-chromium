@@ -64,14 +64,14 @@
                     </svg>
                     Google Scholar
                   </span>
-                  <span class="wt-step-num">1 of 6</span>
+                  <span class="wt-step-num">1 of 7</span>
                 </div>
                 <h2 class="wt-title">Confirmed DOI</h2>
                 <p class="wt-desc">
                   FLoRA scans each Google Scholar result for DOIs. When it finds
                   one in a <code>doi.org</code> URL — or confirms it through the
-                  doi.org resolver — it marks the paper as
-                  <strong>confirmed</strong>.
+                  doi.org resolver — the result gets a panel reading
+                  <strong>“Found on this page”</strong>.
                 </p>
                 <div class="wt-callouts">
                   <div class="wt-callout callout-confirmed">
@@ -88,10 +88,12 @@
                       </svg>
                     </div>
                     <div class="wt-callout-body">
-                      <div class="wt-callout-title">Purple pill with ✓</div>
+                      <div class="wt-callout-title">
+                        “Found on this page”
+                      </div>
                       <div class="wt-callout-text">
-                        High-confidence match. Hover to see the full DOI and
-                        copy it to clipboard.
+                        The DOI row shows the identifier itself, where it came
+                        from, and buttons to open it on doi.org or copy it.
                       </div>
                     </div>
                   </div>
@@ -99,12 +101,13 @@
                     <div class="wt-callout-icon icon-flora">F</div>
                     <div class="wt-callout-body">
                       <div class="wt-callout-title">
-                        FLoRA replication badge
+                        Everything in one panel
                       </div>
                       <div class="wt-callout-text">
-                        Appears when replication or reproduction studies exist.
-                        Click to open the full report on the FORRT Replication
-                        Atlas.
+                        Open Access, PubPeer discussion and replication counts
+                        each get their own row, listed outright rather than
+                        hidden behind a hover. The replication row links to the
+                        FORRT Replication Atlas.
                       </div>
                     </div>
                   </div>
@@ -161,32 +164,50 @@
                       </div>
                       <!-- Pills on the RIGHT (gs_ggs area) -->
                       <div class="mock-gs-ggs">
-                        <div class="mock-pill-wrapper anim-pill">
-                          <span class="mock-doi-pill confirmed">
-                            DOI
-                            <svg
-                              width="11"
-                              height="11"
-                              viewBox="0 0 16 16"
-                              fill="white"
-                            >
-                              <path
-                                d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"
-                              />
-                            </svg>
-                          </span>
-                          <div class="mock-pill-popover">
-                            <span class="mock-popover-label"
-                              >Confirmed via doi.org</span
-                            >
-                            <span class="mock-popover-doi"
-                              >10.1126/science.1185714</span
+                        <div class="mock-scholar-panel anim-pill">
+                          <div class="mock-panel-row">
+                            <span class="mock-panel-icon">&#128279;</span>
+                            <span class="mock-panel-label">
+                              <span class="mock-panel-doi"
+                                >10.1126/science.1185714</span
+                              >
+                              <span class="mock-panel-sub"
+                                >Found on this page</span
+                              >
+                            </span>
+                            <span class="mock-panel-actions">&#8599; &#10697;</span>
+                          </div>
+                          <div class="mock-panel-divider"></div>
+                          <div class="mock-panel-row">
+                            <span class="mock-panel-icon">&#128275;</span>
+                            <span class="mock-panel-label">
+                              <span class="mock-panel-title">Open Access</span>
+                              <span class="mock-panel-sub"
+                                >Free full text available</span
+                              >
+                            </span>
+                            <span class="mock-panel-action">View PDF &#8599;</span>
+                          </div>
+                          <div class="mock-panel-row">
+                            <span class="mock-panel-icon">&#9784;</span>
+                            <span class="mock-panel-label">
+                              <span class="mock-panel-title">PubPeer</span>
+                              <span class="mock-panel-sub">2 comments</span>
+                            </span>
+                            <span class="mock-panel-action">View &#8599;</span>
+                          </div>
+                          <div class="mock-panel-row anim-badge">
+                            <span class="mock-panel-icon">&#9679;</span>
+                            <span class="mock-panel-label">
+                              <span class="mock-panel-title">Replications</span>
+                              <span class="mock-panel-sub"
+                                >3 replications recorded</span
+                              >
+                            </span>
+                            <span class="mock-panel-action"
+                              >View in Atlas &#8599;</span
                             >
                           </div>
-                        </div>
-                        <div class="mock-flora-scholar-badge anim-badge">
-                          <span class="badge-label-m">FLoRA</span>
-                          <span>3 replications</span>
                         </div>
                       </div>
                     </div>
@@ -218,14 +239,14 @@
                     </svg>
                     Google Scholar
                   </span>
-                  <span class="wt-step-num">2 of 6</span>
+                  <span class="wt-step-num">2 of 7</span>
                 </div>
                 <h2 class="wt-title">Unconfirmed DOI</h2>
                 <p class="wt-desc">
                   When no <code>doi.org</code> URL is present, FLoRA resolves
-                  the paper's DOI via Crossref and OpenAlex title search. These
-                  are marked <strong>unconfirmed</strong> with a dotted
-                  underline.
+                  the paper's DOI via Crossref and OpenAlex title search. The
+                  panel says so outright —
+                  <strong>“Matched by title”</strong> — and underlines the DOI.
                 </p>
                 <div class="wt-callouts">
                   <div class="wt-callout callout-unconfirmed">
@@ -245,12 +266,12 @@
                     </div>
                     <div class="wt-callout-body">
                       <div class="wt-callout-title">
-                        Gray pill with dotted "DOI"
+                        “Matched by title”
                       </div>
                       <div class="wt-callout-text">
-                        The dotted underline signals a title-matched DOI rather
-                        than one found in a doi.org URL. Hover to view and copy
-                        it.
+                        The DOI row says where the identifier came from, and
+                        underlines it, when FLoRA resolved it by title rather
+                        than reading it off the page.
                       </div>
                     </div>
                   </div>
@@ -271,8 +292,8 @@
                       <div class="wt-callout-title">Still used for lookups</div>
                       <div class="wt-callout-text">
                         Unconfirmed DOIs are still queried against the FLoRA
-                        database. The gray color is a confidence signal, not an
-                        exclusion.
+                        database, and their panel looks the same. Provenance is
+                        stated in words rather than signalled by colour.
                       </div>
                     </div>
                   </div>
@@ -327,16 +348,47 @@
                       </div>
                       <!-- Pills on the RIGHT -->
                       <div class="mock-gs-ggs">
-                        <div class="mock-pill-wrapper anim-pill">
-                          <span class="mock-doi-pill unconfirmed">
-                            <span class="pill-text-dotted">DOI</span>
-                          </span>
-                          <div class="mock-pill-popover">
-                            <span class="mock-popover-label"
-                              >Resolved via title search</span
-                            >
-                            <span class="mock-popover-doi"
-                              >10.1037/0022-3514.74.5.1252</span
+                        <div class="mock-scholar-panel anim-pill">
+                          <div class="mock-panel-row">
+                            <span class="mock-panel-icon">&#128279;</span>
+                            <span class="mock-panel-label">
+                              <span class="mock-panel-doi dotted"
+                                >10.1037/0022-3514.74.5.1252</span
+                              >
+                              <span class="mock-panel-sub unconfirmed"
+                                >Matched by title — not stated on the page</span
+                              >
+                            </span>
+                            <span class="mock-panel-actions">&#8599; &#10697;</span>
+                          </div>
+                          <div class="mock-panel-divider"></div>
+                          <div class="mock-panel-row">
+                            <span class="mock-panel-icon dim">&#128275;</span>
+                            <span class="mock-panel-label">
+                              <span class="mock-panel-title">Open Access</span>
+                              <span class="mock-panel-sub dim"
+                                >Not confirmed open access</span
+                              >
+                            </span>
+                          </div>
+                          <div class="mock-panel-row">
+                            <span class="mock-panel-icon">&#9784;</span>
+                            <span class="mock-panel-label">
+                              <span class="mock-panel-title">PubPeer</span>
+                              <span class="mock-panel-sub">14 comments</span>
+                            </span>
+                            <span class="mock-panel-action">View &#8599;</span>
+                          </div>
+                          <div class="mock-panel-row anim-badge">
+                            <span class="mock-panel-icon">&#9679;</span>
+                            <span class="mock-panel-label">
+                              <span class="mock-panel-title">Replications</span>
+                              <span class="mock-panel-sub"
+                                >7 replications recorded</span
+                              >
+                            </span>
+                            <span class="mock-panel-action"
+                              >View in Atlas &#8599;</span
                             >
                           </div>
                         </div>
@@ -372,7 +424,7 @@
                     </svg>
                     Google Sheets
                   </span>
-                  <span class="wt-step-num">3 of 6</span>
+                  <span class="wt-step-num">3 of 7</span>
                 </div>
                 <h2 class="wt-title">Spreadsheet Detection</h2>
                 <p class="wt-desc">
@@ -718,23 +770,24 @@
                     </svg>
                     Journal &amp; Article Pages
                   </span>
-                  <span class="wt-step-num">4 of 6</span>
+                  <span class="wt-step-num">4 of 7</span>
                 </div>
                 <h2 class="wt-title">Replication Badges</h2>
                 <p class="wt-desc">
-                  On journal pages, FLoRA injects inline badges next to DOI
-                  links and adds a draggable <strong>FLoRA tab</strong> to the
-                  right edge of the page. Click it to open the full Meta
-                  Report panel.
+                  On journal pages, FLoRA injects an
+                  <strong>indicator pill</strong> next to every DOI, and adds a
+                  draggable <strong>FLoRA tab</strong> to the right edge of the
+                  page. Click it to open the full Meta Report panel.
                 </p>
                 <div class="wt-callouts">
                   <div class="wt-callout callout-confirmed">
                     <div class="wt-callout-icon icon-flora">F</div>
                     <div class="wt-callout-body">
-                      <div class="wt-callout-title">Inline badge</div>
+                      <div class="wt-callout-title">Indicator pill</div>
                       <div class="wt-callout-text">
-                        Appears next to every DOI link on the page. Click to
-                        view the replication report on the FORRT Atlas.
+                        One pill per DOI carries every signal at once — DOI,
+                        Open Access, PubPeer, replications. Hover it for the
+                        detail, click to pin it open.
                       </div>
                     </div>
                   </div>
@@ -805,9 +858,14 @@
                         <span>
                           DOI:
                           <a class="mock-doi-link">10.1177/0956797612441216</a>
-                          <a class="mock-inline-badge anim-badge">
-                            <span class="badge-label-m">FLoRA</span>
-                            <span>3 replications</span>
+                          <a class="mock-indicator-pill anim-badge">
+                            <span class="mip-doi">DOI <svg width="12" height="12" viewBox="0 0 16 16" fill="white" style="display:inline-block;vertical-align:middle;"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg></span>
+                            <span class="mip-divider"></span>
+                            <span class="mip-seg"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg></span>
+                            <span class="mip-divider"></span>
+                            <span class="mip-seg"><svg width="11" height="15" viewBox="0 0 98.5 146.5" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" style="display:block;"><circle cx="13.667" cy="34.833" r="10.167"/><circle cx="86.302" cy="80.344" r="10.167"/><circle cx="86.302" cy="12.741" r="10.167"/><circle cx="13.04" cy="133.811" r="10.166"/><line x1="13.04" y1="45" x2="13.04" y2="123.645"/><line x1="23.44" y1="32.04" x2="76.554" y2="15.626"/><line x1="86.303" y1="22.907" x2="86.303" y2="70.177"/><line x1="18.027" y1="124.955" x2="80.772" y2="21.267"/><line x1="76.136" y1="80.344" x2="45.023" y2="80.344"/></svg></span>
+                            <span class="mip-divider"></span>
+                            <span class="mip-badge">3 Reps</span>
                           </a>
                         </span>
                       </div>
@@ -838,11 +896,175 @@
             </div>
           </div>
           <!-- /step-3 -->
+          <!-- ─────────────────────────────────
+               STEP 4 — Reading the pill
+               ───────────────────────────────── -->
+          <div class="wt-step" id="step-4">
+            <div class="wt-step-inner wider">
+              <div class="wt-info">
+                <div class="wt-context">
+                  <span class="wt-context-tag tag-pages">
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="16" x2="12" y2="12" />
+                      <line x1="12" y1="8" x2="12.01" y2="8" />
+                    </svg>
+                    Reading the Pill
+                  </span>
+                  <span class="wt-step-num">5 of 7</span>
+                </div>
+                <h2 class="wt-title">What Each Icon Means</h2>
+                <p class="wt-desc">
+                  The pill packs four signals into one strip, left to right. A
+                  segment that stays <strong>dimmed</strong> means FLoRA found
+                  nothing for it — it never disappears, so the pill keeps the
+                  same shape while lookups are still running.
+                </p>
+                <div class="wt-callouts">
+                  <div class="wt-callout callout-confirmed">
+                    <div class="wt-callout-icon icon-flora">F</div>
+                    <div class="wt-callout-body">
+                      <div class="wt-callout-title">Hover for the detail</div>
+                      <div class="wt-callout-text">
+                        Each icon has a matching row explaining it in words,
+                        with a link where one exists. Click the pill to pin
+                        that panel open.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="step-demo" id="demo-4">
+                <div class="mock-legend">
+                  <div class="mock-legend-pill">
+                    <a class="mock-indicator-pill">
+                      <span class="mip-doi">DOI <svg width="12" height="12" viewBox="0 0 16 16" fill="white" style="display:inline-block;vertical-align:middle;"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg></span>
+                      <span class="mip-divider"></span>
+                      <span class="mip-seg"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg></span>
+                      <span class="mip-divider"></span>
+                      <span class="mip-seg"><svg width="11" height="15" viewBox="0 0 98.5 146.5" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" style="display:block;"><circle cx="13.667" cy="34.833" r="10.167"/><circle cx="86.302" cy="80.344" r="10.167"/><circle cx="86.302" cy="12.741" r="10.167"/><circle cx="13.04" cy="133.811" r="10.166"/><line x1="13.04" y1="45" x2="13.04" y2="123.645"/><line x1="23.44" y1="32.04" x2="76.554" y2="15.626"/><line x1="86.303" y1="22.907" x2="86.303" y2="70.177"/><line x1="18.027" y1="124.955" x2="80.772" y2="21.267"/><line x1="76.136" y1="80.344" x2="45.023" y2="80.344"/></svg></span>
+                      <span class="mip-divider"></span>
+                      <span class="mip-badge">3 Reps</span>
+                    </a>
+                  </div>
+
+                  <div class="mock-legend-list">
+                    <div class="mock-legend-item">
+                      <span class="mock-legend-key"
+                        ><span class="mip-doi">DOI <svg width="12" height="12" viewBox="0 0 16 16" fill="white" style="display:inline-block;vertical-align:middle;"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg></span></span
+                      >
+                      <span class="mock-legend-body">
+                        <span class="mock-legend-title">DOI, confirmed</span>
+                        <span class="mock-legend-text"
+                          >Read straight off the page or confirmed by the
+                          doi.org resolver.</span
+                        >
+                      </span>
+                    </div>
+
+                    <div class="mock-legend-item">
+                      <span class="mock-legend-key"
+                        ><span class="mip-doi unconfirmed">DOI</span></span
+                      >
+                      <span class="mock-legend-body">
+                        <span class="mock-legend-title"
+                          >DOI, matched by title</span
+                        >
+                        <span class="mock-legend-text"
+                          >Underlined, no tick — resolved via Crossref or
+                          OpenAlex, so treat it with more caution.</span
+                        >
+                      </span>
+                    </div>
+
+                    <div class="mock-legend-item">
+                      <span class="mock-legend-key"
+                        ><span class="mip-seg"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg></span></span
+                      >
+                      <span class="mock-legend-body">
+                        <span class="mock-legend-title">Open Access</span>
+                        <span class="mock-legend-text"
+                          >Lit when a free full text exists. Dimmed means none
+                          was found.</span
+                        >
+                      </span>
+                    </div>
+
+                    <div class="mock-legend-item">
+                      <span class="mock-legend-key"
+                        ><span class="mip-seg"><svg width="11" height="15" viewBox="0 0 98.5 146.5" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" style="display:block;"><circle cx="13.667" cy="34.833" r="10.167"/><circle cx="86.302" cy="80.344" r="10.167"/><circle cx="86.302" cy="12.741" r="10.167"/><circle cx="13.04" cy="133.811" r="10.166"/><line x1="13.04" y1="45" x2="13.04" y2="123.645"/><line x1="23.44" y1="32.04" x2="76.554" y2="15.626"/><line x1="86.303" y1="22.907" x2="86.303" y2="70.177"/><line x1="18.027" y1="124.955" x2="80.772" y2="21.267"/><line x1="76.136" y1="80.344" x2="45.023" y2="80.344"/></svg></span></span
+                      >
+                      <span class="mock-legend-body">
+                        <span class="mock-legend-title">PubPeer</span>
+                        <span class="mock-legend-text"
+                          >Lit when the paper has post-publication comments.
+                          Opens the thread.</span
+                        >
+                      </span>
+                    </div>
+
+                    <div class="mock-legend-item">
+                      <span class="mock-legend-key"
+                        ><span class="mip-badge">3 Reps</span></span
+                      >
+                      <span class="mock-legend-body">
+                        <span class="mock-legend-title"
+                          >Replications / reproductions</span
+                        >
+                        <span class="mock-legend-text"
+                          >How many studies FLoRA has on record. Opens the
+                          FORRT Replication Atlas.</span
+                        >
+                      </span>
+                    </div>
+
+                    <div class="mock-legend-item">
+                      <span class="mock-legend-key"
+                        ><span class="mip-badge alert">!</span></span
+                      >
+                      <span class="mock-legend-body">
+                        <span class="mock-legend-title"
+                          >Retraction or concern</span
+                        >
+                        <span class="mock-legend-text"
+                          >Replaces the count when the paper has been retracted
+                          or flagged. Opens the notice.</span
+                        >
+                      </span>
+                    </div>
+
+                    <div class="mock-legend-item">
+                      <span class="mock-legend-key"
+                        ><span class="mip-badge empty"></span></span
+                      >
+                      <span class="mock-legend-body">
+                        <span class="mock-legend-title">Nothing on record</span>
+                        <span class="mock-legend-text"
+                          >Dimmed and empty — FLoRA has no replication data for
+                          this paper.</span
+                        >
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- /step-4 -->
+
 
           <!-- ─────────────────────────────────
                STEP 4 — Meta Report Panel
                ───────────────────────────────── -->
-          <div class="wt-step" id="step-4">
+          <div class="wt-step" id="step-5">
             <div class="wt-step-inner wider">
               <div class="wt-info">
                 <div class="wt-context">
@@ -864,7 +1086,7 @@
                     </svg>
                     Journal &amp; Article Pages
                   </span>
-                  <span class="wt-step-num">5 of 6</span>
+                  <span class="wt-step-num">6 of 7</span>
                 </div>
                 <h2 class="wt-title">Meta Report Panel</h2>
                 <p class="wt-desc">
@@ -978,7 +1200,7 @@
               </div>
 
               <!-- Demo: article header + full open panel -->
-              <div class="step-demo" id="demo-4">
+              <div class="step-demo" id="demo-5">
                 <button class="replay-btn">
                   <svg
                     width="11"
@@ -1022,9 +1244,14 @@
                         <span>
                           DOI:
                           <a class="mock-doi-link">10.1177/0956797612441216</a>
-                          <a class="mock-inline-badge">
-                            <span class="badge-label-m">FLoRA</span>
-                            <span>3 replications</span>
+                          <a class="mock-indicator-pill">
+                            <span class="mip-doi">DOI <svg width="12" height="12" viewBox="0 0 16 16" fill="white" style="display:inline-block;vertical-align:middle;"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg></span>
+                            <span class="mip-divider"></span>
+                            <span class="mip-seg"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg></span>
+                            <span class="mip-divider"></span>
+                            <span class="mip-seg"><svg width="11" height="15" viewBox="0 0 98.5 146.5" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" style="display:block;"><circle cx="13.667" cy="34.833" r="10.167"/><circle cx="86.302" cy="80.344" r="10.167"/><circle cx="86.302" cy="12.741" r="10.167"/><circle cx="13.04" cy="133.811" r="10.166"/><line x1="13.04" y1="45" x2="13.04" y2="123.645"/><line x1="23.44" y1="32.04" x2="76.554" y2="15.626"/><line x1="86.303" y1="22.907" x2="86.303" y2="70.177"/><line x1="18.027" y1="124.955" x2="80.772" y2="21.267"/><line x1="76.136" y1="80.344" x2="45.023" y2="80.344"/></svg></span>
+                            <span class="mip-divider"></span>
+                            <span class="mip-badge">3 Reps</span>
                           </a>
                         </span>
                       </div>
@@ -1510,12 +1737,12 @@
               </div>
             </div>
           </div>
-          <!-- /step-4 -->
+          <!-- /step-5 -->
 
           <!-- ─────────────────────────────────
                STEP 5 — Open Access & Retractions
                ───────────────────────────────── -->
-          <div class="wt-step" id="step-5">
+          <div class="wt-step" id="step-6">
             <div class="wt-step-inner wider">
               <div class="wt-info">
                 <div class="wt-context">
@@ -1537,7 +1764,7 @@
                     </svg>
                     Journal &amp; Article Pages
                   </span>
-                  <span class="wt-step-num">6 of 6</span>
+                  <span class="wt-step-num">7 of 7</span>
                 </div>
                 <h2 class="wt-title">Open Access &amp; Retractions</h2>
                 <p class="wt-desc">
@@ -1561,11 +1788,11 @@
                       </svg>
                     </div>
                     <div class="wt-callout-body">
-                      <div class="wt-callout-title">"Free" Open Access link</div>
+                      <div class="wt-callout-title">Open Access padlock</div>
                       <div class="wt-callout-text">
-                        Reference DOIs with a free full text (via Unpaywall) get
-                        a green "Free" link inside the pill — one click to
-                        access the free full text.
+                        The padlock segment lights up when a free full text
+                        exists (via Unpaywall) and stays dimmed when none was
+                        found. Open the pill to follow the link.
                       </div>
                     </div>
                   </div>
@@ -1589,10 +1816,10 @@
                     <div class="wt-callout-body">
                       <div class="wt-callout-title">Retraction flags</div>
                       <div class="wt-callout-text">
-                        Retracted papers get a red "Retracted" tag; papers
-                        with an expression of concern get an amber "Concern"
-                        tag. Both appear beside the title and DOIs — click to
-                        read the notice.
+                        The pill's last segment turns into a red
+                        <strong>!</strong> for a retraction, or an amber one for
+                        an expression of concern, replacing the replication
+                        count. Open the pill to read the notice.
                       </div>
                     </div>
                   </div>
@@ -1646,7 +1873,7 @@
               </div>
 
               <!-- Demo: article with retraction flag + reference OA "Free" + scanning toast -->
-              <div class="step-demo" id="demo-5">
+              <div class="step-demo" id="demo-6">
                 <button class="replay-btn">
                   <svg
                     width="11"
@@ -1675,37 +1902,62 @@
                       <div class="mock-journal-name">Psychological Bulletin</div>
                       <h3 class="mock-article-title">
                         Mood and the Endowment Effect: A Reassessment
-                        <span
-                          class="anim-badge"
-                          style="
-                            display: inline-flex;
-                            align-items: center;
-                            gap: 4px;
-                            vertical-align: middle;
-                            margin-left: 8px;
-                            font-size: 11px;
-                            font-weight: 600;
-                            color: #fff;
-                            background: #ff1744;
-                            padding: 2px 9px;
-                            border-radius: 11px;
-                          "
-                        >
-                          <svg
-                            width="11"
-                            height="11"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="#fff"
-                            stroke-width="2.5"
-                          >
-                            <path
-                              d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
-                            />
-                            <line x1="12" y1="9" x2="12" y2="13" />
-                            <line x1="12" y1="17" x2="12.01" y2="17" />
-                          </svg>
-                          Retracted
+                        <span class="mock-indicator-pill anim-badge"
+                          ><span class="mip-doi"
+                            >DOI
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 16 16"
+                              fill="white"
+                              style="display: inline-block; vertical-align: middle"
+                            >
+                              <path
+                                d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"
+                              /></svg
+                          ></span>
+                          <span class="mip-divider"></span>
+                          <span class="mip-seg">
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2.2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              style="display: block"
+                            >
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                              <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                            </svg>
+                          </span>
+                          <span class="mip-divider"></span>
+                          <span class="mip-seg">
+                            <svg
+                              width="11"
+                              height="15"
+                              viewBox="0 0 98.5 146.5"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="9"
+                              stroke-linecap="round"
+                              style="display: block"
+                            >
+                              <circle cx="13.667" cy="34.833" r="10.167" />
+                              <circle cx="86.302" cy="80.344" r="10.167" />
+                              <circle cx="86.302" cy="12.741" r="10.167" />
+                              <circle cx="13.04" cy="133.811" r="10.166" />
+                              <line x1="13.04" y1="45" x2="13.04" y2="123.645" />
+                              <line x1="23.44" y1="32.04" x2="76.554" y2="15.626" />
+                              <line x1="86.303" y1="22.907" x2="86.303" y2="70.177" />
+                              <line x1="18.027" y1="124.955" x2="80.772" y2="21.267" />
+                              <line x1="76.136" y1="80.344" x2="45.023" y2="80.344" />
+                            </svg>
+                          </span>
+                          <span class="mip-divider"></span>
+                          <span class="mip-badge alert">!</span>
                         </span>
                       </h3>
                       <div class="mock-article-authors">
@@ -1735,66 +1987,62 @@
                         Kahneman, D., Knetsch, J. L., &amp; Thaler, R. (1990).
                         Experimental tests of the endowment effect.
                         <em>Journal of Political Economy</em>.
-                        <span
-                          class="anim-badge"
-                          style="
-                            display: inline-flex;
-                            align-items: center;
-                            gap: 4px;
-                            vertical-align: middle;
-                            margin-left: 4px;
-                            font-size: 11px;
-                            font-weight: 500;
-                            color: #fff;
-                            background: #853953;
-                            opacity: 0.85;
-                            padding: 2px 9px;
-                            border-radius: 20px;
-                          "
-                        >
-                          DOI
-                          <svg
-                            width="11"
-                            height="11"
-                            viewBox="0 0 16 16"
-                            fill="white"
-                          >
-                            <path
-                              d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"
-                            />
-                          </svg>
-                          <span
-                            style="
-                              width: 1px;
-                              height: 11px;
-                              background: rgba(255, 255, 255, 0.4);
-                            "
+                        <span class="mock-indicator-pill anim-badge"
+                          ><span class="mip-doi"
+                            >DOI
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 16 16"
+                              fill="white"
+                              style="display: inline-block; vertical-align: middle"
+                            >
+                              <path
+                                d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"
+                              /></svg
                           ></span>
-                          <span
-                            style="display: inline-flex; align-items: center; gap: 3px"
-                          >
+                          <span class="mip-divider"></span>
+                          <span class="mip-seg">
                             <svg
                               width="12"
                               height="12"
                               viewBox="0 0 24 24"
                               fill="none"
-                              stroke="#fff"
+                              stroke="currentColor"
                               stroke-width="2.2"
                               stroke-linecap="round"
                               stroke-linejoin="round"
+                              style="display: block"
                             >
-                              <rect
-                                x="3"
-                                y="11"
-                                width="18"
-                                height="11"
-                                rx="2"
-                                ry="2"
-                              />
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                               <path d="M7 11V7a5 5 0 0 1 9.9-1" />
                             </svg>
-                            Free
                           </span>
+                          <span class="mip-divider"></span>
+                          <span class="mip-seg dim">
+                            <svg
+                              width="11"
+                              height="15"
+                              viewBox="0 0 98.5 146.5"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="9"
+                              stroke-linecap="round"
+                              style="display: block"
+                            >
+                              <circle cx="13.667" cy="34.833" r="10.167" />
+                              <circle cx="86.302" cy="80.344" r="10.167" />
+                              <circle cx="86.302" cy="12.741" r="10.167" />
+                              <circle cx="13.04" cy="133.811" r="10.166" />
+                              <line x1="13.04" y1="45" x2="13.04" y2="123.645" />
+                              <line x1="23.44" y1="32.04" x2="76.554" y2="15.626" />
+                              <line x1="86.303" y1="22.907" x2="86.303" y2="70.177" />
+                              <line x1="18.027" y1="124.955" x2="80.772" y2="21.267" />
+                              <line x1="76.136" y1="80.344" x2="45.023" y2="80.344" />
+                            </svg>
+                          </span>
+                          <span class="mip-divider"></span>
+                          <span class="mip-badge empty"></span>
                         </span>
                       </div>
                       <div
@@ -1808,34 +2056,62 @@
                         Levine, M., Smith, A., &amp; Park, J. (2011). Priming
                         effects on decision-making under loss aversion.
                         <em>Journal of Behavioral Economics</em>.
-                        <span
-                          class="anim-badge"
-                          style="
-                            display: inline-flex;
-                            align-items: center;
-                            gap: 4px;
-                            vertical-align: middle;
-                            margin-left: 4px;
-                            font-size: 11px;
-                            font-weight: 600;
-                            color: #9a3412;
-                            background: #fff7ed;
-                            border: 1px solid #ea580c;
-                            padding: 2px 9px;
-                            border-radius: 20px;
-                          "
-                        >
-                          <svg
-                            width="10"
-                            height="10"
-                            viewBox="0 0 640 640"
-                            fill="#ea580c"
-                          >
-                            <path
-                              d="M320 64C334.7 64 348.2 72.1 355.2 85L571.2 485C577.9 497.4 577.6 512.4 570.4 524.5C563.2 536.6 550.1 544 536 544L104 544C89.9 544 76.8 536.6 69.6 524.5C62.4 512.4 62.1 497.4 68.8 485L284.8 85C291.8 72.1 305.3 64 320 64zM320 416C302.3 416 288 430.3 288 448C288 465.7 302.3 480 320 480C337.7 480 352 465.7 352 448C352 430.3 337.7 416 320 416zM320 224C301.8 224 287.3 239.5 288.6 257.7L296 361.7C296.9 374.2 307.4 384 319.9 384C332.5 384 342.9 374.3 343.8 361.7L351.2 257.7C352.5 239.5 338.1 224 319.8 224z"
-                            />
-                          </svg>
-                          Concern
+                        <span class="mock-indicator-pill anim-badge"
+                          ><span class="mip-doi"
+                            >DOI
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 16 16"
+                              fill="white"
+                              style="display: inline-block; vertical-align: middle"
+                            >
+                              <path
+                                d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"
+                              /></svg
+                          ></span>
+                          <span class="mip-divider"></span>
+                          <span class="mip-seg dim">
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2.2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              style="display: block"
+                            >
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                              <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                            </svg>
+                          </span>
+                          <span class="mip-divider"></span>
+                          <span class="mip-seg">
+                            <svg
+                              width="11"
+                              height="15"
+                              viewBox="0 0 98.5 146.5"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="9"
+                              stroke-linecap="round"
+                              style="display: block"
+                            >
+                              <circle cx="13.667" cy="34.833" r="10.167" />
+                              <circle cx="86.302" cy="80.344" r="10.167" />
+                              <circle cx="86.302" cy="12.741" r="10.167" />
+                              <circle cx="13.04" cy="133.811" r="10.166" />
+                              <line x1="13.04" y1="45" x2="13.04" y2="123.645" />
+                              <line x1="23.44" y1="32.04" x2="76.554" y2="15.626" />
+                              <line x1="86.303" y1="22.907" x2="86.303" y2="70.177" />
+                              <line x1="18.027" y1="124.955" x2="80.772" y2="21.267" />
+                              <line x1="76.136" y1="80.344" x2="45.023" y2="80.344" />
+                            </svg>
+                          </span>
+                          <span class="mip-divider"></span>
+                          <span class="mip-badge concern">!</span>
                         </span>
                       </div>
                     </div>
@@ -1874,7 +2150,7 @@
               </div>
             </div>
           </div>
-          <!-- /step-5 -->
+          <!-- /step-6 -->
 
           <!-- ═══ NAVIGATION ═══ -->
           <div class="wt-nav">
@@ -1905,6 +2181,8 @@
                 <button class="wt-dot" data-step="4"></button>
                 <div class="wt-dot-line"></div>
                 <button class="wt-dot" data-step="5"></button>
+                <div class="wt-dot-line"></div>
+                <button class="wt-dot" data-step="6"></button>
               </div>
             </div>
 

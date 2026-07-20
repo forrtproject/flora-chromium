@@ -14,12 +14,19 @@
 import {findReferenceEntries, extractDoiFromHref, type ReferenceEntry} from "@shared/doi-extractor";
 import {augmentDOIsViaWorker} from "@shared/messages";
 import {validateDOIs} from "@shared/doi-validate";
-import {injectRetractionInfo, type RetractionResponse} from "@shared/doi-retraction";
-import {createDoiPill} from "@shared/doi-label";
+import type {RetractionResponse} from "@shared/doi-retraction";
+import {createIndicatorPill} from "@shared/indicator-pill";
 import {fetchOpenAccess} from "@shared/openaccess";
 import {getSettings} from "@shared/settings";
 import {debugLog} from "@shared/debug";
-import type {DoiString} from "@shared/types";
+import type {DoiString, LookupState} from "@shared/types";
+import {
+    applyPillStyle,
+    applyPlacement,
+    currentSiteAdapter,
+    isInReferenceScope,
+    type SiteAdapter,
+} from "@shared/site-adapters";
 
 /**
  * Place a DOI pill inline. For a "hidden" DOI (tucked into a link href) the
@@ -67,8 +74,12 @@ function placeReferencePill(
     entry: HTMLElement,
     doi: DoiString,
     mode: "augment" | "hidden",
-    pill: HTMLElement
+    pill: HTMLElement,
+    adapter: SiteAdapter | null
 ): void {
+    // A stale adapter selector falls through to the heuristics below.
+    if (applyPlacement(adapter?.referencePill, entry, pill, `reference pill for ${doi}`)) return;
+
     if (mode === "hidden") {
         for (const link of entry.querySelectorAll<HTMLAnchorElement>("a[href]")) {
             if (extractDoiFromHref(link.href) === doi) {
@@ -98,11 +109,9 @@ function placeReferencePill(
 }
 
 const PROCESSED_ATTR = "data-flora-ref-processed";
-// Gray, dotted-underline "DOI" pill — for DOIs resolved via augmentation.
-const AUGMENTED_COLOR = "#656d76";
-// Pink "DOI ✓" pill — for DOIs that were found on the page but hidden in a
-// button link; matches Scholar's confident colour.
-const CONFIDENT_COLOR = "#853953";
+// One colour for every provenance — an unconfirmed DOI is marked by the
+// underline inside the pill, not by a different colour.
+const PILL_COLOR = "#853953";
 // Cap API usage on reference lists with many DOI-less entries.
 const MAX_REFERENCE_AUGMENTATIONS = 30;
 // Skip entries too short to be a real citation (avoids junk augmentation queries).
@@ -135,11 +144,15 @@ export interface ResolvedReference {
 export async function resolveReferenceDois(): Promise<ResolvedReference[]> {
     const entries = findReferenceEntries(document);
     const {showDoiPillsOnAllReferences} = await getSettings();
+    const adapter = currentSiteAdapter();
 
     const pending: PendingEntry[] = [];
     for (const entry of entries) {
         if (entry.element.hasAttribute(PROCESSED_ATTR)) continue;
         if (entry.text.length < MIN_CITATION_LENGTH) continue;
+        // Filter before augmenting: an out-of-scope block that reaches
+        // Crossref/OpenAlex can come back with a confident-looking wrong DOI.
+        if (!isInReferenceScope(entry.element, adapter)) continue;
 
         if (entry.doi === null) {
             if (!YEAR_RE.test(entry.text)) continue;
@@ -212,25 +225,35 @@ export async function resolveReferenceDois(): Promise<ResolvedReference[]> {
 }
 
 /**
- * Render an inline DOI pill (and, when present in retractionByDoi, a notice
- * pill) on each resolved reference. Idempotent at the pill level — repeated
- * calls on the same entry skip via existing per-element markers.
+ * Render one merged indicator pill (DOI + Open Access + PubPeer + retraction/
+ * replication badge) on each resolved reference. Idempotent at the pill
+ * level — repeated calls on the same entry skip via existing per-element
+ * markers.
  */
 export function renderResolvedReferences(
     resolved: ResolvedReference[],
     retractionByDoi: Map<DoiString, RetractionResponse>,
+    pageState: ReadonlyMap<DoiString, LookupState>,
 ): void {
+    const adapter = currentSiteAdapter();
     for (const {entry, doi, mode} of resolved) {
         const isAugmented = mode === "augment";
-        const color = isAugmented ? AUGMENTED_COLOR : CONFIDENT_COLOR;
-        // Pass the Open Access lookup so the padlock renders inside the pill.
-        const pill = createDoiPill(doi, color, isAugmented, fetchOpenAccess(doi));
-        placeReferencePill(entry.element, doi, mode, pill);
-        const notice = retractionByDoi.get(doi);
-        if (notice) injectRetractionInfo(entry.element, notice);
+        const state = pageState.get(doi);
+        const stats = state?.status === "matched" ? state.result.record.stats : null;
+        const pill = createIndicatorPill({
+            doi,
+            color: PILL_COLOR,
+            isAugmented,
+            oaStatus: fetchOpenAccess(doi),
+            retraction: retractionByDoi.get(doi) ?? null,
+            replicationsCount: stats?.n_replications_total ?? null,
+            reproductionsCount: stats?.n_reproductions_total ?? null,
+        });
+        applyPillStyle(pill, adapter, "reference");
+        placeReferencePill(entry.element, doi, mode, pill, adapter);
         debugLog(`References: surfaced "${entry.text.slice(0, 60)}" → ${doi} (${mode})`);
     }
-    debugLog(`References: rendered ${resolved.length} inline DOI pill(s)`);
+    debugLog(`References: rendered ${resolved.length} inline indicator pill(s)`);
 }
 
 

@@ -1,6 +1,7 @@
 import type { DoiString, ClassifiedDois, PageType } from "./types";
 import { normaliseDOI } from "./doi-normalise";
 import { debugLog } from "./debug";
+import { FLORA_UI_SELECTOR } from "./flora-ui";
 
 // Allow parens and semicolons inside DOIs (e.g. 10.1016/S0924-9338(98)80023-0,
 // 10.1002/(sici)...3.0.co;2-g). DOI suffixes may contain slashes per the spec
@@ -318,6 +319,7 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
 
   // 1. Links — text match wins over href; embedded URLs are last resort.
   for (const link of doc.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    if (link.closest(FLORA_UI_SELECTOR)) continue;
     const textDois = new Set<DoiString>();
     const linkText = link.innerText || link.textContent || "";
     const cleaned = decodeEncodedDois(linkText.replace(WORD_BREAK_CHARS, ""));
@@ -353,6 +355,7 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
       }
       // Anchor descendants are covered by the link pass above.
       if (parent.closest("a")) return NodeFilter.FILTER_REJECT;
+      if (parent.closest(FLORA_UI_SELECTOR)) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     },
   });
