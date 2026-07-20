@@ -38,6 +38,7 @@ import {isDomainBlocked} from "@shared/domains";
 import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
 import {createIndicatorPill, updateIndicatorPillBadges, INDICATOR_PILL_CLASS} from "@shared/indicator-pill";
 import {applyPillStyle, applyPlacement, currentSiteAdapter} from "@shared/site-adapters";
+import {isExternalMutation} from "@shared/flora-ui";
 import {fetchOpenAccess} from "@shared/openaccess";
 import {resolveReferenceDois, renderResolvedReferences, type ResolvedReference} from "./references";
 
@@ -664,31 +665,12 @@ async function fetchSheetDois(): Promise<void> {
     pageRenderChangeHandler();
 }
 
-function isFloraOwnedNode(node: Node): boolean {
-    if (node.nodeType !== Node.ELEMENT_NODE) return true; // text/comment nodes — not meaningful for DOI scanning
-    const el = node as Element;
-    if (el.id.startsWith("flora-")) return true;
-    for (const c of el.classList) {
-        if (c.startsWith("flora-")) return true;
-    }
-    return false;
-}
-
 function startDomListener(callback: () => void) {
     let debounceTimer: number;
     const observer = new MutationObserver((mutations) => {
         // Do no work while this tab is in the background.
         if (document.hidden) return;
-        const hasExternalChange = mutations.some(m => {
-            if (m.addedNodes.length === 0) return false;
-            // Skip mutations inside FLoRA's own injected containers.
-            if ((m.target as Element).closest?.('[id^="flora-"]')) return false;
-            // Skip if every added node is a FLoRA-owned element (badges, pills, panel, etc.).
-            for (const node of m.addedNodes) {
-                if (!isFloraOwnedNode(node)) return true;
-            }
-            return false;
-        });
+        const hasExternalChange = mutations.some(isExternalMutation);
         if (hasExternalChange) {
             clearTimeout(debounceTimer);
             debounceTimer = window.setTimeout(callback, 300);

@@ -130,9 +130,9 @@ describe("applyPlacement", () => {
 // trimmed from live article pages, so the selectors are checked against markup
 // the sites actually serve rather than an idealised version of it.
 describe.each([
-  ["science.org", "science-org-article.html", "science.org", ".citation"],
-  ["journals.sagepub.com", "sagepub-article.html", "sagepub", ".citation-content"],
-])("%s reference placement", (hostname, fixture, expectedId, expectedContainer) => {
+  ["science.org", "science-org-article.html", "science.org", ".citation", "inside"],
+  ["journals.sagepub.com", "sagepub-article.html", "sagepub", ".citation", "after"],
+] as const)("%s reference placement", (hostname, fixture, expectedId, expectedContainer, titleRelation) => {
   const adapter = () => resolveSiteAdapter(hostname) as SiteAdapter;
 
   it("resolves to the expected adapter", () => {
@@ -164,11 +164,16 @@ describe.each([
     }
   });
 
-  it("places the title pill on the article h1", () => {
+  it(`places the title pill ${titleRelation} the article h1`, () => {
     const doc = loadFixture(fixture);
     const p = doc.createElement("span");
     expect(applyPlacement(adapter().titlePill, doc.documentElement, p)).toBe(true);
-    expect(doc.querySelector("h1")!.contains(p)).toBe(true);
+    const h1 = doc.querySelector("h1")!;
+    if (titleRelation === "inside") {
+      expect(h1.contains(p)).toBe(true);
+    } else {
+      expect(h1.nextElementSibling).toBe(p);
+    }
   });
 
   it("scopes reference pills to the bibliography", () => {

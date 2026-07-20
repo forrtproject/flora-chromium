@@ -1,6 +1,7 @@
 import type { DoiString, ClassifiedDois, PageType } from "./types";
 import { normaliseDOI } from "./doi-normalise";
 import { debugLog } from "./debug";
+import { FLORA_UI_SELECTOR } from "./flora-ui";
 
 // Allow parens and semicolons inside DOIs (e.g. 10.1016/S0924-9338(98)80023-0,
 // 10.1002/(sici)...3.0.co;2-g). DOI suffixes may contain slashes per the spec
@@ -298,10 +299,6 @@ export interface DoiOccurrence {
  *   Crossref/PubMed button" links that embed a DOI in their URL).
  * - DOIs elsewhere → anchored to the link or text-containing element.
  */
-// FLoRA marks its own injected elements so extraction can skip them — the
-// pills print the DOI as text and link it to doi.org.
-const FLORA_UI_SELECTOR = "[data-flora-ui]";
-
 export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
   const occurrences: DoiOccurrence[] = [];
   if (!doc.body) return occurrences;

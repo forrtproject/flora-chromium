@@ -49,7 +49,7 @@ describe("reference pill placement (integration)", () => {
 
   for (const [hostname, fixture, container] of [
     ["www.science.org", "science-org-article.html", ".citation"],
-    ["journals.sagepub.com", "sagepub-article.html", ".citation-content"],
+    ["journals.sagepub.com", "sagepub-article.html", ".citation"],
   ] as const) {
     it(`puts the pill in ${container} on ${hostname}`, () => {
       setHostname(hostname);

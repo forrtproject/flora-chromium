@@ -449,6 +449,7 @@ export function createIndicatorPill(options: IndicatorPillOptions): HTMLElement 
             // Fallback for contexts where the async clipboard API is blocked
             const ta = document.createElement("textarea");
             ta.value = doi;
+            ta.setAttribute("data-flora-ui", "");
             ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;";
             document.body.appendChild(ta);
             ta.select();
