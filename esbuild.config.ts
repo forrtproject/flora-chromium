@@ -25,6 +25,11 @@ const configs: esbuild.BuildOptions[] = [
   },
   {
     ...sharedOptions,
+    entryPoints: ["src/content-pubpeer/index.ts"],
+    outfile: "dist/content-pubpeer.js",
+  },
+  {
+    ...sharedOptions,
     entryPoints: ["src/content-forrt/index.ts"],
     outfile: "dist/content-forrt.js",
   },

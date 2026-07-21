@@ -370,14 +370,16 @@ export function renderInlineBadges(
         if (!hasData) continue;
 
         if (!isVisible(occ.anchor)) continue;
-        // Skip if this anchor already carries a badge (idempotent re-runs).
-        if (anchorAlreadyBadged(occ.anchor)) continue;
+        if (anchorAlreadyBadged(occ.anchor, occ.doi)) continue;
 
         const replLabel = stats.n_replications_total === 1 ? "replication" : "replications";
         const reproLabel = stats.n_reproductions_total === 1 ? "reproduction" : "reproductions";
 
         const badgeHost = document.createElement("span");
         badgeHost.className = BADGE_CLASS;
+        // Keyed on the occurrence DOI (the pageState key), not the result's
+        // echoed DOI, so anchorAlreadyBadged matches what it is asked about.
+        badgeHost.setAttribute("data-flora-doi", occ.doi);
         const shadow = badgeHost.attachShadow({mode: "open"});
 
         const styleEl = document.createElement("style");
@@ -401,21 +403,36 @@ export function renderInlineBadges(
     }
 }
 
-/** Place a badge relative to its anchor: after the anchor for links, inside
- *  for everything else (reference entries, paragraphs). */
 function placeBadge(anchor: HTMLElement, badge: HTMLElement): void {
     if (anchor.tagName === "A") {
-        anchor.insertAdjacentElement("afterend", badge);
+        let last: Element = anchor;
+        while (last.nextElementSibling?.classList.contains(BADGE_CLASS)) {
+            last = last.nextElementSibling;
+        }
+        last.insertAdjacentElement("afterend", badge);
     } else {
         anchor.appendChild(badge);
     }
 }
 
-function anchorAlreadyBadged(anchor: HTMLElement): boolean {
+function anchorAlreadyBadged(anchor: HTMLElement, doi: DoiString): boolean {
     if (anchor.tagName === "A") {
-        return !!anchor.nextElementSibling?.classList.contains(BADGE_CLASS);
+        let sib = anchor.nextElementSibling;
+        while (sib?.classList.contains(BADGE_CLASS)) {
+            if (sib.getAttribute("data-flora-doi") === doi) return true;
+            sib = sib.nextElementSibling;
+        }
+        return false;
     }
-    return !!anchor.lastElementChild?.classList.contains(BADGE_CLASS);
+    for (const child of anchor.children) {
+        if (
+            child.classList.contains(BADGE_CLASS) &&
+            child.getAttribute("data-flora-doi") === doi
+        ) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function isVisible(el: HTMLElement): boolean {

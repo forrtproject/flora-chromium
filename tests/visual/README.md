@@ -37,7 +37,7 @@ ditto -x -k *.zip mac_arm-<version>/
 
 ## What gets tested
 
-11 fixtures (viewport 1280×900, `deviceScaleFactor` 1):
+12 fixtures (viewport 1280×900, `deviceScaleFactor` 1):
 
 | Fixture | Exercises |
 | --- | --- |
@@ -47,6 +47,7 @@ ditto -x -k *.zip mac_arm-<version>/
 | `rtl-article` | `dir="rtl"` Arabic article with DOIs (pill mirroring) |
 | `editor-textarea` | `contenteditable` editor + `<textarea>` with DOIs |
 | `long-article-sticky` | Long article, sticky header + fixed footer, side panel |
+| `shared-block-anchor` | Several matched DOIs sharing one block anchor (one badge each) |
 | `article-with-dois` | Reused unit fixture — meta DOI + doi.org ref links |
 | `doi-in-href` | Reused — DOI only in a link href |
 | `doi-in-table` | Reused — DOI in a cell / prose inside a table |
