@@ -33,6 +33,12 @@
 //   slot. `top` is the vertical nudge: the default suits body text and usually
 //   needs lowering inside a large h1. Anything you do not name keeps its
 //   default. Values may end in "!important" for publishers with aggressive CSS.
+// - autoExpandReferences: selector for a collapsed accordion/tab control that
+//   gates the reference list (Wiley renders it in the DOM already but hidden
+//   behind `aria-expanded="false"` until clicked). Clicked once per pass, and
+//   skipped once `aria-expanded="true"` — real users' click handler is what
+//   flips the site's own CSS/ARIA state, so we trigger it rather than guess
+//   which attributes to flip ourselves.
 //
 // Verify selectors against a live page and note the DOM path you checked in a
 // comment on the block.
@@ -58,6 +64,9 @@ export interface SiteAdapter {
     referenceScope?: string;
     referencePillStyle?: PillStyle;
     titlePillStyle?: PillStyle;
+    /** Selector for a collapsed reference-list accordion/tab control to click
+     *  once before scanning. See "Adding a site" note above. */
+    autoExpandReferences?: string;
 }
 
 const SCIENCE_ORG: SiteAdapter = {
@@ -192,6 +201,19 @@ const CAMBRIDGE_ORG: SiteAdapter = {
     titlePillStyle: { top: "-5px" },
 };
 
+const WILEY_ONLINE_LIBRARY: SiteAdapter = {
+    id: "wiley-online-library",
+    hostnames: ["onlinelibrary.wiley.com"],
+    referencePill: [
+        { selector: ":self", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".citation__title", position: "after" },
+    ],
+    titlePillStyle: { top: "0px" },
+    autoExpandReferences: ".article-section__references .accordion__control",
+};
+
 
 export const SITE_ADAPTERS: SiteAdapter[] = [
     SCIENCE_ORG,
@@ -203,7 +225,8 @@ export const SITE_ADAPTERS: SiteAdapter[] = [
     SPRINGER,
     TECHSCIENCE,
     JAMA_NETWORK,
-    CAMBRIDGE_ORG
+    CAMBRIDGE_ORG,
+    WILEY_ONLINE_LIBRARY,
 ];
 
 function normaliseHost(hostname: string): string {
@@ -270,6 +293,14 @@ export function applyPlacement(
 export function isInReferenceScope(entry: Element, adapter: SiteAdapter | null): boolean {
     if (!adapter?.referenceScope) return true;
     return entry.closest(adapter.referenceScope) !== null;
+}
+
+export function expandReferencesSection(adapter: SiteAdapter | null): void {
+    const selector = adapter?.autoExpandReferences;
+    if (!selector) return;
+    const trigger = document.querySelector<HTMLElement>(selector);
+    if (!trigger || trigger.getAttribute("aria-expanded") === "true") return;
+    trigger.click();
 }
 
 function toKebab(prop: string): string {
