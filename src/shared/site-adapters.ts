@@ -125,6 +125,18 @@ const JMIR_PUBLICATIONS: SiteAdapter = {
     referencePillStyle: { top: "-5px" },
 };
 
+const PEERJ: SiteAdapter = {
+    id: "peerj",
+    hostnames: ["peerj.com"],
+    referencePill: [
+        { selector: ".citation", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".article-title", position: "after" },
+    ],
+    titlePillStyle: { top: "0px" },
+    referenceScope: ".ref-list-container",
+};
 
 
 export const SITE_ADAPTERS: SiteAdapter[] = [
@@ -132,7 +144,8 @@ export const SITE_ADAPTERS: SiteAdapter[] = [
     SAGEPUB,
     FRONTIERS,
     ACADEMIC_OUP_COM,
-    JMIR_PUBLICATIONS
+    JMIR_PUBLICATIONS,
+    PEERJ
 ];
 
 function normaliseHost(hostname: string): string {
