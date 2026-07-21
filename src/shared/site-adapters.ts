@@ -38,7 +38,7 @@
 // comment on the block.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import {debugLog} from "@shared/debug";
+import { debugLog } from "@shared/debug";
 
 export type PlacementPosition = "append" | "prepend" | "before" | "after";
 
@@ -64,10 +64,10 @@ const SCIENCE_ORG: SiteAdapter = {
     id: "science.org",
     hostnames: ["science.org"],
     referencePill: [
-        {selector: ".citation", position: "append"},
+        { selector: ".citation", position: "append" },
     ],
     titlePill: [
-        {selector: "h1[property='name']", position: "append"},
+        { selector: "h1[property='name']", position: "append" },
     ],
     referenceScope: "#bibliography",
 };
@@ -76,18 +76,34 @@ const SAGEPUB: SiteAdapter = {
     id: "sagepub",
     hostnames: ["sagepub.com"],
     referencePill: [
-        {selector: ".citation", position: "append"},
+        { selector: ".citation", position: "append" },
     ],
     titlePill: [
-        {selector: "h1[property='name']", position: "after"},
+        { selector: "h1[property='name']", position: "after" },
     ],
     referenceScope: "#bibliography",
-    titlePillStyle: {top: "-10px"},          
+    titlePillStyle: { top: "-10px" },
 };
+
+const FRONTIERS: SiteAdapter = {
+    id: "frontiers",
+    hostnames: ["frontiersin.org"],
+    referencePill: [
+        { selector: ".References__content", position: "append" },
+    ],
+    titlePill: [
+        { selector: ".ArticleDetailsV4__main__title", position: "after" },
+    ],
+    referenceScope: ".References",
+    titlePillStyle: { top: "-15px" },
+};
+
+
 
 export const SITE_ADAPTERS: SiteAdapter[] = [
     SCIENCE_ORG,
     SAGEPUB,
+    FRONTIERS
 ];
 
 function normaliseHost(hostname: string): string {

@@ -659,6 +659,52 @@ describe("findReferenceEntries", () => {
     expect(entries[0].doiInText).toBe(true);
     expect(entries[1].doiInText).toBe(true);
   });
+
+  it("treats a Frontiers-style entry with a nested action-link <li> list as one entry", () => {
+    // Frontiers wraps each reference in a <li class="References__item"> whose
+    // <div class="References__content"> holds the citation plus a nested
+    // <ul class="References__links"><li> per action button (Pubmed | CrossRef
+    // | Google Scholar | View in article). Without outermost-<li> selection,
+    // those four button <li>s get mistaken for four separate entries and the
+    // real per-reference <li> is dropped.
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <ul class="References">
+          <li class="References__item" id="ref1">
+            <div class="References__label"><p>1</p></div>
+            <div class="References__content">
+              <p>Achenbach T. M. (2016). Internalizing/externalizing problems. J. Am. Acad. Child Adolesc. Psychiatry 55, 647-656. doi: 10.1016/j.jaac.2016.05.012</p>
+              <ul class="References__links">
+                <li class="References__links__item"><a href="https://pubmed.ncbi.nlm.nih.gov/27453078">Pubmed Abstract</a></li>
+                <li class="References__links__item"><a href="https://doi.org/10.1016/j.jaac.2016.05.012">CrossRef</a></li>
+                <li class="References__links__item"><a href="http://scholar.google.com/scholar_lookup?x=1">Google Scholar</a></li>
+                <li class="References__links__item References__links__item--viewInArticle"><a href="#ref1a">View reference in article</a></li>
+              </ul>
+            </div>
+          </li>
+          <li class="References__item" id="ref2">
+            <div class="References__label"><p>2</p></div>
+            <div class="References__content">
+              <p>Jones K. (2021). Another paper. J. Other 3, 1-2. doi: 10.5678/also.found</p>
+              <ul class="References__links">
+                <li class="References__links__item"><a href="https://pubmed.ncbi.nlm.nih.gov/1">Pubmed Abstract</a></li>
+                <li class="References__links__item References__links__item--viewInArticle"><a href="#ref2a">View reference in article</a></li>
+              </ul>
+            </div>
+          </li>
+        </ul>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const entries = findReferenceEntries(doc);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].element.className).toBe("References__item");
+    expect(entries[1].element.className).toBe("References__item");
+    expect(entries[0].doi).toBe("10.1016/j.jaac.2016.05.012");
+    expect(entries[1].doi).toBe("10.5678/also.found");
+    // The site adapter targets ".References__content" as a descendant of the
+    // entry root — confirm that still holds with outermost selection.
+    expect(entries[0].element.querySelector(".References__content")).not.toBeNull();
+  });
 });
 
 describe("extractDoiOccurrences — FLoRA's own injected UI", () => {

@@ -580,8 +580,14 @@ export function findReferenceEntries(doc: Document): ReferenceEntry[] {
   const elements: HTMLElement[] = [];
 
   for (const container of findReferenceContainers(doc)) {
-    const lis = Array.from(container.querySelectorAll<HTMLElement>("li"))
-      .filter((li) => !li.querySelector("li"));
+    // Keep only outermost <li>s: a per-reference <li> that wraps a nested
+    // action-link list (Frontiers' "Pubmed | CrossRef | ... " sub-<li>s)
+    // must win over its own children, or those buttons get mistaken for
+    // separate reference entries.
+    const allLis = Array.from(container.querySelectorAll<HTMLElement>("li"));
+    const lis = allLis.filter(
+      (li) => !allLis.some((other) => other !== li && other.contains(li))
+    );
     if (lis.length >= 2) {
       elements.push(...lis);
       continue;
