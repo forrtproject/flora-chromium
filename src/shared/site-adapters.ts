@@ -151,6 +151,47 @@ const SPRINGER: SiteAdapter = {
     referencePillStyle: { top: "0px" },
 };
 
+const TECHSCIENCE: SiteAdapter = {
+    id: "techscience",
+    hostnames: ["techscience.com"],
+    referencePill: [
+        { selector: ":self", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".title", position: "after" },
+    ],
+    titlePillStyle: { top: "0px" },
+    referencePillStyle: { left: "20px", top: "0px" },
+    referenceScope: ".bib",
+};
+
+const JAMA_NETWORK: SiteAdapter = {
+    id: "jama-network",
+    hostnames: ["jamanetwork.com"],
+    referencePill: [
+        { selector: ".reference-content", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".meta-article-title", position: "append" },
+    ],
+    referenceScope: ".references",
+    titlePillStyle: { top: "0px" },
+    referencePillStyle: { left: "40px" },
+};
+
+const CAMBRIDGE_ORG: SiteAdapter = {
+    id: "cambridge.org",
+    hostnames: ["cambridge.org"],
+    referencePill: [
+        { selector: ".circle-list__item__grouped", position: "append" },
+    ],
+    titlePill: [
+        { selector: "#maincontent hgroup", position: "append" },
+    ],
+    referenceScope: "#references-list",
+    titlePillStyle: { top: "-5px" },
+};
+
 
 export const SITE_ADAPTERS: SiteAdapter[] = [
     SCIENCE_ORG,
@@ -159,7 +200,10 @@ export const SITE_ADAPTERS: SiteAdapter[] = [
     ACADEMIC_OUP_COM,
     JMIR_PUBLICATIONS,
     PEERJ,
-    SPRINGER
+    SPRINGER,
+    TECHSCIENCE,
+    JAMA_NETWORK,
+    CAMBRIDGE_ORG
 ];
 
 function normaliseHost(hostname: string): string {

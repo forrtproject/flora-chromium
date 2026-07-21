@@ -438,6 +438,12 @@ export function extractDOIsFromText(text: string): DoiString[] {
 // Plural-only — singular `citation`/`reference` is Wiley's article-body class.
 const REFERENCE_SECTION_RE = /(?:^|[-_\s])(?:cites|citations|bibliograph(?:y|ies)|references|reflist|ref-list|works-cited|footnotes|cited-by)(?:$|[-_\s])/i;
 
+// Heading text for publishers (e.g. techscience.com) that mark up the
+// reference list with no distinguishing class or id at all — just a plain
+// <h2>References</h2> followed by ordinary <p>/<div> siblings in the same
+// parent as the article's other sections.
+const REFERENCE_HEADING_RE = /^(?:\d+\.?\s*)?(?:references|bibliography|works\s+cited|literature\s+cited)\s*:?$/i;
+
 function isReferenceContainer(el: Element): boolean {
   const cls = typeof el.className === "string" ? el.className : "";
   if (cls && REFERENCE_SECTION_RE.test(cls)) return true;
@@ -565,6 +571,39 @@ function findLargestSiblingGroup(container: Element, tag: string): HTMLElement[]
 }
 
 /**
+ * Last-resort entry discovery for a page with no class/id-based reference
+ * container at all: find a heading whose text reads "References" (or
+ * "Bibliography" / "Works Cited"), then collect its following siblings up to
+ * the next heading as the entries. Only used when findReferenceContainers
+ * comes back empty, so sites that already match via class/id are unaffected.
+ */
+function findHeadingReferenceSiblings(doc: Document): HTMLElement[] {
+  const headings = doc.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6");
+  for (const heading of headings) {
+    const text = (heading.textContent ?? "").trim();
+    if (!REFERENCE_HEADING_RE.test(text)) continue;
+
+    // `nextElementSibling` only ever yields Elements, so no instanceof guard
+    // is needed (and one would be realm-unsafe: an element from a document
+    // built via a separately-constructed JSDOM/iframe fails `instanceof
+    // HTMLElement` against the calling realm's own constructor).
+    const siblings: HTMLElement[] = [];
+    for (
+      let node = heading.nextElementSibling as HTMLElement | null;
+      node;
+      node = node.nextElementSibling as HTMLElement | null
+    ) {
+      if (/^H[1-6]$/.test(node.tagName)) break;
+      if ((node.textContent ?? "").trim().length > 0) {
+        siblings.push(node);
+      }
+    }
+    if (siblings.length >= 2) return siblings;
+  }
+  return [];
+}
+
+/**
  * Split the page's reference/bibliography section(s) into individual reference
  * entries, each kept linked to its DOM element and to any DOI it already
  * contains. Callers can render against `element` directly — no re-scanning or
@@ -617,6 +656,10 @@ export function findReferenceEntries(doc: Document): ReferenceEntry[] {
         elements.push(child);
       }
     }
+  }
+
+  if (elements.length === 0) {
+    elements.push(...findHeadingReferenceSiblings(doc));
   }
 
   const hostDoi = extractPrimaryDOI(doc);

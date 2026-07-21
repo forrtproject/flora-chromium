@@ -757,6 +757,34 @@ describe("findReferenceEntries", () => {
       "10.1176/found.four",
     ]);
   });
+
+  it("falls back to a \"References\" heading's siblings when no class/id marks the section (techscience.com)", () => {
+    // techscience.com has no class or id anywhere that matches
+    // REFERENCE_SECTION_RE — the whole article (intro, methods, results,
+    // references) lives under one generic wrapper, and the reference
+    // paragraphs (<p class="bib">) are ordinary siblings of the intro/methods
+    // <p> tags in that same wrapper. findReferenceContainers finds nothing,
+    // so entries must come from the "References" heading's sibling run.
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <div class="article-body">
+          <p class="h1">1&nbsp;&nbsp;Introduction</p>
+          <p class="indent">Some intro text, long enough to not look like a stray heading.</p>
+          <p class="noindent1">Conflicts of Interest: none.</p>
+          <h2 class="h1" id="sref">References</h2>
+          <p class="bib" id="ref-1">1. Smith J. Title one. Journal. 2020.</p>
+          <p class="bib" id="ref-2">2. Jones K. Title two. Journal. 2021.</p>
+          <p class="bib" id="ref-3">3. Lee A. Title three. Journal. 2022.</p>
+        </div>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    expect(findReferenceContainers(doc)).toHaveLength(0);
+    const entries = findReferenceEntries(doc);
+    expect(entries).toHaveLength(3);
+    for (const entry of entries) {
+      expect(entry.element.className).toBe("bib");
+    }
+  });
 });
 
 describe("extractDoiOccurrences — FLoRA's own injected UI", () => {
