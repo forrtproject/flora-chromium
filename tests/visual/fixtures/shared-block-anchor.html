@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Shared block anchor — several DOIs in one container</title>
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+      color: #1a1a1a;
+      background: #ffffff;
+      font-size: 15px;
+      line-height: 1.6;
+      padding: 32px 48px;
+    }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    h2 { font-size: 17px; margin: 28px 0 12px; color: #333; }
+    p.lede { color: #555; margin: 0 0 8px; max-width: 820px; }
+    ol.references { max-width: 820px; padding-left: 22px; }
+    ol.references li { margin-bottom: 18px; }
+    .doi { color: #555; }
+    .note { color: #777; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Comparative note on two prior findings</h1>
+  <p class="lede">
+    Fixture for issue #105: several matched DOIs share a single block anchor, so
+    each must carry its own badge rather than the container carrying one.
+  </p>
+
+  <h2 id="references-heading">References</h2>
+  <ol class="references" aria-labelledby="references-heading">
+    <li>
+      Author, A., &amp; Author, B. (2015). A highly replicated finding in cognition.
+      <em>Journal of Mock Studies</em>, 12(3), 200–219.
+      <span class="doi">10.5555/flora.repl.0001</span>.
+      Reanalysed by Author, C. (2016). A computationally reproduced analysis.
+      <em>Journal of Mock Studies</em>, 13(1), 44–60.
+      <span class="doi">10.5555/flora.repro.0002</span>.
+      <div class="note">Two cited papers, one reference entry.</div>
+    </li>
+    <li>
+      Author, G. (2019). An ordinary paper with no replication record.
+      <em>Journal of Mock Studies</em>, 16(1), 5–21.
+      <span class="doi">10.5555/flora.none.0005</span>.
+      <div class="note">Single DOI — unchanged single-badge behaviour.</div>
+    </li>
+  </ol>
+
+  <h2>Discussion</h2>
+  <p>
+    Both <span class="doi">10.5555/flora.repl.0001</span> and
+    <span class="doi">10.5555/flora.repro.0002</span> are discussed together in
+    this paragraph, which is also a single block anchor.
+  </p>
+</body>
+</html>

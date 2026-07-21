@@ -86,6 +86,7 @@ const FIXTURES: Fixture[] = [
   { name: "rtl-article", urlPath: "rtl-article.html" },
   { name: "editor-textarea", urlPath: "editor-textarea.html" },
   { name: "long-article-sticky", urlPath: "long-article-sticky.html" },
+  { name: "shared-block-anchor", urlPath: "shared-block-anchor.html" },
   // Reused unit-test fixtures (served from tests/fixtures).
   { name: "article-with-dois", urlPath: "article-with-dois.html" },
   { name: "doi-in-href", urlPath: "doi-in-href.html" },

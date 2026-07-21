@@ -38,15 +38,10 @@ import {isDomainBlocked} from "@shared/domains";
 import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
 import {createIndicatorPill, updateIndicatorPillBadges, INDICATOR_PILL_CLASS} from "@shared/indicator-pill";
 import {applyPillStyle, applyPlacement, currentSiteAdapter} from "@shared/site-adapters";
-import {isExternalMutation} from "@shared/flora-ui";
+
 import {fetchOpenAccess} from "@shared/openaccess";
 import {resolveReferenceDois, renderResolvedReferences, type ResolvedReference} from "./references";
-
-// PubPeer commenter IDs whose comments are hidden in the embedded iframe.
-// Add any bot/org account ID here to suppress its annotations from the panel.
-const HIDDEN_PUBPEER_COMMENTER_IDS = new Set([
-    "FORRT",
-]);
+import {startDomListener} from "./dom-listener";
 
 const pageState = new Map<DoiString, LookupState>();
 let redacts: RetractionResponse[] = [];
@@ -110,7 +105,64 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     }
 });
 
-async function pageRenderChangeHandler(): Promise<void> {
+async function primaryDoiFastPath(): Promise<void> {
+    const primary = extractPrimaryDOI(document);
+    if (!primary) return;
+
+    debugLog("General: primary DOI fast path —", primary);
+    processedDois.add(primary);
+    doiContext.set(primary, "article");
+    pageState.set(primary, {status: "loading"});
+
+    const rollback = (): void => {
+        processedDois.delete(primary);
+        pageState.delete(primary);
+        doiContext.delete(primary);
+    };
+
+    beginWorkIndicator();
+    try {
+        const request: LookupRequest = {type: "FLORA_LOOKUP", dois: [primary]};
+        const response = await safeSendMessage<LookupResponse>(request);
+        if (!response) {
+            // Extension context invalidated (reload/update) — stale script.
+            rollback();
+            return;
+        }
+        if (response.errors[primary]) {
+            pageState.set(primary, {status: "error", message: response.errors[primary]});
+        } else if (response.results[primary]) {
+            pageState.set(primary, {
+                status: "matched",
+                result: response.results[primary],
+                source: "extracted"
+            });
+        } else {
+            pageState.set(primary, {status: "no-match"});
+        }
+        pageStateVersion++;
+
+        placeTitleIndicatorPill();
+        updateIndicatorPillBadges(document, pageState, redacts);
+    } catch {
+        rollback();
+    } finally {
+        endWorkIndicator();
+    }
+}
+
+function whenIdle(fn: () => void, timeout = 1000): void {
+    const ric = (window as unknown as {
+        requestIdleCallback?: (cb: () => void, opts?: {timeout: number}) => number;
+    }).requestIdleCallback;
+    if (typeof ric === "function") {
+        ric(fn, {timeout});
+    } else {
+        setTimeout(fn, 0);
+    }
+}
+
+async function scanWholePage(): Promise<void> {
     // Detect full URL change (SPA navigation) — clear state
     const currentUrl = location.href;
     if (currentUrl !== lastUrl) {
@@ -662,87 +714,12 @@ async function fetchSheetDois(): Promise<void> {
     }
 
     // Always run — re-evaluates modal state even if the CSV fetch failed.
-    pageRenderChangeHandler();
+    scanWholePage();
 }
 
-function startDomListener(callback: () => void) {
-    let debounceTimer: number;
-    const observer = new MutationObserver((mutations) => {
-        // Do no work while this tab is in the background.
-        if (document.hidden) return;
-        const hasExternalChange = mutations.some(isExternalMutation);
-        if (hasExternalChange) {
-            clearTimeout(debounceTimer);
-            debounceTimer = window.setTimeout(callback, 300);
-        }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    // Re-scan when the tab becomes active again — mutations that happened while
-    // it was hidden were ignored above.
-    document.addEventListener("visibilitychange", () => {
-        if (!document.hidden) callback();
-    });
-}
 
-// Gate: skip iframes and blocked domains
 (async () => {
-    if (window !== window.top) {
-        if (location.hostname === "pubpeer.com" || location.hostname.endsWith(".pubpeer.com")) {
-            const style = document.createElement("style");
-            style.textContent = "body.top-navigation{overflow:hidden!important;} nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.sticky.affix, div.sticky.affix-top, div.extension-installer.container, div.footer.fixed, div.page-component-up, a.forum-item-title { display: none !important; } div.vertical-timeline-block {margin:0 15px 0px 10px;} div.selected div {background-color: transparent!important;} div.wrapper {width: 500px!important;} ul.nav.nav-tabs>li>a{color:#fff!important;} ul.nav.nav-tabs>li:nth-child(2).active>a{color:#853953!important;} ul.nav.nav-tabs>li:nth-child(1).active>a{color:#853953!important;} .ibox-title div, .ibox-title strong, .ibox-title span, .ibox-title em, .ibox-content a{color:#853953!important;}  .all-user-footer div:nth-child(1){visibility:hidden;} .el-button{background-color:#853953!important; border-color:#853953!important;} .ibox-bordered:before{background-color:#853953!important;} .btn-link.manual-file-chooser-text{color:#853953!important;}  .el-button.el-button--text{background:transparent!important;border-color:transparent!important;color:#853953!important;}}";
-            (document.head ?? document.documentElement).appendChild(style);
-            window.parent.postMessage({type: "FLORA_PUBPEER_CSS_READY"}, "*");
-
-            const stripCommentAccepted = (root: Node = document.body): void => {
-                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-                const nodes: Text[] = [];
-                while (walker.nextNode()) nodes.push(walker.currentNode as Text);
-                for (const node of nodes) {
-                    if (/comment accepted /i.test(node.nodeValue ?? "")) {
-                        node.nodeValue = (node.nodeValue ?? "").replace(/comment accepted /gi, "");
-                    }
-                }
-            };
-
-            const hideTaggedComments = (root: Node = document.body): void => {
-                const el = root instanceof Element ? root : root.parentElement;
-                if (!el) return;
-                for (const strong of el.querySelectorAll<HTMLElement>("strong.inner-id[id]")) {
-                    if (!HIDDEN_PUBPEER_COMMENTER_IDS.has(strong.id)) continue;
-                    // .vertical-timeline-content is the full comment block (header + body + footer).
-                    const commentBlock = strong.closest(".vertical-timeline-content");
-                    if (commentBlock) (commentBlock as HTMLElement).style.display = "none";
-                }
-            };
-
-            const observer = new MutationObserver((mutations) => {
-                for (const m of mutations) {
-                    for (const n of m.addedNodes) {
-                        stripCommentAccepted(n);
-                        hideTaggedComments(n);
-                    }
-                }
-            });
-            const startStripping = (): void => {
-                stripCommentAccepted();
-                hideTaggedComments();
-                observer.observe(document.body, {childList: true, subtree: true});
-            };
-            if (document.readyState === "loading") {
-                document.addEventListener("DOMContentLoaded", startStripping);
-            } else {
-                startStripping();
-            }
-
-            const sendHeight = (): void => {
-                const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-                window.parent.postMessage({type: "FLORA_PUBPEER_HEIGHT", height: h}, "*");
-            };
-            window.addEventListener("load", sendHeight);
-            new ResizeObserver(sendHeight).observe(document.documentElement);
-        }
-        return;
-    }
+    if (window !== window.top) return;
 
     if (await isDomainBlocked(location.hostname)) {
         debugLog("Domain is blocked:", location.hostname);
@@ -775,13 +752,16 @@ function startDomListener(callback: () => void) {
                 }
             }, 1500);
         } else {
-            // Initial run — static pages may never trigger the MutationObserver.
-            void pageRenderChangeHandler();
+            // Start the article's own lookup off URL/meta/JSON-LD, then let the
+            // full scan wait for idle rather than competing with page render.
+            void primaryDoiFastPath();
+            // Static pages may never trigger the MutationObserver.
+            whenIdle(() => void scanWholePage());
             // Defer the observer until full load so load-time mutations don't spam it.
             if (document.readyState === "complete") {
-                startDomListener(pageRenderChangeHandler);
+                startDomListener({scanWholePage, getLastUrl: () => lastUrl});
             } else {
-                window.addEventListener("load", () => startDomListener(pageRenderChangeHandler), { once: true });
+                window.addEventListener("load", () => startDomListener({scanWholePage, getLastUrl: () => lastUrl}), { once: true });
             }
         }
     };

@@ -8,6 +8,8 @@ import {
   findReferenceContainers,
   findReferenceEntries,
   extractDoiOccurrences,
+  extractPrimaryDOI,
+  containsDoiCandidate,
 } from "../../src/shared/doi-extractor";
 
 function loadFixture(name: string): Document {
@@ -829,5 +831,58 @@ describe("extractDoiOccurrences — FLoRA's own injected UI", () => {
     const dois = extractDoiOccurrences(doc).map((o) => o.doi);
     expect(dois).toContain("10.3333/genuine");
     expect(dois).not.toContain("10.2222/injected");
+  });
+});
+
+describe("extractPrimaryDOI", () => {
+  it("reads the DOI from citation meta tags", () => {
+    const doc = new JSDOM(`<!DOCTYPE html>
+      <html><head><meta name="citation_doi" content="10.1038/nature12373"></head>
+      <body></body></html>`).window.document;
+    expect(extractPrimaryDOI(doc)).toBe("10.1038/nature12373");
+  });
+
+  it("reads the DOI from JSON-LD", () => {
+    const doc = new JSDOM(`<!DOCTYPE html>
+      <html><head><script type="application/ld+json">
+        {"@type":"ScholarlyArticle","doi":"10.1371/journal.pone.0012345"}
+      </script></head><body></body></html>`).window.document;
+    expect(extractPrimaryDOI(doc)).toBe("10.1371/journal.pone.0012345");
+  });
+
+  it("ignores DOIs that only appear in body text or reference links", () => {
+    const doc = new JSDOM(`<!DOCTYPE html>
+      <html><head></head><body>
+        <p>See also 10.5555/cited.in.prose</p>
+        <a href="https://doi.org/10.5555/cited.in.link">Reference</a>
+      </body></html>`).window.document;
+    expect(extractPrimaryDOI(doc)).toBeNull();
+  });
+});
+
+describe("containsDoiCandidate", () => {
+  function el(html: string): Element {
+    const doc = new JSDOM(`<!DOCTYPE html><html><body>${html}</body></html>`).window.document;
+    return doc.body.firstElementChild!;
+  }
+
+  it("is false for markup with no DOI-like content", () => {
+    expect(containsDoiCandidate(el(`<div><p>Accept cookies?</p><button>OK</button></div>`))).toBe(false);
+  });
+
+  it("is true when a DOI appears in text", () => {
+    expect(containsDoiCandidate(el(`<div><p>doi:10.1038/nature12373</p></div>`))).toBe(true);
+  });
+
+  it("is true when a DOI only appears in an href", () => {
+    expect(containsDoiCandidate(el(`<div><a href="https://doi.org/10.1038/nature12373">Full text</a></div>`))).toBe(true);
+  });
+
+  it("is true for the anchor itself carrying the DOI href", () => {
+    expect(containsDoiCandidate(el(`<a href="https://doi.org/10.1038/nature12373">Full text</a>`))).toBe(true);
+  });
+
+  it("is false for a bare year or version number that is not a DOI prefix", () => {
+    expect(containsDoiCandidate(el(`<div><span>Published 2019, v10.2 of the toolkit</span></div>`))).toBe(false);
   });
 });

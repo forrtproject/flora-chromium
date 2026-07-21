@@ -199,6 +199,62 @@ describe("injector", () => {
       expect(badges).toHaveLength(1);
     });
 
+    it("badges every matched DOI sharing one block container", () => {
+      document.body.innerHTML = `
+        <li>
+          Smith, A. (2019). First cited paper. 10.1038/nature12373 —
+          Jones, B. (2021). Second cited paper. 10.1371/journal.pone.0012345
+        </li>
+      `;
+
+      const state = new Map<DoiString, LookupState>();
+      state.set(doi("10.1038/nature12373"), {
+        status: "matched",
+        result: MOCK_RESULT,
+        source: "extracted",
+      });
+      state.set(doi("10.1371/journal.pone.0012345"), {
+        status: "matched",
+        result: MOCK_RESULT,
+        source: "extracted",
+      });
+
+      renderInlineBadges(state);
+
+      const badged = [...document.querySelectorAll(".flora-inline-badge")].map((b) =>
+        b.getAttribute("data-flora-doi")
+      );
+      expect(badged).toHaveLength(2);
+      expect(new Set(badged)).toEqual(
+        new Set(["10.1038/nature12373", "10.1371/journal.pone.0012345"])
+      );
+    });
+
+    it("does not duplicate per-DOI badges in a shared container on re-run", () => {
+      document.body.innerHTML = `
+        <li>
+          Smith, A. (2019). 10.1038/nature12373 — Jones, B. (2021). 10.1371/journal.pone.0012345
+        </li>
+      `;
+
+      const state = new Map<DoiString, LookupState>();
+      state.set(doi("10.1038/nature12373"), {
+        status: "matched",
+        result: MOCK_RESULT,
+        source: "extracted",
+      });
+      state.set(doi("10.1371/journal.pone.0012345"), {
+        status: "matched",
+        result: MOCK_RESULT,
+        source: "extracted",
+      });
+
+      renderInlineBadges(state);
+      renderInlineBadges(state);
+
+      expect(document.querySelectorAll(".flora-inline-badge")).toHaveLength(2);
+    });
+
     it("skips links without DOIs", () => {
       document.body.innerHTML = `
         <a href="https://example.com/page">Regular link</a>
