@@ -713,41 +713,49 @@ describe("findReferenceEntries", () => {
     // separate <p class="citation-links-compatibility"> buttons (Google
     // Scholar / Google Preview / WorldCat) that also share a parent — a
     // *smaller* p-sibling group. The old first-match-wins cascade picked that
-    // 3-element p-group over the real 2-entry (or larger) div-group, because
-    // it checked <p> before <div> and stopped at the first group of size >= 2.
+    // 3-element p-group over the real (larger) div-group, because it checked
+    // <p> before <div> and stopped at the first group of size >= 2. Needs
+    // more than 3 real entries here so the div-group's size genuinely beats
+    // the stray p-group's, matching what happens on the real page (55 vs 3).
+    const refItem = (n: number, doi: string, links = "") => `
+          <div class="js-splitview-ref-item">
+            <div class="ref-content">
+              <div class="mixed-citation citation">
+                Author ${n}. Title ${n}. Journal. 202${n}.
+                ${links}
+                <div class="crossref-doi"><a href="http://dx.doi.org/${doi}">Crossref</a></div>
+              </div>
+            </div>
+          </div>`;
     const html = `<!DOCTYPE html>
       <html><body>
         <div class="ref-list js-splitview-ref-list">
-          <div class="js-splitview-ref-item">
-            <div class="ref-content">
-              <div class="mixed-citation citation">
-                Smith J. Title one. Journal. 2020.
-                <div class="citation-links">
+          ${refItem(
+            1,
+            "10.1176/found.one",
+            `<div class="citation-links">
                   <p class="citation-links-compatibility"><a href="https://scholar.google.com/x">Google Scholar</a></p>
                   <p class="citation-links-compatibility"><a href="https://books.google.com/x">Google Preview</a></p>
                   <p class="citation-links-compatibility"><a href="https://worldcat.org/x">WorldCat</a></p>
-                </div>
-                <div class="crossref-doi"><a href="http://dx.doi.org/10.1176/found.one">Crossref</a></div>
-              </div>
-            </div>
-          </div>
-          <div class="js-splitview-ref-item">
-            <div class="ref-content">
-              <div class="mixed-citation citation">
-                Jones K. Title two. Journal. 2021.
-                <div class="crossref-doi"><a href="http://dx.doi.org/10.1176/found.two">Crossref</a></div>
-              </div>
-            </div>
-          </div>
+                </div>`
+          )}
+          ${refItem(2, "10.1176/found.two")}
+          ${refItem(3, "10.1176/found.three")}
+          ${refItem(4, "10.1176/found.four")}
         </div>
       </body></html>`;
     const doc = new JSDOM(html).window.document;
     const entries = findReferenceEntries(doc);
-    expect(entries).toHaveLength(2);
-    expect(entries[0].element.className).toBe("js-splitview-ref-item");
-    expect(entries[1].element.className).toBe("js-splitview-ref-item");
-    expect(entries[0].doi).toBe("10.1176/found.one");
-    expect(entries[1].doi).toBe("10.1176/found.two");
+    expect(entries).toHaveLength(4);
+    for (const entry of entries) {
+      expect(entry.element.className).toBe("js-splitview-ref-item");
+    }
+    expect(entries.map((e) => e.doi)).toEqual([
+      "10.1176/found.one",
+      "10.1176/found.two",
+      "10.1176/found.three",
+      "10.1176/found.four",
+    ]);
   });
 });
 

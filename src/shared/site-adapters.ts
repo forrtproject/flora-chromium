@@ -111,13 +111,28 @@ const ACADEMIC_OUP_COM: SiteAdapter = {
     titlePillStyle: { top: "0px" },
 };
 
+const JMIR_PUBLICATIONS: SiteAdapter = {
+    id: "jmir-publications",
+    hostnames: ["mental.jmir.org"],
+    referencePill: [
+        { selector: ":self", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".info__hidden-title", position: "before" },
+    ],
+    referenceScope: ".footnotes",
+    titlePillStyle: { top: "0px" },
+    referencePillStyle: { top: "-5px" },
+};
+
 
 
 export const SITE_ADAPTERS: SiteAdapter[] = [
     SCIENCE_ORG,
     SAGEPUB,
     FRONTIERS,
-    ACADEMIC_OUP_COM
+    ACADEMIC_OUP_COM,
+    JMIR_PUBLICATIONS
 ];
 
 function normaliseHost(hostname: string): string {
