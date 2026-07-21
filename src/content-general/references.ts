@@ -24,6 +24,7 @@ import {
     applyPillStyle,
     applyPlacement,
     currentSiteAdapter,
+    expandReferencesSection,
     isInReferenceScope,
     type SiteAdapter,
 } from "@shared/site-adapters";
@@ -142,9 +143,12 @@ export interface ResolvedReference {
  * calls (e.g. from the mutation observer) skip entries already handled.
  */
 export async function resolveReferenceDois(): Promise<ResolvedReference[]> {
+    const adapter = currentSiteAdapter();
+    // Reveal a collapsed reference accordion (Wiley) before scanning, so
+    // pills don't render into a section the reader never opens.
+    expandReferencesSection(adapter);
     const entries = findReferenceEntries(document);
     const {showDoiPillsOnAllReferences} = await getSettings();
-    const adapter = currentSiteAdapter();
 
     const pending: PendingEntry[] = [];
     for (const entry of entries) {

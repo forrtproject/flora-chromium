@@ -33,12 +33,18 @@
 //   slot. `top` is the vertical nudge: the default suits body text and usually
 //   needs lowering inside a large h1. Anything you do not name keeps its
 //   default. Values may end in "!important" for publishers with aggressive CSS.
+// - autoExpandReferences: selector for a collapsed accordion/tab control that
+//   gates the reference list (Wiley renders it in the DOM already but hidden
+//   behind `aria-expanded="false"` until clicked). Clicked once per pass, and
+//   skipped once `aria-expanded="true"` — real users' click handler is what
+//   flips the site's own CSS/ARIA state, so we trigger it rather than guess
+//   which attributes to flip ourselves.
 //
 // Verify selectors against a live page and note the DOM path you checked in a
 // comment on the block.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import {debugLog} from "@shared/debug";
+import { debugLog } from "@shared/debug";
 
 export type PlacementPosition = "append" | "prepend" | "before" | "after";
 
@@ -58,16 +64,19 @@ export interface SiteAdapter {
     referenceScope?: string;
     referencePillStyle?: PillStyle;
     titlePillStyle?: PillStyle;
+    /** Selector for a collapsed reference-list accordion/tab control to click
+     *  once before scanning. See "Adding a site" note above. */
+    autoExpandReferences?: string;
 }
 
 const SCIENCE_ORG: SiteAdapter = {
     id: "science.org",
     hostnames: ["science.org"],
     referencePill: [
-        {selector: ".citation", position: "append"},
+        { selector: ".citation", position: "append" },
     ],
     titlePill: [
-        {selector: "h1[property='name']", position: "append"},
+        { selector: "h1[property='name']", position: "append" },
     ],
     referenceScope: "#bibliography",
 };
@@ -76,18 +85,148 @@ const SAGEPUB: SiteAdapter = {
     id: "sagepub",
     hostnames: ["sagepub.com"],
     referencePill: [
-        {selector: ".citation", position: "append"},
+        { selector: ".citation", position: "append" },
     ],
     titlePill: [
-        {selector: "h1[property='name']", position: "after"},
+        { selector: "h1[property='name']", position: "after" },
     ],
     referenceScope: "#bibliography",
-    titlePillStyle: {top: "-10px"},          
+    titlePillStyle: { top: "-10px" },
 };
+
+const FRONTIERS: SiteAdapter = {
+    id: "frontiers",
+    hostnames: ["frontiersin.org"],
+    referencePill: [
+        { selector: ".References__content", position: "append" },
+    ],
+    titlePill: [
+        { selector: ".ArticleDetailsV4__main__title", position: "after" },
+    ],
+    referenceScope: ".References",
+    titlePillStyle: { top: "-15px" },
+};
+
+const ACADEMIC_OUP_COM: SiteAdapter = {
+    id: "academic.oup.com",
+    hostnames: ["academic.oup.com"],
+    referencePill: [
+        { selector: ".mixed-citation", position: "append" },
+    ],
+    titlePill: [
+        { selector: ".title-wrap", position: "after" },
+    ],
+    referenceScope: ".ref-list",
+    titlePillStyle: { top: "0px" },
+};
+
+const JMIR_PUBLICATIONS: SiteAdapter = {
+    id: "jmir-publications",
+    hostnames: ["mental.jmir.org"],
+    referencePill: [
+        { selector: ":self", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".info__hidden-title", position: "before" },
+    ],
+    referenceScope: ".footnotes",
+    titlePillStyle: { top: "0px" },
+    referencePillStyle: { top: "-5px" },
+};
+
+const PEERJ: SiteAdapter = {
+    id: "peerj",
+    hostnames: ["peerj.com"],
+    referencePill: [
+        { selector: ".citation", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".article-title", position: "after" },
+    ],
+    titlePillStyle: { top: "0px" },
+    referenceScope: ".ref-list-container",
+};
+
+const SPRINGER: SiteAdapter = {
+    id: "springer",
+    hostnames: ["link.springer.com"],
+    referencePill: [
+        { selector: ".c-article-references__text", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".c-article-title", position: "after" },
+    ],
+    referenceScope: ".c-article-references",
+    referencePillStyle: { top: "0px" },
+};
+
+const TECHSCIENCE: SiteAdapter = {
+    id: "techscience",
+    hostnames: ["techscience.com"],
+    referencePill: [
+        { selector: ":self", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".title", position: "after" },
+    ],
+    titlePillStyle: { top: "0px" },
+    referencePillStyle: { left: "20px", top: "0px" },
+    referenceScope: ".bib",
+};
+
+const JAMA_NETWORK: SiteAdapter = {
+    id: "jama-network",
+    hostnames: ["jamanetwork.com"],
+    referencePill: [
+        { selector: ".reference-content", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".meta-article-title", position: "append" },
+    ],
+    referenceScope: ".references",
+    titlePillStyle: { top: "0px" },
+    referencePillStyle: { left: "40px" },
+};
+
+const CAMBRIDGE_ORG: SiteAdapter = {
+    id: "cambridge.org",
+    hostnames: ["cambridge.org"],
+    referencePill: [
+        { selector: ".circle-list__item__grouped", position: "append" },
+    ],
+    titlePill: [
+        { selector: "#maincontent hgroup", position: "append" },
+    ],
+    referenceScope: "#references-list",
+    titlePillStyle: { top: "-5px" },
+};
+
+const WILEY_ONLINE_LIBRARY: SiteAdapter = {
+    id: "wiley-online-library",
+    hostnames: ["onlinelibrary.wiley.com"],
+    referencePill: [
+        { selector: ":self", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".citation__title", position: "after" },
+    ],
+    titlePillStyle: { top: "0px" },
+    autoExpandReferences: ".article-section__references .accordion__control",
+};
+
 
 export const SITE_ADAPTERS: SiteAdapter[] = [
     SCIENCE_ORG,
     SAGEPUB,
+    FRONTIERS,
+    ACADEMIC_OUP_COM,
+    JMIR_PUBLICATIONS,
+    PEERJ,
+    SPRINGER,
+    TECHSCIENCE,
+    JAMA_NETWORK,
+    CAMBRIDGE_ORG,
+    WILEY_ONLINE_LIBRARY,
 ];
 
 function normaliseHost(hostname: string): string {
@@ -154,6 +293,14 @@ export function applyPlacement(
 export function isInReferenceScope(entry: Element, adapter: SiteAdapter | null): boolean {
     if (!adapter?.referenceScope) return true;
     return entry.closest(adapter.referenceScope) !== null;
+}
+
+export function expandReferencesSection(adapter: SiteAdapter | null): void {
+    const selector = adapter?.autoExpandReferences;
+    if (!selector) return;
+    const trigger = document.querySelector<HTMLElement>(selector);
+    if (!trigger || trigger.getAttribute("aria-expanded") === "true") return;
+    trigger.click();
 }
 
 function toKebab(prop: string): string {
