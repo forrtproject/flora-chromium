@@ -28,6 +28,7 @@ describe("resolveSiteAdapter", () => {
   it("matches a registered hostname", () => {
     expect(resolveSiteAdapter("science.org")?.id).toBe("science.org");
     expect(resolveSiteAdapter("journals.sagepub.com")?.id).toBe("sagepub");
+    expect(resolveSiteAdapter("nature.com")?.id).toBe("nature-reviews");
   });
 
   it("matches subdomains and ignores www.", () => {
@@ -41,7 +42,7 @@ describe("resolveSiteAdapter", () => {
 
   it("returns null for an unregistered site, so callers go generic", () => {
     expect(resolveSiteAdapter("example.com")).toBeNull();
-    expect(resolveSiteAdapter("nature.com")).toBeNull();
+    expect(resolveSiteAdapter("elifesciences.org")).toBeNull();
   });
 
   it("does not match a hostname that merely ends with a registered one", () => {
