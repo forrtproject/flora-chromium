@@ -705,6 +705,50 @@ describe("findReferenceEntries", () => {
     // entry root — confirm that still holds with outermost selection.
     expect(entries[0].element.querySelector(".References__content")).not.toBeNull();
   });
+
+  it("picks the larger per-reference <div> group over a smaller stray <p> group (Oxford Academic)", () => {
+    // academic.oup.com has no <li> at all: each reference is a
+    // <div class="js-splitview-ref-item"> and all of them share one parent
+    // (a large div-sibling group). But one reference's link row renders three
+    // separate <p class="citation-links-compatibility"> buttons (Google
+    // Scholar / Google Preview / WorldCat) that also share a parent — a
+    // *smaller* p-sibling group. The old first-match-wins cascade picked that
+    // 3-element p-group over the real 2-entry (or larger) div-group, because
+    // it checked <p> before <div> and stopped at the first group of size >= 2.
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <div class="ref-list js-splitview-ref-list">
+          <div class="js-splitview-ref-item">
+            <div class="ref-content">
+              <div class="mixed-citation citation">
+                Smith J. Title one. Journal. 2020.
+                <div class="citation-links">
+                  <p class="citation-links-compatibility"><a href="https://scholar.google.com/x">Google Scholar</a></p>
+                  <p class="citation-links-compatibility"><a href="https://books.google.com/x">Google Preview</a></p>
+                  <p class="citation-links-compatibility"><a href="https://worldcat.org/x">WorldCat</a></p>
+                </div>
+                <div class="crossref-doi"><a href="http://dx.doi.org/10.1176/found.one">Crossref</a></div>
+              </div>
+            </div>
+          </div>
+          <div class="js-splitview-ref-item">
+            <div class="ref-content">
+              <div class="mixed-citation citation">
+                Jones K. Title two. Journal. 2021.
+                <div class="crossref-doi"><a href="http://dx.doi.org/10.1176/found.two">Crossref</a></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const entries = findReferenceEntries(doc);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].element.className).toBe("js-splitview-ref-item");
+    expect(entries[1].element.className).toBe("js-splitview-ref-item");
+    expect(entries[0].doi).toBe("10.1176/found.one");
+    expect(entries[1].doi).toBe("10.1176/found.two");
+  });
 });
 
 describe("extractDoiOccurrences — FLoRA's own injected UI", () => {

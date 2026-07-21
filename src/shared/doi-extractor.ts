@@ -588,20 +588,17 @@ export function findReferenceEntries(doc: Document): ReferenceEntry[] {
     const lis = allLis.filter(
       (li) => !allLis.some((other) => other !== li && other.contains(li))
     );
-    if (lis.length >= 2) {
-      elements.push(...lis);
-      continue;
-    }
-
     const pGroup = findLargestSiblingGroup(container, "p");
-    if (pGroup.length >= 2) {
-      elements.push(...pGroup);
-      continue;
-    }
-
     const divGroup = findLargestSiblingGroup(container, "div");
-    if (divGroup.length >= 2) {
-      elements.push(...divGroup);
+
+    // Pick whichever candidate spans the most siblings, not just the first
+    // one past the size-2 threshold. Oxford Academic's per-reference <div>
+    // group (dozens of entries) otherwise loses to a single reference's own
+    // 2-3 <p> link buttons ("Google Scholar" / "Google Preview" / "WorldCat"),
+    // which happen to share a parent and reach the old threshold first.
+    const best = [lis, pGroup, divGroup].reduce((a, b) => (b.length > a.length ? b : a));
+    if (best.length >= 2) {
+      elements.push(...best);
       continue;
     }
 

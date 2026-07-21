@@ -98,12 +98,26 @@ const FRONTIERS: SiteAdapter = {
     titlePillStyle: { top: "-15px" },
 };
 
+const ACADEMIC_OUP_COM: SiteAdapter = {
+    id: "academic.oup.com",
+    hostnames: ["academic.oup.com"],
+    referencePill: [
+        { selector: ".mixed-citation", position: "append" },
+    ],
+    titlePill: [
+        { selector: ".title-wrap", position: "after" },
+    ],
+    referenceScope: ".ref-list",
+    titlePillStyle: { top: "0px" },
+};
+
 
 
 export const SITE_ADAPTERS: SiteAdapter[] = [
     SCIENCE_ORG,
     SAGEPUB,
-    FRONTIERS
+    FRONTIERS,
+    ACADEMIC_OUP_COM
 ];
 
 function normaliseHost(hostname: string): string {
