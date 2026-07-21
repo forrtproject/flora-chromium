@@ -125,7 +125,6 @@ async function primaryDoiFastPath(): Promise<void> {
         const request: LookupRequest = {type: "FLORA_LOOKUP", dois: [primary]};
         const response = await safeSendMessage<LookupResponse>(request);
         if (!response) {
-            // Extension context invalidated (reload/update) — stale script.
             rollback();
             return;
         }
@@ -755,7 +754,6 @@ async function fetchSheetDois(): Promise<void> {
             // Start the article's own lookup off URL/meta/JSON-LD, then let the
             // full scan wait for idle rather than competing with page render.
             void primaryDoiFastPath();
-            // Static pages may never trigger the MutationObserver.
             whenIdle(() => void scanWholePage());
             // Defer the observer until full load so load-time mutations don't spam it.
             if (document.readyState === "complete") {

@@ -377,8 +377,6 @@ export function renderInlineBadges(
 
         const badgeHost = document.createElement("span");
         badgeHost.className = BADGE_CLASS;
-        // Keyed on the occurrence DOI (the pageState key), not the result's
-        // echoed DOI, so anchorAlreadyBadged matches what it is asked about.
         badgeHost.setAttribute("data-flora-doi", occ.doi);
         const shadow = badgeHost.attachShadow({mode: "open"});
 
@@ -912,6 +910,34 @@ function setupTabPositioning(tab: HTMLElement): void {
   window.addEventListener("resize", reposition, { passive: true });
 }
 
+/** Stable string describing everything the side panel renders. */
+function panelSignature(
+  primary: PubPeerFeedback | null,
+  references: { doi: DoiString; title: string }[],
+  articleDois: DoiString[],
+  pageState: Map<DoiString, LookupState>,
+  refFeedbackByDoi: Map<DoiString, PubPeerFeedback>,
+  retractionByDoi: Map<DoiString, RetractionResponse>
+): string {
+  const statsOf = (doi: DoiString): string => {
+    const s = pageState.get(doi);
+    if (s?.status !== "matched") return s?.status ?? "none";
+    const {n_replications_total, n_reproductions_total, n_originals_total} = s.result.record.stats;
+    return `${n_replications_total}/${n_reproductions_total}/${n_originals_total}`;
+  };
+  const noticeOf = (doi: DoiString): string => retractionByDoi.get(doi)?.kind ?? "";
+
+  const parts = [
+    `primary:${primary ? `${primary.url}#${primary.total_comments}` : "none"}`,
+    `article:${articleDois.map((d) => `${d}=${statsOf(d)}:${noticeOf(d)}`).sort().join(",")}`,
+    `refs:${references
+      .map((r) => `${r.doi}|${r.title}|${statsOf(r.doi)}|${noticeOf(r.doi)}|${refFeedbackByDoi.get(r.doi)?.total_comments ?? 0}`)
+      .sort()
+      .join(",")}`,
+  ];
+  return parts.join(";;");
+}
+
 export function renderSidePanel(
   articleFeedbacks: PubPeerFeedback[],
   references: { doi: DoiString; title: string }[],
@@ -926,8 +952,6 @@ export function renderSidePanel(
   // (e.g. `translateX(0)` → `translateX(0px)`). The marker is set in
   // openPanel/closePanel below so reading it here is always reliable.
   const wasOpen = existingHost?.dataset.floraPanelOpen === "1";
-  cleanupTabPositioning();
-  existingHost?.remove();
 
   const withComments = articleFeedbacks.filter((f) => f.total_comments > 0);
 
@@ -989,8 +1013,21 @@ export function renderSidePanel(
 
   if (primary && !isSafePubPeerUrl(primary.url)) return;
 
+  // Rebuilding recreates the <iframe>, reloading the embedded PubPeer thread.
+  const signature = panelSignature(
+    primary, references, articleDois, pageState, refFeedbackByDoi, retractionByDoi
+  );
+  if (existingHost && existingHost.dataset.floraPanelSig === signature) {
+    debugLog("renderSidePanel: unchanged — kept existing panel");
+    return;
+  }
+
+  cleanupTabPositioning();
+  existingHost?.remove();
+
   const host = document.createElement("div");
   host.id = PUBPEER_PANEL_ID;
+  host.dataset.floraPanelSig = signature;
 
   const hostStyle = document.createElement("style");
   hostStyle.textContent = `

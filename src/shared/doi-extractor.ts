@@ -381,19 +381,12 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
   return occurrences;
 }
 
-// Non-global so it carries no lastIndex state between calls.
 const DOI_PROBE_REGEX = /10\.\d{4,}/;
 
-/**
- * Cheap "could this subtree contain a DOI?" test, used to decide whether a DOM
- * mutation is worth a full-page scan. Over-inclusive on purpose: a false
- * positive costs a scan that would have happened anyway, a false negative
- * silently loses a DOI.
- */
+/** Cheap, over-inclusive test for whether a subtree could contain a DOI. */
 export function containsDoiCandidate(el: Element): boolean {
   const text = el.textContent ?? "";
   if (text.length >= 12 && DOI_PROBE_REGEX.test(text)) return true;
-  // A DOI can hide entirely in an href; every such URL contains "10.".
   if (el.matches?.('a[href*="10."]')) return true;
   return el.querySelector?.('a[href*="10."]') !== null;
 }
