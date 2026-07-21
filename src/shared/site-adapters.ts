@@ -214,6 +214,34 @@ const WILEY_ONLINE_LIBRARY: SiteAdapter = {
     autoExpandReferences: ".article-section__references .accordion__control",
 };
 
+const NATURE_REVIEWS: SiteAdapter = {
+    id: "nature-reviews",
+    hostnames: ["nature.com"],
+    referencePill: [
+        { selector: ".c-article-references__text", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".c-article-title", position: "before" },
+    ],
+    referenceScope: "#Bib1-content",
+    titlePillStyle: { top: "0px" },
+    referencePillStyle: { top: "0px" },
+};
+
+const ANNUAL_REVIEWS: SiteAdapter = {
+    id: "annual-reviews",
+    hostnames: ["annualreviews.org"],
+    referencePill: [
+        { selector: ":self", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".item-meta-data__item-title", position: "append" },
+    ],
+    referenceScope: "#articlereference",
+    titlePillStyle: { top: "0px" },
+    referencePillStyle: { top: "0px" },
+};
+
 
 export const SITE_ADAPTERS: SiteAdapter[] = [
     SCIENCE_ORG,
@@ -227,6 +255,8 @@ export const SITE_ADAPTERS: SiteAdapter[] = [
     JAMA_NETWORK,
     CAMBRIDGE_ORG,
     WILEY_ONLINE_LIBRARY,
+    NATURE_REVIEWS,
+    ANNUAL_REVIEWS,
 ];
 
 function normaliseHost(hostname: string): string {
