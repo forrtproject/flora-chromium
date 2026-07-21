@@ -138,6 +138,19 @@ const PEERJ: SiteAdapter = {
     referenceScope: ".ref-list-container",
 };
 
+const SPRINGER: SiteAdapter = {
+    id: "springer",
+    hostnames: ["link.springer.com"],
+    referencePill: [
+        { selector: ".c-article-references__text", position: "after" },
+    ],
+    titlePill: [
+        { selector: ".c-article-title", position: "after" },
+    ],
+    referenceScope: ".c-article-references",
+    referencePillStyle: { top: "0px" },
+};
+
 
 export const SITE_ADAPTERS: SiteAdapter[] = [
     SCIENCE_ORG,
@@ -145,7 +158,8 @@ export const SITE_ADAPTERS: SiteAdapter[] = [
     FRONTIERS,
     ACADEMIC_OUP_COM,
     JMIR_PUBLICATIONS,
-    PEERJ
+    PEERJ,
+    SPRINGER
 ];
 
 function normaliseHost(hostname: string): string {
