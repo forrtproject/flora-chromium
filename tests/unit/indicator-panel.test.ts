@@ -60,7 +60,7 @@ describe("createIndicatorPanel", () => {
         .querySelector("[data-flora-doi-provenance]")!.textContent;
 
     expect(provenance(false)).toBe("Found on this page");
-    expect(provenance(true)).toBe("Matched by title — not stated on the page");
+    expect(provenance(true)).toBe("Matched by title");
   });
 
   it("keeps the underline as a secondary cue", () => {
@@ -72,15 +72,25 @@ describe("createIndicatorPanel", () => {
       .not.toContain("underline");
   });
 
-  it("lets status text wrap, including on rows swapped in later", () => {
+  it("lets the provenance sentence wrap, including on rows swapped in later", () => {
     // The panel inherits its container's width (Scholar's link column is
     // ~160px). A rule keyed on the panel keeps applying after the OA, PubPeer
     // and badge rows replace themselves when their lookups land.
     document.body.appendChild(createIndicatorPanel({ doi: DOI }));
     const sheet = document.getElementById("flora-indicator-panel-style");
     expect(sheet).not.toBeNull();
-    expect(sheet!.textContent).toContain("[data-flora-panel] [data-flora-row-sub]");
+    expect(sheet!.textContent).toContain("[data-flora-panel] [data-flora-doi-provenance]");
     expect(sheet!.textContent).toContain("white-space:normal !important");
+  });
+
+  it("keeps every row to a single line", () => {
+    // Each Scholar result carries one of these; a row that wraps is scroll the
+    // reader pays for on every result down the page.
+    const panel = createIndicatorPanel({ doi: DOI });
+    for (const attr of ["data-flora-oa-row", "data-flora-pubpeer-row", "data-flora-badge-row"]) {
+      const label = panel.querySelector<HTMLElement>(`[${attr}] [data-flora-row-sub]`)!.parentElement!;
+      expect(label.style.flexDirection).not.toBe("column");
+    }
   });
 
   it("only ever installs one panel stylesheet", () => {
@@ -94,16 +104,62 @@ describe("createIndicatorPanel", () => {
     expect([...panel.querySelectorAll("span")].some((s) => s.textContent === DOI)).toBe(true);
   });
 
+  it("lets the reader pick between free copies, collapsed by default", async () => {
+    const panel = createIndicatorPanel({
+      doi: DOI,
+      oaStatus: Promise.resolve({
+        isOa: true,
+        url: "https://publisher.example/a.pdf",
+        locations: [
+          { url: "https://publisher.example/a.pdf", label: "Publisher", version: "published", isPdf: true },
+          { url: "https://repo.example/a", label: "Repo Uni", version: "accepted", isPdf: false },
+        ],
+      }),
+    });
+    await vi.waitFor(() =>
+      expect(panel.querySelector("[data-flora-oa-choices]")).not.toBeNull()
+    );
+
+    const list = panel.querySelector<HTMLElement>("[data-flora-oa-row] > div:last-child")!;
+    expect(list.style.display).toBe("none");
+    expect(list.querySelectorAll("a")).toHaveLength(2);
+
+    panel.querySelector<HTMLElement>("[data-flora-oa-choices]")!.click();
+    expect(list.style.display).toBe("flex");
+  });
+
+  it("links straight through when there is only one free copy", async () => {
+    const panel = createIndicatorPanel({
+      doi: DOI,
+      oaStatus: Promise.resolve({
+        isOa: true,
+        url: "https://publisher.example/a.pdf",
+        locations: [
+          { url: "https://publisher.example/a.pdf", label: "Publisher", version: null, isPdf: true },
+        ],
+      }),
+    });
+    await vi.waitFor(() =>
+      expect(panel.querySelector<HTMLAnchorElement>("a[data-flora-oa-row]")?.href)
+        .toBe("https://publisher.example/a.pdf")
+    );
+  });
+
   it("picks up replication counts from updateIndicatorPillBadges", () => {
     const panel = createIndicatorPanel({ doi: DOI });
     document.body.appendChild(panel);
+    // Compact rows carry the count beside the heading rather than a sentence.
+    // With nothing found the heading names both things that were looked for.
     expect(panel.querySelector("[data-flora-badge-row]")!.textContent)
-      .toContain("No replication or reproduction data");
+      .toContain("Replication / Reproduction data");
+    expect(panel.querySelector("[data-flora-badge-row] [data-flora-row-sub]")!.textContent)
+      .toBe("None");
 
     updateIndicatorPillBadges(document, matchedState(3), []);
 
-    expect(panel.querySelector("[data-flora-badge-row]")!.textContent)
-      .toContain("3 replications");
+    const badgeRow = panel.querySelector<HTMLElement>("[data-flora-badge-row]")!;
+    expect(badgeRow.textContent).toContain("Replications");
+    expect(badgeRow.querySelector("[data-flora-row-sub]")!.textContent).toBe("3");
   });
 
   it("keeps a retraction when a later pass carries replication data", () => {

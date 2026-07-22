@@ -32,10 +32,37 @@ describe("indicator pill provenance", () => {
     expect(seg.querySelector("svg")).not.toBeNull();
   });
 
+  it("lists every free copy outright in the popover", async () => {
+    // The popover has room the Scholar panel does not, so nothing is folded.
+    const pill = createIndicatorPill({
+      doi: "10.1234/x" as DoiString,
+      oaStatus: Promise.resolve({
+        isOa: true,
+        url: "https://publisher.example/a.pdf",
+        locations: [
+          { url: "https://publisher.example/a.pdf", label: "Publisher", version: "published", isPdf: true },
+          { url: "https://osf.example/a", label: "OSF", version: "submitted", isPdf: false },
+          { url: "https://repo.example/a.pdf", label: "Repo Uni", version: "accepted", isPdf: true },
+        ],
+      }),
+    });
+
+    await vi.waitFor(() =>
+      expect(pill.querySelector("[data-flora-oa-choices]")).not.toBeNull()
+    );
+    const list = pill.querySelector<HTMLElement>("[data-flora-oa-row] > div:last-child")!;
+    expect(list.style.display).toBe("flex");
+    expect([...list.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
+      "https://publisher.example/a.pdf",
+      "https://osf.example/a",
+      "https://repo.example/a.pdf",
+    ]);
+  });
+
   it("spells provenance out in the popover too, not just the compact segment", () => {
     const provenance = (isAugmented: boolean) =>
       build(isAugmented).querySelector("[data-flora-doi-provenance]")!.textContent;
     expect(provenance(false)).toBe("Found on this page");
-    expect(provenance(true)).toBe("Matched by title — not stated on the page");
+    expect(provenance(true)).toBe("Matched by title");
   });
 });
