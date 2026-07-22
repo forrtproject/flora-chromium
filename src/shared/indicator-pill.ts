@@ -11,7 +11,7 @@
 // FLoRA Atlas entry) happens from inside that popover.
 
 import type {DoiString, LookupState, RetractionResponse} from "@shared/types";
-import type {OpenAccessStatus} from "@shared/openaccess";
+import type {OpenAccessLocation, OpenAccessStatus} from "@shared/openaccess";
 import type {PubPeerFeedback} from "@shared/pubpeer-api";
 import {lookupPubPeerForDoi} from "@shared/pubpeer-api";
 import {noticePresentation} from "@shared/doi-retraction";
@@ -83,6 +83,7 @@ interface BadgeSignal {
     accent: string;      // popover row icon/action colour
     rowTitle: string;    // popover row heading
     rowSubtitle: string; // popover row status line
+    rowSubtitleShort: string; // same status, trimmed to sit beside the heading
     actionLabel?: string;
 }
 
@@ -104,6 +105,7 @@ function resolveBadgeSignal(
             accent: presentation.pillStroke,
             rowTitle: presentation.label,
             rowSubtitle: presentation.bannerCopy,
+            rowSubtitleShort: "",
             actionLabel: "View notice",
         };
     }
@@ -116,6 +118,7 @@ function resolveBadgeSignal(
             accent: "#0369a1",
             rowTitle: "Replications",
             rowSubtitle: `${replicationsCount} replication${replicationsCount === 1 ? "" : "s"} recorded`,
+            rowSubtitleShort: `${replicationsCount}`,
             actionLabel: "View in Atlas",
         };
     }
@@ -128,6 +131,7 @@ function resolveBadgeSignal(
             accent: "#6d28d9",
             rowTitle: "Reproductions",
             rowSubtitle: `${reproductionsCount} reproduction${reproductionsCount === 1 ? "" : "s"} recorded`,
+            rowSubtitleShort: `${reproductionsCount}`,
             actionLabel: "View in Atlas",
         };
     }
@@ -136,8 +140,9 @@ function resolveBadgeSignal(
         glyph: "",
         background: "rgba(255,255,255,0.15)",
         accent: "#8b949e",
-        rowTitle: "Replication data",
+        rowTitle: "Replication / Reproduction data",
         rowSubtitle: "No replication or reproduction data found",
+        rowSubtitleShort: "None",
     };
 }
 
@@ -165,18 +170,23 @@ function buildBadgeSegment(signal: BadgeSignal): HTMLElement {
 // ──────────────────────────────────────────────
 
 const ROW_LABEL_WRAP = "display:flex;flex-direction:column;flex:1;min-width:0;gap:1px;";
+// Compact rows put the status beside the heading instead of under it, halving
+// the row count's contribution to the panel's height.
+const ROW_LABEL_WRAP_COMPACT = "display:flex;align-items:baseline;flex:1;min-width:0;gap:5px;";
 const ROW_TITLE_STYLE = "font-size:11.5px;font-weight:600;color:#1f2328;line-height:1.3;";
+const ROW_TITLE_STYLE_COMPACT = "font-size:11px;font-weight:600;color:#1f2328;line-height:1.25;";
 
-function rowIconWrapStyle(color: string, available: boolean): string {
-    return `display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex-shrink:0;color:${color};opacity:${available ? "1" : "0.4"};`;
+function rowIconWrapStyle(color: string, available: boolean, compact = false): string {
+    const size = compact ? 12 : 16;
+    return `display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;flex-shrink:0;color:${color};opacity:${available ? "1" : "0.4"};`;
 }
 
-function rowSubStyle(available: boolean): string {
-    return `font-size:10.5px;color:${available ? "#57606a" : "#8b949e"};line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
+function rowSubStyle(available: boolean, compact = false): string {
+    return `font-size:${compact ? "10px" : "10.5px"};color:${available ? "#57606a" : "#8b949e"};line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
 }
 
-function rowActionStyle(color: string): string {
-    return `font-size:10.5px;font-weight:600;color:${color};flex-shrink:0;white-space:nowrap;`;
+function rowActionStyle(color: string, compact = false): string {
+    return `font-size:${compact ? "10px" : "10.5px"};font-weight:600;color:${color};flex-shrink:0;white-space:nowrap;`;
 }
 
 /** Build one interactive popover row. `href` present → clickable <a>; absent → inert <div>. */
@@ -186,14 +196,19 @@ function buildRow(opts: {
     available: boolean;
     title: string;
     subtitle: string;
+    /** Status text for compact rows, where the full sentence has no room. */
+    subtitleShort?: string;
     href?: string;
     actionLabel?: string;
+    /** Action text for compact rows; falls back to a bare arrow. */
+    actionLabelShort?: string;
     attr: string;
+    compact?: boolean;
 }): HTMLElement {
     const useLink = opts.available && !!opts.href;
     const row = document.createElement(useLink ? "a" : "div") as HTMLElement;
     row.setAttribute(opts.attr, "");
-    row.style.cssText = `display:flex;align-items:center;gap:8px;padding:5px 4px;border-radius:6px;text-decoration:none;${useLink ? "cursor:pointer;" : "cursor:default;"}`;
+    row.style.cssText = `display:flex;align-items:center;gap:${opts.compact ? "5px" : "8px"};padding:${opts.compact ? "1px 3px" : "5px 4px"};border-radius:6px;text-decoration:none;${useLink ? "cursor:pointer;" : "cursor:default;"}`;
     if (useLink && row instanceof HTMLAnchorElement && opts.href) {
         row.href = opts.href;
         row.target = "_blank";
@@ -202,34 +217,121 @@ function buildRow(opts: {
         row.addEventListener("mouseenter", () => { row.style.background = "#f6f8fa"; });
         row.addEventListener("mouseleave", () => { row.style.background = "transparent"; });
     }
+    const subtitle = opts.compact ? opts.subtitleShort ?? opts.subtitle : opts.subtitle;
+    const action = opts.compact
+        ? opts.actionLabelShort ?? "↗"
+        : `${opts.actionLabel ?? "View"} ↗`;
     row.innerHTML = `
-    <span style="${rowIconWrapStyle(opts.accent, opts.available)}">${opts.iconHtml}</span>
-    <span style="${ROW_LABEL_WRAP}">
-      <span style="${ROW_TITLE_STYLE}">${opts.title}</span>
-      <span data-flora-row-sub style="${rowSubStyle(opts.available)}">${opts.subtitle}</span>
+    <span style="${rowIconWrapStyle(opts.accent, opts.available, opts.compact)}">${opts.iconHtml}</span>
+    <span style="${opts.compact ? ROW_LABEL_WRAP_COMPACT : ROW_LABEL_WRAP}">
+      <span style="${opts.compact ? ROW_TITLE_STYLE_COMPACT : ROW_TITLE_STYLE}">${opts.title}</span>
+      <span data-flora-row-sub style="${rowSubStyle(opts.available, opts.compact)}">${subtitle}</span>
     </span>
-    ${useLink ? `<span style="${rowActionStyle(opts.accent)}">${opts.actionLabel ?? "View"} ↗</span>` : ""}
+    ${useLink ? `<span style="${rowActionStyle(opts.accent, opts.compact)}">${action}</span>` : ""}
   `;
     return row;
 }
 
 const DOT_ICON = (color: string) => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};"></span>`;
 
-function buildOaRow(oa: OpenAccessStatus | null): HTMLElement {
-    const available = !!oa?.isOa;
-    return buildRow({
-        iconHtml: OA_UNLOCK_SVG,
-        accent: "#853953",
-        available: available && !!oa?.url,
-        title: "Open Access",
-        subtitle: available ? "Free full text available" : "Not confirmed open access",
-        href: oa?.url ?? undefined,
-        actionLabel: "View PDF",
-        attr: "data-flora-oa-row",
-    });
+/** Every free copy on offer, falling back to the single URL older caches stored. */
+function oaLocations(oa: OpenAccessStatus | null): OpenAccessLocation[] {
+    if (!oa?.isOa) return [];
+    if (oa.locations?.length) return oa.locations;
+    return oa.url ? [{url: oa.url, label: "Free copy", version: null, isPdf: false}] : [];
 }
 
-function buildPubPeerRow(feedback: PubPeerFeedback | null): HTMLElement {
+/** One free copy, as a line in the chooser under the Open Access row. */
+function buildOaChoice(loc: OpenAccessLocation, compact: boolean): HTMLElement {
+    const item = document.createElement("a");
+    item.href = loc.url;
+    item.target = "_blank";
+    item.rel = "noopener noreferrer";
+    item.style.cssText = `display:flex;align-items:baseline;gap:6px;padding:${compact ? "1px 4px" : "3px 4px"};border-radius:5px;text-decoration:none;font-size:${compact ? "10px" : "10.5px"};line-height:1.4;`;
+    item.addEventListener("click", (e) => e.stopPropagation());
+    item.addEventListener("mouseenter", () => { item.style.background = "#f6f8fa"; });
+    item.addEventListener("mouseleave", () => { item.style.background = "transparent"; });
+
+    const label = document.createElement("span");
+    label.textContent = loc.label;
+    label.style.cssText = "flex:1;min-width:0;color:#1f2328;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+
+    const meta = document.createElement("span");
+    meta.textContent = [loc.isPdf ? "PDF" : null, loc.version].filter(Boolean).join(" · ");
+    meta.style.cssText = "flex-shrink:0;color:#8b949e;";
+
+    item.appendChild(label);
+    if (meta.textContent) item.appendChild(meta);
+    return item;
+}
+
+function buildOaRow(oa: OpenAccessStatus | null, compact = false): HTMLElement {
+    const available = !!oa?.isOa;
+    const locations = oaLocations(oa);
+
+    if (locations.length <= 1) {
+        return buildRow({
+            iconHtml: OA_UNLOCK_SVG,
+            accent: "#853953",
+            available: available && locations.length === 1,
+            title: "Open Access",
+            subtitle: available ? "Free full text available" : "Not confirmed open access",
+            subtitleShort: available ? "Free" : "—",
+            href: locations[0]?.url,
+            actionLabel: "View PDF",
+            attr: "data-flora-oa-row",
+            compact,
+        });
+    }
+
+    // Several free copies — publisher, preprint server, institutional
+    // repository — differ in version and licence, so the reader picks rather
+    // than being sent to whichever one Unpaywall ranked first.
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("data-flora-oa-row", "");
+    wrapper.style.cssText = "display:flex;flex-direction:column;";
+
+    const header = buildRow({
+        iconHtml: OA_UNLOCK_SVG,
+        accent: "#853953",
+        available: true,
+        title: "Open Access",
+        subtitle: `${locations.length} free copies`,
+        subtitleShort: `${locations.length} free`,
+        attr: "data-flora-oa-choices",
+        compact,
+    });
+    header.style.cursor = "pointer";
+
+    // The popover has the room to list every copy outright; the panel rides on
+    // each Scholar result, so there it stays folded until asked for.
+    let open = !compact;
+
+    const toggle = document.createElement("span");
+    toggle.style.cssText = rowActionStyle("#853953", compact);
+    const setToggle = () => {
+        toggle.textContent = compact ? (open ? "▴" : "▾") : `Choose ${open ? "▴" : "▾"}`;
+    };
+    setToggle();
+    header.appendChild(toggle);
+
+    const list = document.createElement("div");
+    list.style.cssText = `display:${open ? "flex" : "none"};flex-direction:column;padding:0 0 ${compact ? "2px" : "4px"} ${compact ? "19px" : "24px"};`;
+    for (const loc of locations) list.appendChild(buildOaChoice(loc, compact));
+
+    header.addEventListener("click", (e) => {
+        e.stopPropagation();
+        open = !open;
+        list.style.display = open ? "flex" : "none";
+        setToggle();
+    });
+
+    wrapper.appendChild(header);
+    wrapper.appendChild(list);
+    return wrapper;
+}
+
+function buildPubPeerRow(feedback: PubPeerFeedback | null, compact = false): HTMLElement {
     const available = !!feedback && feedback.total_comments > 0;
     return buildRow({
         iconHtml: PUBPEER_HUB_SVG,
@@ -239,22 +341,26 @@ function buildPubPeerRow(feedback: PubPeerFeedback | null): HTMLElement {
         subtitle: available && feedback
             ? `${feedback.total_comments} ${feedback.total_comments === 1 ? "comment" : "comments"}`
             : "No discussion found",
+        subtitleShort: available && feedback ? `${feedback.total_comments}` : "—",
         href: feedback?.url,
         actionLabel: "View thread",
         attr: "data-flora-pubpeer-row",
+        compact,
     });
 }
 
-function buildBadgeRow(signal: BadgeSignal): HTMLElement {
+function buildBadgeRow(signal: BadgeSignal, compact = false): HTMLElement {
     return buildRow({
         iconHtml: DOT_ICON(signal.accent),
         accent: signal.accent,
         available: signal.available,
         title: signal.rowTitle,
         subtitle: signal.rowSubtitle,
+        subtitleShort: signal.rowSubtitleShort,
         href: signal.href,
         actionLabel: signal.actionLabel,
         attr: "data-flora-badge-row",
+        compact,
     });
 }
 
@@ -275,12 +381,12 @@ export interface IndicatorPillOptions {
 }
 
 /** The DOI row: link icon, the DOI itself, and open/copy actions. */
-function buildDoiRow(doi: string, color: string, isAugmented: boolean): HTMLElement {
+function buildDoiRow(doi: string, color: string, isAugmented: boolean, compact = false): HTMLElement {
     const contentRow = document.createElement("div");
-    contentRow.style.cssText = "display: flex; align-items: center; gap: 8px; padding: 5px 4px;";
+    contentRow.style.cssText = `display: flex; align-items: center; gap: ${compact ? "5px" : "8px"}; padding: ${compact ? "1px 3px" : "5px 4px"};`;
 
     const doiIcon = document.createElement("span");
-    doiIcon.style.cssText = rowIconWrapStyle(color, true);
+    doiIcon.style.cssText = rowIconWrapStyle(color, true, compact);
     doiIcon.innerHTML = DOI_LINK_SVG;
 
     // Matches the other rows: value on top, state spelled out underneath. The
@@ -295,7 +401,7 @@ function buildDoiRow(doi: string, color: string, isAugmented: boolean): HTMLElem
     min-width: 0;
     color: #1f2328;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-    font-size: 11.5px;
+    font-size: ${compact ? "11px" : "11.5px"};
     letter-spacing: 0.01em;
     white-space: nowrap;
     overflow: hidden;
@@ -308,9 +414,9 @@ function buildDoiRow(doi: string, color: string, isAugmented: boolean): HTMLElem
 
     const provenance = document.createElement("span");
     provenance.setAttribute("data-flora-doi-provenance", "");
-    provenance.style.cssText = rowSubStyle(!isAugmented);
+    provenance.style.cssText = rowSubStyle(!isAugmented, compact) + (compact ? "font-size:9.5px;" : "");
     provenance.textContent = isAugmented
-        ? "Matched by title — not stated on the page"
+        ? "Matched by title"
         : "Found on this page";
 
     labelWrap.appendChild(doiText);
@@ -404,7 +510,7 @@ function buildDoiRow(doi: string, color: string, isAugmented: boolean): HTMLElem
     });
 
     const actions = document.createElement("div");
-    actions.style.cssText = "display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0;";
+    actions.style.cssText = `display: inline-flex; align-items: center; gap: ${compact ? "8px" : "10px"}; flex-shrink: 0;`;
     actions.appendChild(openLink);
     actions.appendChild(copyBtn);
 
@@ -425,6 +531,8 @@ interface IndicatorRowsOptions {
     /** Called when the async lookup lands, so a caller can mirror it elsewhere. */
     onOa?: (oa: OpenAccessStatus | null) => void;
     onPubPeer?: (feedback: PubPeerFeedback | null) => void;
+    /** Single-line rows and tighter metrics, for the always-visible panel. */
+    compact?: boolean;
 }
 
 /**
@@ -433,30 +541,31 @@ interface IndicatorRowsOptions {
  * unresolved and swap themselves in when their lookups land.
  */
 function buildIndicatorRows(opts: IndicatorRowsOptions): HTMLElement {
+    const compact = opts.compact ?? false;
     const rows = document.createElement("div");
-    rows.style.cssText = "display:flex;flex-direction:column;gap:2px;";
+    rows.style.cssText = `display:flex;flex-direction:column;gap:${compact ? "0" : "2px"};`;
 
-    rows.appendChild(buildDoiRow(opts.doi, opts.color, opts.isAugmented));
+    rows.appendChild(buildDoiRow(opts.doi, opts.color, opts.isAugmented, compact));
 
     const sectionDivider = document.createElement("div");
-    sectionDivider.style.cssText = "height:1px;background:#eaeef2;margin:0 0 2px;";
+    sectionDivider.style.cssText = `height:1px;background:#eaeef2;margin:${compact ? "2px 0" : "0 0 2px"};`;
     rows.appendChild(sectionDivider);
 
-    let oaRow = buildOaRow(null);
+    let oaRow = buildOaRow(null, compact);
     rows.appendChild(oaRow);
     if (opts.oaStatus) {
         void opts.oaStatus.then((oa) => {
-            const resolved = buildOaRow(oa);
+            const resolved = buildOaRow(oa, compact);
             oaRow.replaceWith(resolved);
             oaRow = resolved;
             opts.onOa?.(oa);
         }).catch(() => {});
     }
 
-    let pubpeerRow = buildPubPeerRow(null);
+    let pubpeerRow = buildPubPeerRow(null, compact);
     rows.appendChild(pubpeerRow);
     void lookupPubPeerForDoi(opts.doi).then((feedback) => {
-        const resolved = buildPubPeerRow(feedback);
+        const resolved = buildPubPeerRow(feedback, compact);
         pubpeerRow.replaceWith(resolved);
         pubpeerRow = resolved;
         opts.onPubPeer?.(feedback);
@@ -464,7 +573,7 @@ function buildIndicatorRows(opts: IndicatorRowsOptions): HTMLElement {
 
     rows.appendChild(buildBadgeRow(resolveBadgeSignal(
         opts.doi, opts.retraction, opts.replicationsCount, opts.reproductionsCount
-    )));
+    ), compact));
     return rows;
 }
 
@@ -700,10 +809,9 @@ export function createIndicatorPill(options: IndicatorPillOptions): HTMLElement 
 const PANEL_STYLE_ID = "flora-indicator-panel-style";
 
 /**
- * Rows are styled for the pill's popover, which sets its own min-width and can
- * afford to ellipsise a subtitle to one line. A panel inherits the width of
- * whatever it is dropped into — Scholar's link column is ~160px — so its status
- * text has to wrap or it truncates mid-sentence.
+ * The panel's status text sits beside its heading, so it stays on one line and
+ * ellipsises; only the DOI's provenance is a full sentence, and that has to
+ * wrap or it truncates mid-sentence in Scholar's ~160px link column.
  *
  * This is a stylesheet rather than inline styles because the OA, PubPeer and
  * badge rows replace themselves when their lookups land; a rule keyed on the
@@ -714,9 +822,9 @@ function ensurePanelStyle(): void {
     const style = document.createElement("style");
     style.id = PANEL_STYLE_ID;
     style.textContent =
-        `[data-flora-panel] [data-flora-row-sub],` +
         `[data-flora-panel] [data-flora-doi-provenance]{` +
-        `white-space:normal !important;overflow:visible !important;}`;
+        `white-space:normal !important;overflow:visible !important;}` +
+        `[data-flora-panel] [data-flora-row-sub]{flex-shrink:0;}`;
     (document.head ?? document.documentElement).appendChild(style);
 }
 
@@ -741,21 +849,22 @@ export function createIndicatorPanel(options: IndicatorPillOptions): HTMLElement
     display: block;
     box-sizing: border-box;
     max-width: 260px;
-    margin-top: 6px;
+    margin-top: 4px;
     background: #ffffff;
     border: 1px solid ${color}40;
-    border-radius: 12px;
+    border-radius: 8px;
     box-shadow: 0 1px 2px rgba(27,31,36,0.08);
-    padding: 8px;
+    padding: 4px 5px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     font-size: 12px;
-    line-height: 18px;
+    line-height: 16px;
     text-align: left;
   `;
 
     ensurePanelStyle();
     wrapper.appendChild(buildIndicatorRows({
         doi, color, isAugmented, oaStatus, retraction, replicationsCount, reproductionsCount,
+        compact: true,
     }));
     return wrapper;
 }
@@ -780,6 +889,6 @@ export function updateIndicatorPillBadges(
         const signal = resolveBadgeSignal(doi, retraction, replicationsCount, reproductionsCount);
 
         if (badgeSegment) badgeSegment.replaceWith(buildBadgeSegment(signal));
-        if (badgeRow) badgeRow.replaceWith(buildBadgeRow(signal));
+        if (badgeRow) badgeRow.replaceWith(buildBadgeRow(signal, wrapper.hasAttribute("data-flora-panel")));
     }
 }

@@ -4,11 +4,66 @@
 import { getSettings } from "./settings";
 import { BlobCache } from "./blob-cache";
 
+export interface OpenAccessLocation {
+    /** Free full-text URL — the PDF when the location offers one. */
+    url: string;
+    /** Where the copy lives: publisher name, repository, or the bare host. */
+    label: string;
+    /** Author manuscript / published version, when Unpaywall states it. */
+    version: string | null;
+    isPdf: boolean;
+}
+
 export interface OpenAccessStatus {
     /** True when Unpaywall reports a free full-text location. */
     isOa: boolean;
     /** Best free full-text URL (PDF preferred), or null. */
     url: string | null;
+    /**
+     * Every free copy Unpaywall lists, best first. Absent on entries cached by
+     * an older version, which stored only `url`.
+     */
+    locations?: OpenAccessLocation[];
+}
+
+interface UnpaywallLocation {
+    url?: string | null;
+    url_for_pdf?: string | null;
+    host_type?: string | null;
+    version?: string | null;
+    repository_institution?: string | null;
+}
+
+const VERSION_LABELS: Record<string, string> = {
+    publishedVersion: "published",
+    acceptedVersion: "accepted",
+    submittedVersion: "submitted",
+};
+
+function hostLabel(url: string): string {
+    try {
+        return new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+        return "Free copy";
+    }
+}
+
+function toLocation(raw: UnpaywallLocation): OpenAccessLocation | null {
+    const url = raw.url_for_pdf ?? raw.url ?? null;
+    if (!url) return null;
+    const institution = raw.repository_institution?.trim();
+    return {
+        url,
+        label: institution || (raw.host_type === "publisher" ? "Publisher" : hostLabel(url)),
+        version: raw.version ? VERSION_LABELS[raw.version] ?? null : null,
+        isPdf: !!raw.url_for_pdf,
+    };
+}
+
+/** Unpaywall lists the same copy under several locations; one row each is noise. */
+function dedupeByUrl(locations: OpenAccessLocation[]): OpenAccessLocation[] {
+    const seen = new Set<string>();
+    return locations.filter((loc) => !seen.has(loc.url) && seen.add(loc.url));
 }
 
 const OA_CACHE = new BlobCache<OpenAccessStatus>({
@@ -43,11 +98,18 @@ export async function fetchOpenAccess(doi: string): Promise<OpenAccessStatus | n
         if (!resp.ok) return null;
         const data = (await resp.json()) as {
             is_oa?: boolean;
-            best_oa_location?: { url_for_pdf?: string | null; url?: string | null } | null;
+            best_oa_location?: UnpaywallLocation | null;
+            oa_locations?: UnpaywallLocation[] | null;
         };
+        const best = data.best_oa_location ? toLocation(data.best_oa_location) : null;
+        const rest = (data.oa_locations ?? [])
+            .map(toLocation)
+            .filter((loc): loc is OpenAccessLocation => loc !== null);
+        const locations = dedupeByUrl(best ? [best, ...rest] : rest);
         const status: OpenAccessStatus = {
             isOa: !!data.is_oa,
-            url: data.best_oa_location?.url_for_pdf ?? data.best_oa_location?.url ?? null,
+            url: locations[0]?.url ?? null,
+            locations,
         };
         void OA_CACHE.set(doi, status);
         return status;
