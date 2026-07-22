@@ -7,6 +7,9 @@ import {
   extractDOIsFromText,
   findReferenceContainers,
   findReferenceEntries,
+  extractDoiOccurrences,
+  extractPrimaryDOI,
+  containsDoiCandidate,
 } from "../../src/shared/doi-extractor";
 
 function loadFixture(name: string): Document {
@@ -657,5 +660,229 @@ describe("findReferenceEntries", () => {
     expect(entries).toHaveLength(2);
     expect(entries[0].doiInText).toBe(true);
     expect(entries[1].doiInText).toBe(true);
+  });
+
+  it("treats a Frontiers-style entry with a nested action-link <li> list as one entry", () => {
+    // Frontiers wraps each reference in a <li class="References__item"> whose
+    // <div class="References__content"> holds the citation plus a nested
+    // <ul class="References__links"><li> per action button (Pubmed | CrossRef
+    // | Google Scholar | View in article). Without outermost-<li> selection,
+    // those four button <li>s get mistaken for four separate entries and the
+    // real per-reference <li> is dropped.
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <ul class="References">
+          <li class="References__item" id="ref1">
+            <div class="References__label"><p>1</p></div>
+            <div class="References__content">
+              <p>Achenbach T. M. (2016). Internalizing/externalizing problems. J. Am. Acad. Child Adolesc. Psychiatry 55, 647-656. doi: 10.1016/j.jaac.2016.05.012</p>
+              <ul class="References__links">
+                <li class="References__links__item"><a href="https://pubmed.ncbi.nlm.nih.gov/27453078">Pubmed Abstract</a></li>
+                <li class="References__links__item"><a href="https://doi.org/10.1016/j.jaac.2016.05.012">CrossRef</a></li>
+                <li class="References__links__item"><a href="http://scholar.google.com/scholar_lookup?x=1">Google Scholar</a></li>
+                <li class="References__links__item References__links__item--viewInArticle"><a href="#ref1a">View reference in article</a></li>
+              </ul>
+            </div>
+          </li>
+          <li class="References__item" id="ref2">
+            <div class="References__label"><p>2</p></div>
+            <div class="References__content">
+              <p>Jones K. (2021). Another paper. J. Other 3, 1-2. doi: 10.5678/also.found</p>
+              <ul class="References__links">
+                <li class="References__links__item"><a href="https://pubmed.ncbi.nlm.nih.gov/1">Pubmed Abstract</a></li>
+                <li class="References__links__item References__links__item--viewInArticle"><a href="#ref2a">View reference in article</a></li>
+              </ul>
+            </div>
+          </li>
+        </ul>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const entries = findReferenceEntries(doc);
+    expect(entries).toHaveLength(2);
+    expect(entries[0].element.className).toBe("References__item");
+    expect(entries[1].element.className).toBe("References__item");
+    expect(entries[0].doi).toBe("10.1016/j.jaac.2016.05.012");
+    expect(entries[1].doi).toBe("10.5678/also.found");
+    // The site adapter targets ".References__content" as a descendant of the
+    // entry root — confirm that still holds with outermost selection.
+    expect(entries[0].element.querySelector(".References__content")).not.toBeNull();
+  });
+
+  it("picks the larger per-reference <div> group over a smaller stray <p> group (Oxford Academic)", () => {
+    // academic.oup.com has no <li> at all: each reference is a
+    // <div class="js-splitview-ref-item"> and all of them share one parent
+    // (a large div-sibling group). But one reference's link row renders three
+    // separate <p class="citation-links-compatibility"> buttons (Google
+    // Scholar / Google Preview / WorldCat) that also share a parent — a
+    // *smaller* p-sibling group. The old first-match-wins cascade picked that
+    // 3-element p-group over the real (larger) div-group, because it checked
+    // <p> before <div> and stopped at the first group of size >= 2. Needs
+    // more than 3 real entries here so the div-group's size genuinely beats
+    // the stray p-group's, matching what happens on the real page (55 vs 3).
+    const refItem = (n: number, doi: string, links = "") => `
+          <div class="js-splitview-ref-item">
+            <div class="ref-content">
+              <div class="mixed-citation citation">
+                Author ${n}. Title ${n}. Journal. 202${n}.
+                ${links}
+                <div class="crossref-doi"><a href="http://dx.doi.org/${doi}">Crossref</a></div>
+              </div>
+            </div>
+          </div>`;
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <div class="ref-list js-splitview-ref-list">
+          ${refItem(
+            1,
+            "10.1176/found.one",
+            `<div class="citation-links">
+                  <p class="citation-links-compatibility"><a href="https://scholar.google.com/x">Google Scholar</a></p>
+                  <p class="citation-links-compatibility"><a href="https://books.google.com/x">Google Preview</a></p>
+                  <p class="citation-links-compatibility"><a href="https://worldcat.org/x">WorldCat</a></p>
+                </div>`
+          )}
+          ${refItem(2, "10.1176/found.two")}
+          ${refItem(3, "10.1176/found.three")}
+          ${refItem(4, "10.1176/found.four")}
+        </div>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    const entries = findReferenceEntries(doc);
+    expect(entries).toHaveLength(4);
+    for (const entry of entries) {
+      expect(entry.element.className).toBe("js-splitview-ref-item");
+    }
+    expect(entries.map((e) => e.doi)).toEqual([
+      "10.1176/found.one",
+      "10.1176/found.two",
+      "10.1176/found.three",
+      "10.1176/found.four",
+    ]);
+  });
+
+  it("falls back to a \"References\" heading's siblings when no class/id marks the section (techscience.com)", () => {
+    // techscience.com has no class or id anywhere that matches
+    // REFERENCE_SECTION_RE — the whole article (intro, methods, results,
+    // references) lives under one generic wrapper, and the reference
+    // paragraphs (<p class="bib">) are ordinary siblings of the intro/methods
+    // <p> tags in that same wrapper. findReferenceContainers finds nothing,
+    // so entries must come from the "References" heading's sibling run.
+    const html = `<!DOCTYPE html>
+      <html><body>
+        <div class="article-body">
+          <p class="h1">1&nbsp;&nbsp;Introduction</p>
+          <p class="indent">Some intro text, long enough to not look like a stray heading.</p>
+          <p class="noindent1">Conflicts of Interest: none.</p>
+          <h2 class="h1" id="sref">References</h2>
+          <p class="bib" id="ref-1">1. Smith J. Title one. Journal. 2020.</p>
+          <p class="bib" id="ref-2">2. Jones K. Title two. Journal. 2021.</p>
+          <p class="bib" id="ref-3">3. Lee A. Title three. Journal. 2022.</p>
+        </div>
+      </body></html>`;
+    const doc = new JSDOM(html).window.document;
+    expect(findReferenceContainers(doc)).toHaveLength(0);
+    const entries = findReferenceEntries(doc);
+    expect(entries).toHaveLength(3);
+    for (const entry of entries) {
+      expect(entry.element.className).toBe("bib");
+    }
+  });
+});
+
+describe("extractDoiOccurrences — FLoRA's own injected UI", () => {
+  // Every pill FLoRA injects renders the DOI as plain text and links it to
+  // doi.org inside its popover. Re-scanning that turns our own output into a
+  // page occurrence, which gets pilled again on the next mutation pass.
+  const pageHtml = `<!DOCTYPE html>
+    <html><body>
+      <p>Real prose citation: 10.1111/real.one</p>
+      <span class="flora-indicator-pill" data-flora-ui="" data-flora-doi="10.2222/injected">
+        <span>DOI</span>
+        <div style="display:none">
+          <span>10.2222/injected</span>
+          <a href="https://doi.org/10.2222/injected">open</a>
+        </div>
+      </span>
+    </body></html>`;
+
+  it("ignores DOI text inside an injected pill", () => {
+    const doc = new JSDOM(pageHtml).window.document;
+    const dois = extractDoiOccurrences(doc).map((o) => o.doi);
+    expect(dois).toContain("10.1111/real.one");
+    expect(dois).not.toContain("10.2222/injected");
+  });
+
+  it("ignores the pill's own doi.org link", () => {
+    const doc = new JSDOM(pageHtml).window.document;
+    const fromLinks = extractDoiOccurrences(doc)
+      .filter((o) => o.kind !== "text")
+      .map((o) => o.doi);
+    expect(fromLinks).not.toContain("10.2222/injected");
+  });
+
+  it("still extracts a genuine page DOI that sits next to a pill", () => {
+    const doc = new JSDOM(`<!DOCTYPE html>
+      <html><body>
+        <p>
+          <a href="https://doi.org/10.3333/genuine">10.3333/genuine</a>
+          <span data-flora-ui=""><span>10.2222/injected</span></span>
+        </p>
+      </body></html>`).window.document;
+    const dois = extractDoiOccurrences(doc).map((o) => o.doi);
+    expect(dois).toContain("10.3333/genuine");
+    expect(dois).not.toContain("10.2222/injected");
+  });
+});
+
+describe("extractPrimaryDOI", () => {
+  it("reads the DOI from citation meta tags", () => {
+    const doc = new JSDOM(`<!DOCTYPE html>
+      <html><head><meta name="citation_doi" content="10.1038/nature12373"></head>
+      <body></body></html>`).window.document;
+    expect(extractPrimaryDOI(doc)).toBe("10.1038/nature12373");
+  });
+
+  it("reads the DOI from JSON-LD", () => {
+    const doc = new JSDOM(`<!DOCTYPE html>
+      <html><head><script type="application/ld+json">
+        {"@type":"ScholarlyArticle","doi":"10.1371/journal.pone.0012345"}
+      </script></head><body></body></html>`).window.document;
+    expect(extractPrimaryDOI(doc)).toBe("10.1371/journal.pone.0012345");
+  });
+
+  it("ignores DOIs that only appear in body text or reference links", () => {
+    const doc = new JSDOM(`<!DOCTYPE html>
+      <html><head></head><body>
+        <p>See also 10.5555/cited.in.prose</p>
+        <a href="https://doi.org/10.5555/cited.in.link">Reference</a>
+      </body></html>`).window.document;
+    expect(extractPrimaryDOI(doc)).toBeNull();
+  });
+});
+
+describe("containsDoiCandidate", () => {
+  function el(html: string): Element {
+    const doc = new JSDOM(`<!DOCTYPE html><html><body>${html}</body></html>`).window.document;
+    return doc.body.firstElementChild!;
+  }
+
+  it("is false for markup with no DOI-like content", () => {
+    expect(containsDoiCandidate(el(`<div><p>Accept cookies?</p><button>OK</button></div>`))).toBe(false);
+  });
+
+  it("is true when a DOI appears in text", () => {
+    expect(containsDoiCandidate(el(`<div><p>doi:10.1038/nature12373</p></div>`))).toBe(true);
+  });
+
+  it("is true when a DOI only appears in an href", () => {
+    expect(containsDoiCandidate(el(`<div><a href="https://doi.org/10.1038/nature12373">Full text</a></div>`))).toBe(true);
+  });
+
+  it("is true for the anchor itself carrying the DOI href", () => {
+    expect(containsDoiCandidate(el(`<a href="https://doi.org/10.1038/nature12373">Full text</a>`))).toBe(true);
+  });
+
+  it("is false for a bare year or version number that is not a DOI prefix", () => {
+    expect(containsDoiCandidate(el(`<div><span>Published 2019, v10.2 of the toolkit</span></div>`))).toBe(false);
   });
 });

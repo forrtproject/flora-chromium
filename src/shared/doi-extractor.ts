@@ -1,6 +1,7 @@
 import type { DoiString, ClassifiedDois, PageType } from "./types";
 import { normaliseDOI } from "./doi-normalise";
 import { debugLog } from "./debug";
+import { FLORA_UI_SELECTOR } from "./flora-ui";
 
 // Allow parens and semicolons inside DOIs (e.g. 10.1016/S0924-9338(98)80023-0,
 // 10.1002/(sici)...3.0.co;2-g). DOI suffixes may contain slashes per the spec
@@ -318,6 +319,7 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
 
   // 1. Links — text match wins over href; embedded URLs are last resort.
   for (const link of doc.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    if (link.closest(FLORA_UI_SELECTOR)) continue;
     const textDois = new Set<DoiString>();
     const linkText = link.innerText || link.textContent || "";
     const cleaned = decodeEncodedDois(linkText.replace(WORD_BREAK_CHARS, ""));
@@ -353,6 +355,7 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
       }
       // Anchor descendants are covered by the link pass above.
       if (parent.closest("a")) return NodeFilter.FILTER_REJECT;
+      if (parent.closest(FLORA_UI_SELECTOR)) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     },
   });
@@ -376,6 +379,16 @@ export function extractDoiOccurrences(doc: Document): DoiOccurrence[] {
   }
 
   return occurrences;
+}
+
+const DOI_PROBE_REGEX = /10\.\d{4,}/;
+
+/** Cheap, over-inclusive test for whether a subtree could contain a DOI. */
+export function containsDoiCandidate(el: Element): boolean {
+  const text = el.textContent ?? "";
+  if (text.length >= 12 && DOI_PROBE_REGEX.test(text)) return true;
+  if (el.matches?.('a[href*="10."]')) return true;
+  return el.querySelector?.('a[href*="10."]') !== null;
 }
 
 function extractFromVisibleText(doc: Document, found: Set<DoiString>): void {
@@ -434,6 +447,12 @@ export function extractDOIsFromText(text: string): DoiString[] {
 // Word-boundary match catches BEM-style names (e.g. `c-article-references`).
 // Plural-only — singular `citation`/`reference` is Wiley's article-body class.
 const REFERENCE_SECTION_RE = /(?:^|[-_\s])(?:cites|citations|bibliograph(?:y|ies)|references|reflist|ref-list|works-cited|footnotes|cited-by)(?:$|[-_\s])/i;
+
+// Heading text for publishers (e.g. techscience.com) that mark up the
+// reference list with no distinguishing class or id at all — just a plain
+// <h2>References</h2> followed by ordinary <p>/<div> siblings in the same
+// parent as the article's other sections.
+const REFERENCE_HEADING_RE = /^(?:\d+\.?\s*)?(?:references|bibliography|works\s+cited|literature\s+cited)\s*:?$/i;
 
 function isReferenceContainer(el: Element): boolean {
   const cls = typeof el.className === "string" ? el.className : "";
@@ -562,6 +581,39 @@ function findLargestSiblingGroup(container: Element, tag: string): HTMLElement[]
 }
 
 /**
+ * Last-resort entry discovery for a page with no class/id-based reference
+ * container at all: find a heading whose text reads "References" (or
+ * "Bibliography" / "Works Cited"), then collect its following siblings up to
+ * the next heading as the entries. Only used when findReferenceContainers
+ * comes back empty, so sites that already match via class/id are unaffected.
+ */
+function findHeadingReferenceSiblings(doc: Document): HTMLElement[] {
+  const headings = doc.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6");
+  for (const heading of headings) {
+    const text = (heading.textContent ?? "").trim();
+    if (!REFERENCE_HEADING_RE.test(text)) continue;
+
+    // `nextElementSibling` only ever yields Elements, so no instanceof guard
+    // is needed (and one would be realm-unsafe: an element from a document
+    // built via a separately-constructed JSDOM/iframe fails `instanceof
+    // HTMLElement` against the calling realm's own constructor).
+    const siblings: HTMLElement[] = [];
+    for (
+      let node = heading.nextElementSibling as HTMLElement | null;
+      node;
+      node = node.nextElementSibling as HTMLElement | null
+    ) {
+      if (/^H[1-6]$/.test(node.tagName)) break;
+      if ((node.textContent ?? "").trim().length > 0) {
+        siblings.push(node);
+      }
+    }
+    if (siblings.length >= 2) return siblings;
+  }
+  return [];
+}
+
+/**
  * Split the page's reference/bibliography section(s) into individual reference
  * entries, each kept linked to its DOM element and to any DOI it already
  * contains. Callers can render against `element` directly — no re-scanning or
@@ -577,22 +629,25 @@ export function findReferenceEntries(doc: Document): ReferenceEntry[] {
   const elements: HTMLElement[] = [];
 
   for (const container of findReferenceContainers(doc)) {
-    const lis = Array.from(container.querySelectorAll<HTMLElement>("li"))
-      .filter((li) => !li.querySelector("li"));
-    if (lis.length >= 2) {
-      elements.push(...lis);
-      continue;
-    }
-
+    // Keep only outermost <li>s: a per-reference <li> that wraps a nested
+    // action-link list (Frontiers' "Pubmed | CrossRef | ... " sub-<li>s)
+    // must win over its own children, or those buttons get mistaken for
+    // separate reference entries.
+    const allLis = Array.from(container.querySelectorAll<HTMLElement>("li"));
+    const lis = allLis.filter(
+      (li) => !allLis.some((other) => other !== li && other.contains(li))
+    );
     const pGroup = findLargestSiblingGroup(container, "p");
-    if (pGroup.length >= 2) {
-      elements.push(...pGroup);
-      continue;
-    }
-
     const divGroup = findLargestSiblingGroup(container, "div");
-    if (divGroup.length >= 2) {
-      elements.push(...divGroup);
+
+    // Pick whichever candidate spans the most siblings, not just the first
+    // one past the size-2 threshold. Oxford Academic's per-reference <div>
+    // group (dozens of entries) otherwise loses to a single reference's own
+    // 2-3 <p> link buttons ("Google Scholar" / "Google Preview" / "WorldCat"),
+    // which happen to share a parent and reach the old threshold first.
+    const best = [lis, pGroup, divGroup].reduce((a, b) => (b.length > a.length ? b : a));
+    if (best.length >= 2) {
+      elements.push(...best);
       continue;
     }
 
@@ -611,6 +666,10 @@ export function findReferenceEntries(doc: Document): ReferenceEntry[] {
         elements.push(child);
       }
     }
+  }
+
+  if (elements.length === 0) {
+    elements.push(...findHeadingReferenceSiblings(doc));
   }
 
   const hostDoi = extractPrimaryDOI(doc);

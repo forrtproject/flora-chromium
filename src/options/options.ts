@@ -4,6 +4,11 @@ import { debugLog, setDebugContext } from "../shared/debug";
 
 setDebugContext("options");
 debugLog("Options page loaded");
+import {
+  getHiddenCommenters,
+  isHiddenCommenter,
+  saveHiddenCommenters,
+} from "../shared/pubpeer-filter";
 
 // ── Email form ──────────────────────────────────────────────────────
 
@@ -63,7 +68,7 @@ getSettings().then(({ cacheQuotaMb }) => {
 
 cacheQuotaSaveBtn.addEventListener("click", async () => {
   const raw = parseInt(cacheQuotaInput.value, 10);
-  const cacheQuotaMb = isNaN(raw) || raw < 0 ? 500 : raw;
+  const cacheQuotaMb = isNaN(raw) || raw < 0 ? 50 : raw;
   cacheQuotaInput.value = String(cacheQuotaMb);
   cacheQuotaSaveBtn.disabled = true;
   try {
@@ -182,4 +187,92 @@ domainInput.addEventListener("keydown", (e) => {
 getBlockedDomains().then((b) => {
   blocked = b;
   renderBlockedList();
+});
+
+// ── Muted PubPeer commenters ────────────────────────────────────────
+
+const commenterInput = document.getElementById("commenter-input") as HTMLInputElement;
+const addCommenterBtn = document.getElementById("add-commenter-btn") as HTMLButtonElement;
+const commenterList = document.getElementById("commenter-list") as HTMLDivElement;
+const commenterStatusMsg = document.getElementById("commenter-status-msg") as HTMLParagraphElement;
+
+let mutedCommenters: string[] = [];
+
+function renderCommenterList(): void {
+  commenterList.innerHTML = "";
+
+  if (mutedCommenters.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "domain-empty";
+    empty.textContent = "No commenters muted — all PubPeer comments are shown.";
+    commenterList.appendChild(empty);
+    return;
+  }
+
+  const sorted = [...mutedCommenters].sort((a, b) => a.localeCompare(b));
+
+  for (const id of sorted) {
+    const row = document.createElement("div");
+    row.className = "domain-row";
+
+    const label = document.createElement("span");
+    label.className = "domain-name";
+    label.textContent = id;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "domain-remove";
+    removeBtn.setAttribute("aria-label", `Unmute ${id}`);
+    removeBtn.innerHTML = "&times;";
+    removeBtn.addEventListener("click", () => unmuteCommenter(id));
+
+    row.appendChild(label);
+    row.appendChild(removeBtn);
+    commenterList.appendChild(row);
+  }
+}
+
+async function unmuteCommenter(id: string): Promise<void> {
+  mutedCommenters = mutedCommenters.filter((c) => c !== id);
+  await saveHiddenCommenters(mutedCommenters);
+  renderCommenterList();
+  showCommenterStatus(`Unmuted ${id}`, "success");
+}
+
+async function muteCommenter(): Promise<void> {
+  const id = commenterInput.value.trim();
+  if (!id) return;
+
+  if (isHiddenCommenter(id, mutedCommenters)) {
+    showCommenterStatus(`${id} is already muted.`, "error");
+    return;
+  }
+
+  mutedCommenters.push(id);
+  await saveHiddenCommenters(mutedCommenters);
+  commenterInput.value = "";
+  renderCommenterList();
+  showCommenterStatus(`Muted ${id}`, "success");
+}
+
+function showCommenterStatus(msg: string, type: "success" | "error"): void {
+  commenterStatusMsg.textContent = msg;
+  commenterStatusMsg.className = `status domain-status ${type}`;
+  commenterStatusMsg.hidden = false;
+  setTimeout(() => {
+    commenterStatusMsg.hidden = true;
+  }, 3000);
+}
+
+addCommenterBtn.addEventListener("click", muteCommenter);
+commenterInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    muteCommenter();
+  }
+});
+
+getHiddenCommenters().then((ids) => {
+  mutedCommenters = ids;
+  renderCommenterList();
 });

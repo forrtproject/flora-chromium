@@ -6,6 +6,7 @@
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "activeTab"
   ],
   "action": {
@@ -51,8 +52,17 @@
       "js": [
         "dist/content-general.js"
       ],
-      "all_frames": true,
+      "all_frames": false,
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://pubpeer.com/*",
+        "*://*.pubpeer.com/*"
+      ],
+      "js": [ "dist/content-pubpeer.js" ],
+      "all_frames": true,
+      "run_at": "document_start"
     },
     {
       "matches": [

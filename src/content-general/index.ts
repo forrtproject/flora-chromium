@@ -36,6 +36,10 @@ import {debugLog, setDebugContext} from "@shared/debug";
 import {isSetupComplete} from "@shared/settings";
 import {isDomainBlocked} from "@shared/domains";
 import {injectRetractionInfo, resetRetractionPills, retractionCheck, RetractionResponse} from "@shared/doi-retraction"
+import {createIndicatorPill, updateIndicatorPillBadges, INDICATOR_PILL_CLASS} from "@shared/indicator-pill";
+import {applyPillStyle, applyPlacement, currentSiteAdapter} from "@shared/site-adapters";
+
+import {fetchOpenAccess} from "@shared/openaccess";
 import {resolveReferenceDois, renderResolvedReferences, type ResolvedReference} from "./references";
 
 setDebugContext("general");
@@ -44,12 +48,7 @@ debugLog(
     window === window.top ? "(top frame)" : "(iframe)",
     "— readyState:", document.readyState
 );
-
-// PubPeer commenter IDs whose comments are hidden in the embedded iframe.
-// Add any bot/org account ID here to suppress its annotations from the panel.
-const HIDDEN_PUBPEER_COMMENTER_IDS = new Set([
-    "FORRT",
-]);
+import {startDomListener} from "./dom-listener";
 
 const pageState = new Map<DoiString, LookupState>();
 let redacts: RetractionResponse[] = [];
@@ -113,7 +112,63 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     }
 });
 
-async function pageRenderChangeHandler(): Promise<void> {
+async function primaryDoiFastPath(): Promise<void> {
+    const primary = extractPrimaryDOI(document);
+    if (!primary) return;
+
+    debugLog("General: primary DOI fast path —", primary);
+    processedDois.add(primary);
+    doiContext.set(primary, "article");
+    pageState.set(primary, {status: "loading"});
+
+    const rollback = (): void => {
+        processedDois.delete(primary);
+        pageState.delete(primary);
+        doiContext.delete(primary);
+    };
+
+    beginWorkIndicator();
+    try {
+        const request: LookupRequest = {type: "FLORA_LOOKUP", dois: [primary]};
+        const response = await safeSendMessage<LookupResponse>(request);
+        if (!response) {
+            rollback();
+            return;
+        }
+        if (response.errors[primary]) {
+            pageState.set(primary, {status: "error", message: response.errors[primary]});
+        } else if (response.results[primary]) {
+            pageState.set(primary, {
+                status: "matched",
+                result: response.results[primary],
+                source: "extracted"
+            });
+        } else {
+            pageState.set(primary, {status: "no-match"});
+        }
+        pageStateVersion++;
+
+        placeTitleIndicatorPill();
+        updateIndicatorPillBadges(document, pageState, redacts);
+    } catch {
+        rollback();
+    } finally {
+        endWorkIndicator();
+    }
+}
+
+function whenIdle(fn: () => void, timeout = 1000): void {
+    const ric = (window as unknown as {
+        requestIdleCallback?: (cb: () => void, opts?: {timeout: number}) => number;
+    }).requestIdleCallback;
+    if (typeof ric === "function") {
+        ric(fn, {timeout});
+    } else {
+        setTimeout(fn, 0);
+    }
+}
+
+async function scanWholePage(): Promise<void> {
     // Detect full URL change (SPA navigation) — clear state
     const currentUrl = location.href;
     if (currentUrl !== lastUrl) {
@@ -209,18 +264,8 @@ async function pageRenderChangeHandler(): Promise<void> {
         );
         const titleEl = document.querySelector<HTMLHeadingElement>("h1");
 
-        // Article notice → pinned inline at the end of the page title for a
-        // consistent spot across sites, instead of at whatever DOI occurrence
-        // happens to exist.
-        if (titleEl) {
-            for (const doi of articleDois) {
-                const notice = retractionByDoi.get(doi);
-                if (notice) injectRetractionInfo(titleEl, notice, { append: true });
-            }
-        }
-
         // Inline pills for remaining (reference/other) occurrences. Article DOIs
-        // are handled at the title above when a title element exists.
+        // get the merged indicator pill at the title instead (placeTitleIndicatorPill).
         for (const occ of pageOccurrences) {
             const notice = retractionByDoi.get(occ.doi);
             if (!notice) continue;
@@ -229,7 +274,7 @@ async function pageRenderChangeHandler(): Promise<void> {
         }
 
         // Pills for augmented refs with no on-page anchor (idempotent).
-        renderResolvedReferences(resolvedRefs, retractionByDoi);
+        renderResolvedReferences(resolvedRefs, retractionByDoi, pageState);
     }
 
     // Filter out already-processed DOIs
@@ -238,6 +283,8 @@ async function pageRenderChangeHandler(): Promise<void> {
     // If no valid DOIs found, try augmenting from page title in the background
     if (newDois.length === 0 && dois.length === 0) {
         debugLog("No valid DOIs found on page, attempting title augmentation");
+        if (!isSheets) placeTitleIndicatorPill();
+        if (!isSheets) updateIndicatorPillBadges(document, pageState, redacts);
         if (!isSheets) augmentFromTitle().then().catch();
         if (!isSheets) void checkPubPeer();
         return;
@@ -245,6 +292,10 @@ async function pageRenderChangeHandler(): Promise<void> {
 
     if (newDois.length === 0) {
         debugLog("No new DOIs (all already processed)");
+        // Merged pills first so renderInlineBadges can see them in the DOM and
+        // skip standalone badges for DOIs they already cover.
+        if (!isSheets) placeTitleIndicatorPill();
+        if (!isSheets) updateIndicatorPillBadges(document, pageState, redacts);
         // Re-place inline badges against the live DOM — hydrating SPAs (e.g.
         // Sage) re-render and wipe a previously placed badge, and this pass
         // (triggered by that mutation) would otherwise return without restoring it.
@@ -329,14 +380,53 @@ async function pageRenderChangeHandler(): Promise<void> {
             }
         }
 
-        // Inline badges (skip on Google Sheets — modal only)
+        // Inline badges (skip on Google Sheets — modal only). Merged pills first
+        // so renderInlineBadges can see them in the DOM and skip standalone
+        // badges for DOIs they already cover.
         if (!isSheets) {
+            placeTitleIndicatorPill();
+            updateIndicatorPillBadges(document, pageState, redacts);
             renderInlineBadges(pageState, pageOccurrences);
         }
     } catch {
         renderErrorBanner("Failed to contact FLoRA service");
     } finally {
         endWorkIndicator();
+    }
+}
+
+/**
+ * Place the merged FLoRA indicator pill (DOI + Open Access + PubPeer +
+ * retraction/replication badge) beside the article title, keyed off the
+ * primary DOI rather than the on-page occurrence scan so it still surfaces
+ * when the primary DOI is only found via URL/meta tags. Idempotent — checks
+ * the live DOM rather than a separate processed flag, so it self-heals if a
+ * hydrating SPA wipes the title's children.
+ */
+function placeTitleIndicatorPill(): void {
+    const titleEl = document.querySelector<HTMLHeadingElement>("h1");
+    if (!titleEl || document.querySelector(`.${INDICATOR_PILL_CLASS}[data-flora-title-pill]`)) return;
+    const primaryDoi = extractPrimaryDOI(document);
+    if (!primaryDoi) return;
+
+    const retraction = redacts.find((r) => r.originDoi === primaryDoi) ?? null;
+    const state = pageState.get(primaryDoi);
+    const stats = state?.status === "matched" ? state.result.record.stats : null;
+
+    const pill = createIndicatorPill({
+        doi: primaryDoi,
+        oaStatus: fetchOpenAccess(primaryDoi),
+        retraction,
+        replicationsCount: stats?.n_replications_total ?? null,
+        reproductionsCount: stats?.n_reproductions_total ?? null,
+    });
+    // Marks the title pill so the check above finds it wherever an adapter put it.
+    pill.setAttribute("data-flora-title-pill", "");
+
+    const adapter = currentSiteAdapter();
+    applyPillStyle(pill, adapter, "title");
+    if (!applyPlacement(adapter?.titlePill, document.documentElement, pill, "title pill")) {
+        titleEl.appendChild(pill);
     }
 }
 
@@ -390,12 +480,23 @@ async function augmentFromTitle(): Promise<void> {
             };
             await safeSendMessage(request);
 
-            // Augmented DOI isn't in `dois` — check + pill it beside the title here.
-            if (titleEl) {
+            // Augmented DOI isn't in `dois` — extractPrimaryDOI won't find it either
+            // (it was never on the page), so placeTitleIndicatorPill() never fires
+            // for this path. Pill it beside the title here instead.
+            if (titleEl && !document.querySelector(`.${INDICATOR_PILL_CLASS}[data-flora-title-pill]`)) {
                 try {
                     const notices = await retractionCheck([resolvedDoi]);
-                    if (notices.length > 0) {
-                        injectRetractionInfo(titleEl, notices[0], { afterend: true });
+                    // Same marker as placeTitleIndicatorPill so neither path double-pills.
+                    const pill = createIndicatorPill({
+                        doi: resolvedDoi,
+                        oaStatus: fetchOpenAccess(resolvedDoi),
+                        retraction: notices[0] ?? null,
+                    });
+                    pill.setAttribute("data-flora-title-pill", "");
+                    const adapter = currentSiteAdapter();
+                    applyPillStyle(pill, adapter, "title");
+                    if (!applyPlacement(adapter?.titlePill, document.documentElement, pill, "title pill")) {
+                        titleEl.appendChild(pill);
                     }
                 } catch { /* supplementary */ }
             }
@@ -619,106 +720,12 @@ async function fetchSheetDois(): Promise<void> {
     }
 
     // Always run — re-evaluates modal state even if the CSV fetch failed.
-    pageRenderChangeHandler();
+    scanWholePage();
 }
 
-function isFloraOwnedNode(node: Node): boolean {
-    if (node.nodeType !== Node.ELEMENT_NODE) return true; // text/comment nodes — not meaningful for DOI scanning
-    const el = node as Element;
-    if (el.id.startsWith("flora-")) return true;
-    for (const c of el.classList) {
-        if (c.startsWith("flora-")) return true;
-    }
-    return false;
-}
 
-function startDomListener(callback: () => void) {
-    let debounceTimer: number;
-    const observer = new MutationObserver((mutations) => {
-        // Do no work while this tab is in the background.
-        if (document.hidden) return;
-        const hasExternalChange = mutations.some(m => {
-            if (m.addedNodes.length === 0) return false;
-            // Skip mutations inside FLoRA's own injected containers.
-            if ((m.target as Element).closest?.('[id^="flora-"]')) return false;
-            // Skip if every added node is a FLoRA-owned element (badges, pills, panel, etc.).
-            for (const node of m.addedNodes) {
-                if (!isFloraOwnedNode(node)) return true;
-            }
-            return false;
-        });
-        if (hasExternalChange) {
-            clearTimeout(debounceTimer);
-            debounceTimer = window.setTimeout(callback, 300);
-        }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    // Re-scan when the tab becomes active again — mutations that happened while
-    // it was hidden were ignored above.
-    document.addEventListener("visibilitychange", () => {
-        if (!document.hidden) callback();
-    });
-}
-
-// Gate: skip iframes and blocked domains
 (async () => {
-    if (window !== window.top) {
-        if (location.hostname === "pubpeer.com" || location.hostname.endsWith(".pubpeer.com")) {
-            const style = document.createElement("style");
-            style.textContent = "body.top-navigation{overflow:hidden!important;} nav, .breadcrumb, ol.breadcrumb, div.forum-sub-title, div.sticky.affix, div.sticky.affix-top, div.extension-installer.container, div.footer.fixed, div.page-component-up, a.forum-item-title { display: none !important; } div.vertical-timeline-block {margin:0 15px 0px 10px;} div.selected div {background-color: transparent!important;} div.wrapper {width: 500px!important;} ul.nav.nav-tabs>li>a{color:#fff!important;} ul.nav.nav-tabs>li:nth-child(2).active>a{color:#853953!important;} ul.nav.nav-tabs>li:nth-child(1).active>a{color:#853953!important;} .ibox-title div, .ibox-title strong, .ibox-title span, .ibox-title em, .ibox-content a{color:#853953!important;}  .all-user-footer div:nth-child(1){visibility:hidden;} .el-button{background-color:#853953!important; border-color:#853953!important;} .ibox-bordered:before{background-color:#853953!important;} .btn-link.manual-file-chooser-text{color:#853953!important;}  .el-button.el-button--text{background:transparent!important;border-color:transparent!important;color:#853953!important;}}";
-            (document.head ?? document.documentElement).appendChild(style);
-            window.parent.postMessage({type: "FLORA_PUBPEER_CSS_READY"}, "*");
-
-            const stripCommentAccepted = (root: Node = document.body): void => {
-                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-                const nodes: Text[] = [];
-                while (walker.nextNode()) nodes.push(walker.currentNode as Text);
-                for (const node of nodes) {
-                    if (/comment accepted /i.test(node.nodeValue ?? "")) {
-                        node.nodeValue = (node.nodeValue ?? "").replace(/comment accepted /gi, "");
-                    }
-                }
-            };
-
-            const hideTaggedComments = (root: Node = document.body): void => {
-                const el = root instanceof Element ? root : root.parentElement;
-                if (!el) return;
-                for (const strong of el.querySelectorAll<HTMLElement>("strong.inner-id[id]")) {
-                    if (!HIDDEN_PUBPEER_COMMENTER_IDS.has(strong.id)) continue;
-                    // .vertical-timeline-content is the full comment block (header + body + footer).
-                    const commentBlock = strong.closest(".vertical-timeline-content");
-                    if (commentBlock) (commentBlock as HTMLElement).style.display = "none";
-                }
-            };
-
-            const observer = new MutationObserver((mutations) => {
-                for (const m of mutations) {
-                    for (const n of m.addedNodes) {
-                        stripCommentAccepted(n);
-                        hideTaggedComments(n);
-                    }
-                }
-            });
-            const startStripping = (): void => {
-                stripCommentAccepted();
-                hideTaggedComments();
-                observer.observe(document.body, {childList: true, subtree: true});
-            };
-            if (document.readyState === "loading") {
-                document.addEventListener("DOMContentLoaded", startStripping);
-            } else {
-                startStripping();
-            }
-
-            const sendHeight = (): void => {
-                const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-                window.parent.postMessage({type: "FLORA_PUBPEER_HEIGHT", height: h}, "*");
-            };
-            window.addEventListener("load", sendHeight);
-            new ResizeObserver(sendHeight).observe(document.documentElement);
-        }
-        return;
-    }
+    if (window !== window.top) return;
 
     if (await isDomainBlocked(location.hostname)) {
         debugLog("Domain is blocked:", location.hostname);
@@ -751,13 +758,15 @@ function startDomListener(callback: () => void) {
                 }
             }, 1500);
         } else {
-            // Initial run — static pages may never trigger the MutationObserver.
-            void pageRenderChangeHandler();
+            // Start the article's own lookup off URL/meta/JSON-LD, then let the
+            // full scan wait for idle rather than competing with page render.
+            void primaryDoiFastPath();
+            whenIdle(() => void scanWholePage());
             // Defer the observer until full load so load-time mutations don't spam it.
             if (document.readyState === "complete") {
-                startDomListener(pageRenderChangeHandler);
+                startDomListener({scanWholePage, getLastUrl: () => lastUrl});
             } else {
-                window.addEventListener("load", () => startDomListener(pageRenderChangeHandler), { once: true });
+                window.addEventListener("load", () => startDomListener({scanWholePage, getLastUrl: () => lastUrl}), { once: true });
             }
         }
     };

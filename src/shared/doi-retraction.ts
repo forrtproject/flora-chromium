@@ -148,6 +148,7 @@ export function injectRetractionInfo(
 
     const wrapper = document.createElement("span");
     wrapper.className = FLORA_NOTICE_PILL_CLASS;
+    wrapper.setAttribute("data-flora-ui", "");
     wrapper.style.cssText = `position: relative; display: inline-block; vertical-align: middle; margin-left: 6px;`;
 
     const presentation = noticePresentation(info.kind);
@@ -198,6 +199,9 @@ function placeRetractionPill(target: Element, doi: DoiString, pill: HTMLElement)
     // ancestors generally.
     const visibleLinks: HTMLAnchorElement[] = [];
     for (const link of target.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+        // offsetParent alone misses these — it is also null for position:fixed,
+        // which the pill popovers are.
+        if (link.closest("[data-flora-ui]")) continue;
         if (link.offsetParent === null) continue;
         visibleLinks.push(link);
     }

@@ -3,7 +3,7 @@ import { debugLog, setDebugContext } from "../shared/debug";
 setDebugContext("walkthrough");
 debugLog("Walkthrough page loaded");
 
-const TOTAL = 6;
+const TOTAL = 7;
 let current = 0;
 
 function activate(n: number): void {

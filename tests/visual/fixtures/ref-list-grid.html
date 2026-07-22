@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Reference list — CSS grid</title>
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+      color: #1a1a1a;
+      background: #ffffff;
+      font-size: 15px;
+      line-height: 1.5;
+      padding: 32px 48px;
+    }
+    h1 { font-size: 22px; margin: 0 0 24px; }
+    ol#references {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-width: 900px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    ol#references li {
+      border: 1px solid #e2e2e2;
+      border-radius: 8px;
+      padding: 14px 16px;
+      background: #fafafa;
+    }
+    .doi { color: #555; }
+    .links { margin-top: 8px; }
+    .links a { color: #1a5fb4; text-decoration: none; font-size: 13px; margin-right: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Bibliography in a two-column grid</h1>
+  <ol id="references">
+    <li>
+      Author, A. (2015). A highly replicated finding. <em>Journal of Mock Studies</em>, 12(3), 200–219. <span class="doi">10.5555/flora.repl.0001</span>
+      <div class="links"><a href="#">PDF</a><a href="#">Scholar</a></div>
+    </li>
+    <li>
+      Author, C. (2016). A computationally reproduced analysis. <em>Journal of Mock Studies</em>, 13(1), 44–60. <span class="doi">10.5555/flora.repro.0002</span>
+      <div class="links"><a href="#">PDF</a><a href="#">Scholar</a></div>
+    </li>
+    <li>
+      Author, D. (2017). A now-retracted intervention study. <em>Journal of Mock Studies</em>, 14(2), 88–104. <span class="doi">10.5555/flora.retr.0003</span>
+      <div class="links"><a href="#">PDF</a><a href="#">Scholar</a></div>
+    </li>
+    <li>
+      Author, F. (2018). A paper with an expression of concern. <em>Journal of Mock Studies</em>, 15(4), 310–329. <span class="doi">10.5555/flora.conc.0004</span>
+      <div class="links"><a href="#">PDF</a><a href="#">Scholar</a></div>
+    </li>
+  </ol>
+</body>
+</html>

@@ -189,7 +189,7 @@
                   class="ab-input"
                   min="0"
                   step="50"
-                  placeholder="500"
+                  placeholder="50"
                   style="width: 120px;"
                 />
               </div>
@@ -253,6 +253,58 @@
             <div id="domain-list" class="domain-list"></div>
 
             <p id="domain-status-msg" class="status domain-status" hidden></p>
+          </div>
+
+          <!-- ═══ PUBPEER COMMENTERS ═══ -->
+          <div class="detail-card" style="margin-top: 1.25rem">
+            <div class="dh">
+              <div class="dh-label">PubPeer Comments</div>
+              <h2 class="dh-title">Muted Commenters</h2>
+              <div class="dh-authors">
+                FLoRA shows PubPeer threads in its side panel. Add a commenter's
+                display name — the name shown on their comment, such as
+                <em>Statcheck</em> or a pseudonym like <em>Anolis Jacare</em> —
+                to hide their comments from that panel. FORRT is muted by
+                default because the panel already shows its data; remove it
+                below if you'd rather see those comments too.
+              </div>
+            </div>
+
+            <!-- Add muted commenter -->
+            <div class="action-bar domain-add-bar">
+              <div class="ab-group">
+                <label class="ab-label" for="commenter-input">Commenter</label>
+                <input
+                  id="commenter-input"
+                  type="text"
+                  class="ab-input"
+                  placeholder="Statcheck"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </div>
+              <div class="ab-sep"></div>
+              <div class="ab-group">
+                <button type="button" id="add-commenter-btn" class="ab-btn accent">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Mute
+                </button>
+              </div>
+            </div>
+
+            <!-- Muted commenter list -->
+            <div id="commenter-list" class="domain-list"></div>
+
+            <p id="commenter-status-msg" class="status domain-status" hidden></p>
           </div>
         </div>
       </div>

@@ -1,14 +1,29 @@
 import {normaliseDOI} from "@shared/doi-normalise";
 import {type DoiAugmentRequest} from "@shared/doi-augment";
 import {augmentDOIsViaWorker} from "@shared/messages";
+// injectRetractionInfo is still used for rows whose DOI failed validation:
+// those get no indicator panel, so there is no badge row to carry the notice.
 import {injectRetractionInfo, retractionCheck} from "@shared/doi-retraction"
 import {validateDOI, validateDOIs} from "@shared/doi-validate";
-import type {DoiString, DoiSource} from "@shared/types";
+import type {DoiString, DoiSource, LookupState, RetractionResponse} from "@shared/types";
 import type {LookupRequest, LookupResponse} from "@shared/messages";
-import {renderScholarBadge} from "./badge";
-import {createDoiPill} from "@shared/doi-label";
+import {createIndicatorPanel, updateIndicatorPillBadges} from "@shared/indicator-pill";
 import {fetchOpenAccess} from "@shared/openaccess";
 import {debugLog} from "@shared/debug";
+
+// One colour for every provenance — an unconfirmed DOI is marked by the
+// underline inside the pill, not by a different colour.
+const PILL_COLOR = "#853953";
+
+// Replication results and retraction notices arrive from two independent async
+// paths. Both accumulate here and re-render together: updating the badges from
+// only one source would drop whatever the other had already resolved.
+const scholarState = new Map<DoiString, LookupState>();
+const scholarRedacts = new Map<DoiString, RetractionResponse>();
+
+function refreshScholarBadges(): void {
+    updateIndicatorPillBadges(document, scholarState, [...scholarRedacts.values()]);
+}
 
 const RESULT_CONTAINER = "#gs_res_ccl";
 const RESULT_ROW = ".gs_r.gs_or.gs_scl";
@@ -86,7 +101,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
         if (extraction?.confident) {
             debugLog(`Scholar resolve [confident] "${title}" → ${extraction.doi}`);
             rowDois.push({row, doi: extraction.doi, source: "extracted"});
-            preInjectLabels(row, extraction.doi, "#853953", false);
+            preInjectLabels(row, extraction.doi, PILL_COLOR, false);
         } else {
             // Non-confident or no extraction — collect for augmentation cross-check
             rowInfos.push({
@@ -128,7 +143,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
                     doi: info.extractedDoi,
                     source: "extracted"
                 });
-                preInjectLabels(info.row, info.extractedDoi, "#853953", false);
+                preInjectLabels(info.row, info.extractedDoi, PILL_COLOR, false);
             } else {
                 if (info.extractedDoi) {
                     debugLog(`Scholar: "${info.title}" — extracted ${info.extractedDoi} failed doi.org validation, falling back to augmentation`);
@@ -167,16 +182,16 @@ export async function processScholarResults(doc: Document): Promise<void> {
                         doi: info.extractedDoi,
                         source: "extracted"
                     });
-                    preInjectLabels(info.row, info.extractedDoi, "#853953", false);
+                    preInjectLabels(info.row, info.extractedDoi, PILL_COLOR, false);
                 } else if (info.extractedDoi && augmentedDoi && augmentedDoi !== info.extractedDoi) {
-                    // Conflict: prefer augmented DOI → gray (augmented)
+                    // Conflict: prefer the augmented DOI (rendered as unconfirmed)
                     debugLog(`Scholar resolve [conflict] "${info.title}" → using augmented ${augmentedDoi} (extracted was ${info.extractedDoi})`);
                     rowDois.push({
                         row: info.row,
                         doi: augmentedDoi,
                         source: "augmented"
                     });
-                    preInjectLabels(info.row, augmentedDoi, "#656d76", true);
+                    preInjectLabels(info.row, augmentedDoi, PILL_COLOR, true);
                 } else if (info.extractedDoi && !augmentedDoi) {
                     // Extracted but augmentation found nothing — last-resort doi.org check
                     let valid = false;
@@ -192,7 +207,7 @@ export async function processScholarResults(doc: Document): Promise<void> {
                             doi: info.extractedDoi,
                             source: "extracted"
                         });
-                        preInjectLabels(info.row, info.extractedDoi, "#853953", false);
+                        preInjectLabels(info.row, info.extractedDoi, PILL_COLOR, false);
                     } else {
                         // Invalid DOI — no DOI pill, but still check for a
                         // retraction/concern notice (the static map is keyed
@@ -209,14 +224,14 @@ export async function processScholarResults(doc: Document): Promise<void> {
                         } catch { /* supplementary */ }
                     }
                 } else if (!info.extractedDoi && augmentedDoi) {
-                    // No extraction, only augmented → gray with dotted underline
+                    // No extraction, only augmented → rendered as unconfirmed
                     debugLog(`Scholar resolve [augmented-only] "${info.title}" → ${augmentedDoi} (no extraction)`);
                     rowDois.push({
                         row: info.row,
                         doi: augmentedDoi,
                         source: "augmented"
                     });
-                    preInjectLabels(info.row, augmentedDoi, "#656d76", true);
+                    preInjectLabels(info.row, augmentedDoi, PILL_COLOR, true);
                 } else {
                     debugLog(`Scholar resolve [no-doi] "${info.title}" → no DOI from extraction or augmentation`);
                 }
@@ -240,16 +255,13 @@ export async function processScholarResults(doc: Document): Promise<void> {
         debugLog("Scholar: Lookup response:", Object.keys(response.results).length, "results,", Object.keys(response.errors).length, "errors");
 
         let badgedCount = 0;
-        for (const {row, doi, source} of rowDois) {
+        for (const {doi, source} of rowDois) {
             if (response.results[doi]) {
-                renderScholarBadge(row, {
-                    status: "matched",
-                    result: response.results[doi],
-                    source,
-                });
+                scholarState.set(doi, {status: "matched", result: response.results[doi], source});
                 badgedCount++;
             }
         }
+        refreshScholarBadges();
         debugLog("Scholar: Rendered", badgedCount, "badge(s)");
     } catch (err) {
         debugLog("Scholar: Lookup failed:", err);
@@ -258,32 +270,31 @@ export async function processScholarResults(doc: Document): Promise<void> {
 
 async function preInjectLabels(row: HTMLElement, doi: DoiString, color: string, isAugmented = false): Promise<void> {
     injectDoiLabel(row, doi, color, isAugmented);
-    let target = row.querySelector(".gs_ggs");
-    if (!target) {
-        target = document.createElement("div");
-        target.className = "gs_ggs gs_fl";
-        const gsRi = row.querySelector(".gs_ri");
-        row.insertBefore(target, gsRi);
+    const notices = await retractionCheck([doi]);
+    if (notices?.[0]) {
+        scholarRedacts.set(doi, notices[0]);
+        refreshScholarBadges();
     }
-    let result = await retractionCheck([doi]);
-    // Append directly inside the FLoRA pill area (.gs_ggs gs_fl) — the default
-    // smart placement would otherwise drop the pill into Scholar's nested
-    // .gs_or_ggsm "All versions" submenu, since that contains the publisher
-    // links the smart-placement heuristic matches against.
-    if (result && result[0] != undefined) injectRetractionInfo(target, result[0], { append: true })
+}
+
+/** Prefer Scholar's right-side PDF area; create one if the row has none. */
+function pillTarget(row: HTMLElement): Element {
+    const existing = row.querySelector(".gs_ggs");
+    if (existing) return existing;
+    const target = document.createElement("div");
+    target.className = "gs_ggs gs_fl";
+    row.insertBefore(target, row.querySelector(".gs_ri"));
+    return target;
 }
 
 function injectDoiLabel(row: HTMLElement, doi: string, color: string, isAugmented = false): void {
-    // Prefer the right-side PDF area; if absent, create one to match Scholar's layout
-    let target = row.querySelector(".gs_ggs");
-    if (!target) {
-        target = document.createElement("div");
-        target.className = "gs_ggs gs_fl";
-        const gsRi = row.querySelector(".gs_ri");
-        row.insertBefore(target, gsRi);
-    }
-
-    target.appendChild(createDoiPill(doi, color, isAugmented, fetchOpenAccess(doi)));
+    pillTarget(row).appendChild(createIndicatorPanel({
+        doi: doi as DoiString,
+        color,
+        isAugmented,
+        oaStatus: fetchOpenAccess(doi),
+        retraction: scholarRedacts.get(doi as DoiString) ?? null,
+    }));
 }
 
 interface ExtractionResult {

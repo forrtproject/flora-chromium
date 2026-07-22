@@ -6,6 +6,7 @@ import { getSettings } from "../shared/settings";
 import { safeSendMessage } from "../shared/messages";
 import styles from "./styles.css";
 import {RetractionResponse, noticePresentation} from "@shared/doi-retraction";
+import {INDICATOR_PILL_CLASS} from "@shared/indicator-pill";
 
 const BANNER_HOST_ID = "flora-banner-host";
 const BADGE_CLASS = "flora-inline-badge";
@@ -338,7 +339,17 @@ export function renderInlineBadges(
         "pageState has", pageState.size, "DOI(s):",
         [...pageState.entries()].map(([d, s]) => `${d}(${s.status})`));
 
+    // DOIs that already carry a merged indicator pill (title/reference) show
+    // their replication count in that pill's badge segment — skip the
+    // standalone FLoRA badge for those so the same count isn't shown twice.
+    const mergedPilledDois = new Set<DoiString>();
+    for (const el of document.querySelectorAll<HTMLElement>(`.${INDICATOR_PILL_CLASS}`)) {
+        const d = el.getAttribute("data-flora-doi");
+        if (d) mergedPilledDois.add(d as DoiString);
+    }
+
     for (const occ of bestByDoi.values()) {
+        if (mergedPilledDois.has(occ.doi)) continue;
         const state = pageState.get(occ.doi);
         if (!state || state.status !== "matched") {
             const status = state?.status ?? "not found";
@@ -359,14 +370,14 @@ export function renderInlineBadges(
         if (!hasData) continue;
 
         if (!isVisible(occ.anchor)) continue;
-        // Skip if this anchor already carries a badge (idempotent re-runs).
-        if (anchorAlreadyBadged(occ.anchor)) continue;
+        if (anchorAlreadyBadged(occ.anchor, occ.doi)) continue;
 
         const replLabel = stats.n_replications_total === 1 ? "replication" : "replications";
         const reproLabel = stats.n_reproductions_total === 1 ? "reproduction" : "reproductions";
 
         const badgeHost = document.createElement("span");
         badgeHost.className = BADGE_CLASS;
+        badgeHost.setAttribute("data-flora-doi", occ.doi);
         const shadow = badgeHost.attachShadow({mode: "open"});
 
         const styleEl = document.createElement("style");
@@ -390,21 +401,36 @@ export function renderInlineBadges(
     }
 }
 
-/** Place a badge relative to its anchor: after the anchor for links, inside
- *  for everything else (reference entries, paragraphs). */
 function placeBadge(anchor: HTMLElement, badge: HTMLElement): void {
     if (anchor.tagName === "A") {
-        anchor.insertAdjacentElement("afterend", badge);
+        let last: Element = anchor;
+        while (last.nextElementSibling?.classList.contains(BADGE_CLASS)) {
+            last = last.nextElementSibling;
+        }
+        last.insertAdjacentElement("afterend", badge);
     } else {
         anchor.appendChild(badge);
     }
 }
 
-function anchorAlreadyBadged(anchor: HTMLElement): boolean {
+function anchorAlreadyBadged(anchor: HTMLElement, doi: DoiString): boolean {
     if (anchor.tagName === "A") {
-        return !!anchor.nextElementSibling?.classList.contains(BADGE_CLASS);
+        let sib = anchor.nextElementSibling;
+        while (sib?.classList.contains(BADGE_CLASS)) {
+            if (sib.getAttribute("data-flora-doi") === doi) return true;
+            sib = sib.nextElementSibling;
+        }
+        return false;
     }
-    return !!anchor.lastElementChild?.classList.contains(BADGE_CLASS);
+    for (const child of anchor.children) {
+        if (
+            child.classList.contains(BADGE_CLASS) &&
+            child.getAttribute("data-flora-doi") === doi
+        ) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function isVisible(el: HTMLElement): boolean {
@@ -884,6 +910,34 @@ function setupTabPositioning(tab: HTMLElement): void {
   window.addEventListener("resize", reposition, { passive: true });
 }
 
+/** Stable string describing everything the side panel renders. */
+function panelSignature(
+  primary: PubPeerFeedback | null,
+  references: { doi: DoiString; title: string }[],
+  articleDois: DoiString[],
+  pageState: Map<DoiString, LookupState>,
+  refFeedbackByDoi: Map<DoiString, PubPeerFeedback>,
+  retractionByDoi: Map<DoiString, RetractionResponse>
+): string {
+  const statsOf = (doi: DoiString): string => {
+    const s = pageState.get(doi);
+    if (s?.status !== "matched") return s?.status ?? "none";
+    const {n_replications_total, n_reproductions_total, n_originals_total} = s.result.record.stats;
+    return `${n_replications_total}/${n_reproductions_total}/${n_originals_total}`;
+  };
+  const noticeOf = (doi: DoiString): string => retractionByDoi.get(doi)?.kind ?? "";
+
+  const parts = [
+    `primary:${primary ? `${primary.url}#${primary.total_comments}` : "none"}`,
+    `article:${articleDois.map((d) => `${d}=${statsOf(d)}:${noticeOf(d)}`).sort().join(",")}`,
+    `refs:${references
+      .map((r) => `${r.doi}|${r.title}|${statsOf(r.doi)}|${noticeOf(r.doi)}|${refFeedbackByDoi.get(r.doi)?.total_comments ?? 0}`)
+      .sort()
+      .join(",")}`,
+  ];
+  return parts.join(";;");
+}
+
 export function renderSidePanel(
   articleFeedbacks: PubPeerFeedback[],
   references: { doi: DoiString; title: string }[],
@@ -898,8 +952,6 @@ export function renderSidePanel(
   // (e.g. `translateX(0)` → `translateX(0px)`). The marker is set in
   // openPanel/closePanel below so reading it here is always reliable.
   const wasOpen = existingHost?.dataset.floraPanelOpen === "1";
-  cleanupTabPositioning();
-  existingHost?.remove();
 
   const withComments = articleFeedbacks.filter((f) => f.total_comments > 0);
 
@@ -961,8 +1013,21 @@ export function renderSidePanel(
 
   if (primary && !isSafePubPeerUrl(primary.url)) return;
 
+  // Rebuilding recreates the <iframe>, reloading the embedded PubPeer thread.
+  const signature = panelSignature(
+    primary, references, articleDois, pageState, refFeedbackByDoi, retractionByDoi
+  );
+  if (existingHost && existingHost.dataset.floraPanelSig === signature) {
+    debugLog("renderSidePanel: unchanged — kept existing panel");
+    return;
+  }
+
+  cleanupTabPositioning();
+  existingHost?.remove();
+
   const host = document.createElement("div");
   host.id = PUBPEER_PANEL_ID;
+  host.dataset.floraPanelSig = signature;
 
   const hostStyle = document.createElement("style");
   hostStyle.textContent = `
@@ -1191,8 +1256,11 @@ export function renderSidePanel(
     sectionLabel.style.cssText =
       "font-size:14px;font-weight:600;color:#5f6368;text-transform:uppercase;padding:0px 16px 10px 12px;" +
       "letter-spacing:0.5px;margin-bottom:6px;border-bottom:1px solid #e8e8e8;padding:10px 16px;";
-    sectionLabel.textContent = sectionTitle;
+    sectionLabel.textContent = `${sectionTitle} (${entries.length})`;
     section.appendChild(sectionLabel);
+
+    const COLLAPSED_COUNT = 5;
+    const items: HTMLDivElement[] = [];
     for (const entry of entries) {
       const item = document.createElement("div");
       item.style.cssText = "padding:6px 0;border-bottom:1px solid #f0f0f0;padding:10px 16px;";
@@ -1251,8 +1319,42 @@ export function renderSidePanel(
         metaEl.textContent = meta.join(" · ");
         item.appendChild(metaEl);
       }
+      items.push(item);
       section.appendChild(item);
     }
+
+    if (items.length > COLLAPSED_COUNT) {
+      const hidden = items.slice(COLLAPSED_COUNT);
+      for (const item of hidden) item.style.display = "none";
+
+      const toggleWrap = document.createElement("div");
+      toggleWrap.style.cssText = "padding:8px 16px;text-align:center;border-bottom:1px solid #f0f0f0;";
+
+      const toggle = document.createElement("button");
+      toggle.style.cssText =
+        "all:unset;cursor:pointer;font-size:12px;font-weight:600;color:#853953;" +
+        "padding:4px 10px;border-radius:6px;transition:background 0.15s;";
+      toggle.addEventListener("mouseenter", () => { toggle.style.background = "#f9f0f4"; });
+      toggle.addEventListener("mouseleave", () => { toggle.style.background = ""; });
+
+      const noun = sectionTitle.replace(/s$/i, "").toLowerCase();
+      let expanded = false;
+      const setLabel = (): void => {
+        toggle.textContent = expanded
+          ? `Show fewer ${noun}s`
+          : `Show ${hidden.length} more ${noun}${hidden.length === 1 ? "" : "s"}`;
+      };
+      setLabel();
+      toggle.addEventListener("click", () => {
+        expanded = !expanded;
+        for (const item of hidden) item.style.display = expanded ? "" : "none";
+        setLabel();
+      });
+
+      toggleWrap.appendChild(toggle);
+      section.appendChild(toggleWrap);
+    }
+
     summary.appendChild(section);
     return oaPlaceholders;
   };

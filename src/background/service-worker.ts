@@ -1,4 +1,4 @@
-import {LocalCache} from "@shared/cache";
+import {LocalCache, MONTH_MS} from "@shared/cache";
 import {lookupDOIs} from "@shared/flora-api";
 import {RET_MAP_KEY, storageSync, type RetractionMaps} from "@shared/data-extract";
 import type {DoiString, ReplicationResult, RetractionResponse} from "@shared/types";
@@ -251,7 +251,16 @@ async function handleLookup(dois: DoiString[]): Promise<LookupResponse> {
             const r = apiResults.get(doi);
             if (r) {
                 results[doi] = r;
-                await cache.set(doi, r, null); // resolved — cache forever
+                // Cache the result with a finite TTL. A cache-WRITE failure
+                // (e.g. storage quota) must never demote a successful lookup to
+                // an error: the result is already in `results`, so we swallow
+                // the write error here rather than letting it hit the outer
+                // catch (which would mark the whole batch as failed).
+                try {
+                    await cache.set(doi, r, MONTH_MS);
+                } catch {
+                    // Non-fatal: the result stands; we just re-fetch next time.
+                }
             }
             // No result (no record yet, or a transient batch failure): do NOT
             // cache. We re-query every time so newly added FORRT data surfaces
